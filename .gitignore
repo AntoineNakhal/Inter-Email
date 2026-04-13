@@ -1,0 +1,29 @@
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Virtual environments
+**/.venv/
+**/venv/
+
+# Local environment files
+**/.env
+**/.streamlit/secrets.toml
+
+# Gmail credentials and tokens
+**/data/raw/google_credentials.json
+**/data/raw/google_token.json
+**/data/raw/codeSecret.txt
+**/data/raw/gmail_tokens/
+
+# Generated run outputs
+**/data/outputs/*.json
+!**/data/outputs/.gitkeep
+!**/data/raw/.gitkeep

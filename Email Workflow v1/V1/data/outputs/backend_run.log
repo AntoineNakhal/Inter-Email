@@ -1,0 +1,313 @@
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Traceback (most recent call last):
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\app.py", line 30, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\app.py", line 20, in main
+    result = manager.run()
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\agents\manager_agent.py", line 43, in run
+    emails = self.email_service.fetch_recent_emails(
+        max_results=self.settings.gmail_max_results
+    )
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\services\email_service.py", line 105, in fetch_recent_emails
+    raw_messages = self.client.list_recent_messages(max_results=safe_max_results)
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\gmail_client.py", line 72, in list_recent_messages
+    .execute()
+     ~~~~~~~^^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\googleapiclient\_helpers.py", line 130, in positional_wrapper
+    return wrapped(*args, **kwargs)
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\googleapiclient\http.py", line 923, in execute
+    resp, content = _retry_request(
+                    ~~~~~~~~~~~~~~^
+        http,
+        ^^^^^
+    ...<7 lines>...
+        headers=self.headers,
+        ^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\googleapiclient\http.py", line 191, in _retry_request
+    resp, content = http.request(uri, method, *args, **kwargs)
+                    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\google_auth_httplib2.py", line 216, in request
+    response, content = self.http.request(
+                        ~~~~~~~~~~~~~~~~~^
+        uri,
+        ^^^^
+    ...<5 lines>...
+        **kwargs
+        ^^^^^^^^
+    )
+    ^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\httplib2\__init__.py", line 1727, in request
+    (response, content) = self._request(
+                          ~~~~~~~~~~~~~^
+        conn, authority, uri, request_uri, method, body, headers, redirections, cachekey,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\httplib2\__init__.py", line 1447, in _request
+    (response, content) = self._conn_request(conn, request_uri, method, body, headers)
+                          ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\.venv\Lib\site-packages\httplib2\__init__.py", line 1399, in _conn_request
+    response = conn.getresponse()
+  File "C:\Users\antoi\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\antoi\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\antoi\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\antoi\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\antoi\AppData\Local\Python\pythoncore-3.14-64\Lib\ssl.py", line 1304, in recv_into
+    return self.read(nbytes, buffer)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\antoi\AppData\Local\Python\pythoncore-3.14-64\Lib\ssl.py", line 1138, in read
+    return self._sslobj.read(len, buffer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+KeyboardInterrupt
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini sent_to_ai=20 fetched=200 filtered=180
+[filter] skipped 19d6dc7edd424e8d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6da64cc39be5d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6d311d8a0eb02 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d6cf70a19e1518 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6984520083fac score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d694c52f9ee48f score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d693d2df2071fc score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d68f4a7e43c23e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6897b5313059a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d687d8976797e5 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d68333dc93e884 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6814ecf045012 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d675871678c469 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d64ca1c120fdd2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d641a92f9dbade score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d62ee4847232b2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d58aa9c70c5826 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d563cfba4e3f0e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d536c119c9cf38 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4f981788fc655 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4f717656507e7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4e482842f6db8 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d4e2ee019beb5a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4df6dd7e6d89f score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4db76e43e0967 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a90184405643 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a4c38f116d91 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a49002e75e96 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a45d978f4ce3 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a42df24a596e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a403517906a6 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a3d465524602 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a3a2b6efbdc7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a3701058377b score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a34700a8591d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a31150634e25 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d49621624bf605 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4531812c2cc5b score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d452e9d0f9dab5 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d450e386239f32 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d448c9bf59a265 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d444c08ae424a6 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d4442c0e239a78 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d441736d6f7f89 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d405ca2ccaa28f score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d3fd1a286a8900 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d3fceda904b6d1 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d3fba67851ace7 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d3fb8a52327496 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d3fb1dafa1a8fd score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d3f8e64d737af8 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d3ee85160d3e04 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d3ee11c352e9f4 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d3ed2aa77c2bb8 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d3e578d001cb6a score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d30604f42c4e5a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d30222716ad62d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d301cab5d4caaa score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d301b48bb5e0b1 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d300fb4230fd9b score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d2fa8e6e3f8497 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2f9de5d84d200 score=2 reason=Filtered as obvious promotional or social mail by Gmail label.
+[filter] skipped 19d2f9c7f86b8595 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2ba5b612af5f8 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d2ba515e5d78fb score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2ba4b38fa0124 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2ba298a2cdaa3 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d2afa705a846d6 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d2a270e2e8114a score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d27ddebd5665fb score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d265f4e70f66c0 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2612c53ff6d30 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25f2b72b84a4d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25f14609a1b6a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25ef0a839e446 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25e7fb8f19d02 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25ad67ca795b8 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25a13d3e279c8 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2593a170ed61c score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25921c0df80dd score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d258d2e76f7e14 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d25799ecdd0015 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25778d7e6b759 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25671322c39f1 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2547b300a61c7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d25453df98b6e7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d23cb2e2821200 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d223536ece2188 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d2234f839069a3 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d22348ea292133 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d22326a4b0daf7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2149c530e22db score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d20566dc47929f score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d2006ffbdeda38 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d1ffba2498090c score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d1c52a3bf86ee2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d1c44b605c72f7 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d1bd64034f7bdb score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d1b9581a8958ab score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d0d2839a245082 score=1 reason=Filtered as obvious promotional or social mail by Gmail label.
+[filter] skipped 19d0c0a39585835d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d0b9b0f593e625 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d0b998a2e7c43d score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d0b81437a72337 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d0b6ac81737b36 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d07b825845d8d3 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d062da22a9bf0f score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d0246ba1132918 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d01e23485961c1 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d011fcd3ca8e02 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cfd773199c0733 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cfd668b12fa020 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cfd1b94170b7fd score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cfd0a265ffc6cf score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cfd049abfa1aeb score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cfcfca34318c23 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cfcf89191b8ab7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cfc8ecac9a6961 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cfc7a2697dca9a score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cfc2a3f5072758 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cf830ec749fc1d score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cf82f132b50a95 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cf81a71a819542 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cf7e8dff316235 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cf7a8d7d8b9310 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cf7997df4612fb score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cf7314afca8c66 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cf700fb46082f3 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19cf6bc02c4b5c20 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19ce89594ee936e6 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce6e98be7515c2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce6e8fac8944c2 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19ce6daefc488786 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19ce4b9d4f7bf4e0 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce343ad63632e9 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce33b26417c17a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce27fd72c0160c score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19ce27969f16c6ca score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce234fa786aa20 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce22d743c9b1ae score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19ce22c3e6245571 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdedf2f40616b8 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdebc5a4822f26 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdda6e2b1efb5e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdd9aecfc04a92 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdd7219c21b7f9 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdd5fa89bdcec9 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cdd50ead33f0b7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd8631ede66a75 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd7eb586e63df4 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd77109f203819 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd41fbdf3ab7a9 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd418baf1d2c9f score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd3fbf6832d0b6 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd3f95f8740fe7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19cd3f75400960e2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d309063fa0cabd score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d30801ecfba83c score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d3067b5e193408 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d2bb85ef930154 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d2a40a4f79cbaf score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d2a19f2d4c0156 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d24fb0341dc12e score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d1c1da3b556be4 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d1c0b09727e088 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d1bb8c881797d0 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d1b9262ee5f759 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d0bd32d1ad4e18 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d07a0c7aa69598 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d079944977d74f score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19d06861f287748c score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cfe6c07756cde3 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cfcf2e284a7fd6 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cfc9b40d423ab4 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cfc0acaa1bb731 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cf7738e917934d score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cde7c07f69d19d score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cd89a36d034fa0 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cd6fa29497d51f score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[filter] skipped 19cd659f8b253158 score=3 reason=Skipped because only the top 20 emails are sent to AI.
+[triage] processing 20 emails
+[triage] payload size: 19424 bytes
+[summary] processing 20 emails
+[summary] payload size: 23564 bytes
+[crm] processing 20 emails
+[crm] payload size: 19424 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini sent_to_ai=10 fetched=50 filtered=40
+[filter] skipped 19d6dc7edd424e8d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6da64cc39be5d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6d311d8a0eb02 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d6cf70a19e1518 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6984520083fac score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d694c52f9ee48f score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d693d2df2071fc score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d68f4a7e43c23e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6897b5313059a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d687d8976797e5 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d68333dc93e884 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d6814ecf045012 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d675871678c469 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d64ca1c120fdd2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d641a92f9dbade score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d62ee4847232b2 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d58aa9c70c5826 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d563cfba4e3f0e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d536c119c9cf38 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4f981788fc655 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4f717656507e7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4e482842f6db8 score=1 reason=Relevance score 1 is below the threshold 3.
+[filter] skipped 19d4e2ee019beb5a score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4df6dd7e6d89f score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4db76e43e0967 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a90184405643 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a4c38f116d91 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a49002e75e96 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a45d978f4ce3 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a42df24a596e score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a403517906a6 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a3d465524602 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a3a2b6efbdc7 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a3701058377b score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a34700a8591d score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4a31150634e25 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d49621624bf605 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d4531812c2cc5b score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d452e9d0f9dab5 score=2 reason=Relevance score 2 is below the threshold 3.
+[filter] skipped 19d450e386239f32 score=1 reason=Relevance score 1 is below the threshold 3.
+[triage] processing 10 emails
+[triage] payload size: 10039 bytes
+[summary] processing 10 emails
+[summary] payload size: 12360 bytes
+[crm] processing 10 emails
+[crm] payload size: 10039 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V1\data\outputs\latest_run.json

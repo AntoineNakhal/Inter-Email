@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+data/raw/google_credentials.json
+data/raw/google_token.json
+data/outputs/*.json
+!data/outputs/.gitkeep
+!data/raw/.gitkeep
