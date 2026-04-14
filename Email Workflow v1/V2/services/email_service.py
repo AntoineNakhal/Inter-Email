@@ -22,6 +22,22 @@ class EmailService:
     """Keeps Gmail fetching and thread grouping separate from agent orchestration."""
 
     AUTO_ANALYSIS_BUCKETS = {"must_review", "important"}
+    AUTO_ANALYSIS_SCORE_THRESHOLD = 2
+    SENSITIVE_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("Protected A", ("protected a", "protected-a")),
+        ("Protected B", ("protected b", "protected-b")),
+        ("TLP Amber", ("tlp amber", "tlp:amber", "tlp-amber")),
+        ("TLP Red", ("tlp red", "tlp:red", "tlp-red")),
+        (
+            "CUI",
+            (
+                "controlled unclassified information",
+                " controlled unclassified ",
+                " cui ",
+                "(cui)",
+            ),
+        ),
+    )
     SUBJECT_LIMIT = 200
     PARTICIPANT_LIMIT = 200
     SNIPPET_LIMIT = 500
@@ -34,6 +50,30 @@ class EmailService:
         r"^(?:(?:re|fw|fwd)\s*:\s*)+",
         re.IGNORECASE,
     )
+    LEADING_SUBJECT_TAG_RE = re.compile(r"^(?:\[[^\]]+\]\s*)+", re.IGNORECASE)
+    SUBJECT_TOKEN_RE = re.compile(r"[a-z0-9]+")
+    SUBJECT_STOPWORDS = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "this",
+        "that",
+        "your",
+        "our",
+        "regarding",
+        "about",
+        "please",
+        "follow",
+        "need",
+        "update",
+        "question",
+        "reply",
+        "response",
+        "external",
+        "email",
+    }
     NEWSLETTER_SENDER_MARKERS = (
         "no-reply",
         "noreply",
@@ -64,6 +104,37 @@ class EmailService:
         "one-time passcode",
         "password reset",
     )
+    CALENDAR_SUBJECT_MARKERS = (
+        "invitation",
+        "accepted",
+        "declined",
+        "tentative",
+        "cancelled",
+        "canceled",
+        "google calendar",
+    )
+    CALENDAR_MONTH_OR_DAY_MARKERS = (
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+    )
+    TIME_TOKEN_RE = re.compile(r"^\d{1,4}(?:am|pm)$", re.IGNORECASE)
     CONVERSATION_MERGE_KEYWORDS = (
         "rfq",
         "quote",
@@ -174,7 +245,7 @@ class EmailService:
         )
 
     def fetch_recent_emails(self, max_results: int) -> list[EmailMessage]:
-        """Fetch Gmail messages, trim noisy content, and validate the result."""
+        """Fetch recent Gmail-triggered threads and keep the full thread history."""
 
         safe_max_results = max(1, max_results)
         raw_messages = self.client.list_recent_messages(
@@ -218,6 +289,7 @@ class EmailService:
         for thread in threads:
             score = self._score_thread(thread)
             filtered_reason = self._filter_reason(thread)
+            sensitive_markers = self._detect_sensitive_markers(thread)
             bucket, bucket_reason = self._classify_thread_bucket(
                 thread=thread,
                 score=score,
@@ -226,35 +298,89 @@ class EmailService:
             thread.relevance_score = score
             thread.relevance_bucket = bucket
 
-            if bucket == "noise":
+            if sensitive_markers:
+                thread.security_status = "classified"
+                thread.sensitivity_markers = sensitive_markers
+                thread.sensitivity_reason = (
+                    "Sensitive government-handling markers were detected in the thread "
+                    "content before AI processing."
+                )
+                thread.relevance_score = 5
+                thread.relevance_bucket = "must_review"
+                thread.included_in_ai = False
+                thread.analysis_status = "guardrailed"
+                thread.selection_reason = self._selection_reason(
+                    (
+                        "Held out of AI because sensitive/classified markers were "
+                        f"detected: {', '.join(sensitive_markers)}."
+                    ),
+                    thread,
+                )
+                thread.ai_decision = "blocked_sensitive"
+                thread.ai_decision_reason = thread.selection_reason
+                continue
+
+            if filtered_reason:
                 thread.included_in_ai = False
                 thread.analysis_status = "skipped"
                 thread.selection_reason = self._selection_reason(
                     f"Relevance bucket {bucket}: {bucket_reason}",
                     thread,
                 )
+                thread.ai_decision = "skip"
+                thread.ai_decision_reason = thread.selection_reason
                 continue
 
-            auto_analyze = (
-                bucket in self.AUTO_ANALYSIS_BUCKETS
-                or (bucket == "maybe" and self.settings.auto_send_maybe_threads)
-            )
+            auto_analyze = score >= self.AUTO_ANALYSIS_SCORE_THRESHOLD
             thread.included_in_ai = auto_analyze
-            thread.analysis_status = None if auto_analyze else "not_requested"
+            if auto_analyze:
+                thread.analysis_status = None
+            elif bucket == "noise":
+                thread.analysis_status = "skipped"
+            else:
+                thread.analysis_status = "not_requested"
 
             if auto_analyze:
                 thread.selection_reason = self._selection_reason(
-                    f"Relevance bucket {bucket}: {bucket_reason}",
+                    (
+                        f"Auto-analyzed because relevance score {score} met the "
+                        f"score threshold {self.AUTO_ANALYSIS_SCORE_THRESHOLD}. "
+                        f"Bucket {bucket}: {bucket_reason}"
+                    ),
                     thread,
                 )
+                thread.ai_decision = (
+                    "must_send_to_ai"
+                    if bucket == "must_review" or score >= 3
+                    else "good_candidate"
+                )
+                thread.ai_decision_reason = thread.selection_reason
                 candidates.append(self.build_agent_thread(thread))
                 continue
 
-            thread.selection_reason = self._selection_reason(
-                f"Relevance bucket {bucket}: {bucket_reason} Visible in review, "
-                "but not auto-analyzed.",
-                thread,
-            )
+            if bucket == "noise":
+                thread.selection_reason = self._selection_reason(
+                    (
+                        f"Skipped because relevance score {score} is below the "
+                        f"score threshold {self.AUTO_ANALYSIS_SCORE_THRESHOLD}. "
+                        f"Bucket {bucket}: {bucket_reason}"
+                    ),
+                    thread,
+                )
+                thread.ai_decision = "skip"
+                thread.ai_decision_reason = thread.selection_reason
+            else:
+                thread.selection_reason = self._selection_reason(
+                    (
+                        f"Visible in review, but not auto-analyzed because relevance "
+                        f"score {score} is below the score threshold "
+                        f"{self.AUTO_ANALYSIS_SCORE_THRESHOLD}. "
+                        f"Bucket {bucket}: {bucket_reason}"
+                    ),
+                    thread,
+                )
+                thread.ai_decision = "maybe"
+                thread.ai_decision_reason = thread.selection_reason
 
         return candidates
 
@@ -372,6 +498,8 @@ class EmailService:
             thread_id=str(group["thread_id"]),
             source_thread_ids=list(group["source_thread_ids"]),
             grouping_reason=str(group["grouping_reason"]),
+            merge_signals=list(group.get("merge_signals", [])),
+            merge_confidence=group.get("merge_confidence"),
             subject=thread_subject,
             participants=participants,
             message_count=len(thread_messages),
@@ -398,37 +526,20 @@ class EmailService:
             self._build_subject_group(thread_id, indexed_messages)
             for thread_id, indexed_messages in grouped_messages.items()
         ]
+        groups.sort(key=lambda item: item["latest_date"])
 
-        by_subject: dict[str, list[dict[str, object]]] = defaultdict(list)
-        untouched_groups: list[dict[str, object]] = []
+        merged_groups: list[dict[str, object]] = []
         for group in groups:
-            normalized_subject = str(group["normalized_subject"])
-            if normalized_subject:
-                by_subject[normalized_subject].append(group)
-            else:
-                untouched_groups.append(group)
+            merged = False
+            for cluster in reversed(merged_groups):
+                merge_details = self._evaluate_subject_group_merge(cluster, group)
+                if merge_details is not None:
+                    self._append_subject_group(cluster, group, merge_details)
+                    merged = True
+                    break
 
-        merged_groups: list[dict[str, object]] = list(untouched_groups)
-        for subject_groups in by_subject.values():
-            if len(subject_groups) == 1:
-                merged_groups.extend(subject_groups)
-                continue
-
-            subject_groups.sort(key=lambda item: item["latest_date"])
-            clusters: list[dict[str, object]] = []
-
-            for group in subject_groups:
-                merged = False
-                for cluster in reversed(clusters):
-                    if self._should_merge_subject_group(cluster, group):
-                        self._append_subject_group(cluster, group)
-                        merged = True
-                        break
-
-                if not merged:
-                    clusters.append(group)
-
-            merged_groups.extend(clusters)
+            if not merged:
+                merged_groups.append(group)
 
         return merged_groups
 
@@ -451,8 +562,12 @@ class EmailService:
             "thread_id": thread_id,
             "source_thread_ids": [thread_id],
             "grouping_reason": "gmail_thread_id",
+            "merge_signals": ["gmail_thread_id"],
+            "merge_confidence": "high",
             "indexed_messages": ordered_indexed_messages,
             "normalized_subject": self._normalize_subject(subject),
+            "subject_tokens": self._subject_token_set(subject),
+            "subject_identifier_tokens": self._subject_identifier_tokens(subject),
             "latest_date": self._parse_date(ordered_emails[-1].date),
             "participants": participants,
             "participant_keys": {item.lower() for item in participants},
@@ -463,7 +578,96 @@ class EmailService:
             "looks_like_notification": self._looks_like_standalone_notification_subject(
                 subject
             ),
+            "looks_like_calendar_thread": self._looks_like_calendar_subject(subject),
             "has_business_signal": self._subject_has_business_signal(subject),
+        }
+
+    def _evaluate_subject_group_merge(
+        self,
+        left: dict[str, object],
+        right: dict[str, object],
+    ) -> dict[str, object] | None:
+        """Return merge diagnostics when two Gmail thread groups are safe to combine."""
+
+        date_gap = abs((left["latest_date"] - right["latest_date"]).days)
+        if date_gap > self.SUBJECT_MERGE_WINDOW_DAYS:
+            return None
+
+        if left["looks_like_notification"] or right["looks_like_notification"]:
+            return None
+
+        if left["looks_like_calendar_thread"] or right["looks_like_calendar_thread"]:
+            return None
+
+        relationship = self._subject_relationship_details(left, right)
+        if not relationship["signals"]:
+            return None
+
+        participant_overlap = bool(left["participant_keys"] & right["participant_keys"])
+        shared_identifiers = bool(
+            left["subject_identifier_tokens"] & right["subject_identifier_tokens"]
+        )
+        has_reply_forward_signal = bool(
+            left["has_reply_or_forward_subject"] or right["has_reply_or_forward_subject"]
+        )
+        both_have_business_signal = bool(
+            left["has_business_signal"] and right["has_business_signal"]
+        )
+
+        score = 0
+        signals = list(relationship["signals"])
+        anchor_signal = False
+
+        if relationship["exact_subject_match"]:
+            score += 2
+            anchor_signal = True
+        elif relationship["contained_subject_match"]:
+            score += 1
+
+        if relationship["strong_token_overlap"]:
+            score += 2
+        elif relationship["token_overlap"]:
+            score += 1
+
+        if participant_overlap:
+            signals.append("participant_overlap")
+            score += 3
+            anchor_signal = True
+
+        if shared_identifiers:
+            signals.append("shared_subject_identifier")
+            score += 3
+            anchor_signal = True
+
+        if has_reply_forward_signal:
+            signals.append("reply_or_forward_subject")
+            score += 1
+
+        if both_have_business_signal:
+            signals.append("shared_business_context")
+            score += 1
+
+        if date_gap <= 3:
+            signals.append("recent_time_window")
+            score += 1
+
+        if not anchor_signal and not (
+            relationship["exact_subject_match"]
+            and (
+                both_have_business_signal
+                or has_reply_forward_signal
+                or date_gap <= 3
+            )
+        ):
+            return None
+
+        if score < 4:
+            return None
+
+        return {
+            "signals": self._dedupe_strings(signals),
+            "confidence": self._merge_confidence_from_score(score),
+            "score": score,
         }
 
     def _should_merge_subject_group(
@@ -473,33 +677,13 @@ class EmailService:
     ) -> bool:
         """Return True when two Gmail threads should become one conversation card."""
 
-        if left["normalized_subject"] != right["normalized_subject"]:
-            return False
-        if not left["normalized_subject"]:
-            return False
-
-        date_gap = abs((left["latest_date"] - right["latest_date"]).days)
-        if date_gap > self.SUBJECT_MERGE_WINDOW_DAYS:
-            return False
-
-        if left["has_reply_or_forward_subject"] or right["has_reply_or_forward_subject"]:
-            return True
-
-        if left["looks_like_notification"] and right["looks_like_notification"]:
-            return False
-
-        if left["participant_keys"] & right["participant_keys"]:
-            return True
-
-        if left["has_business_signal"] or right["has_business_signal"]:
-            return True
-
-        return False
+        return self._evaluate_subject_group_merge(left, right) is not None
 
     def _append_subject_group(
         self,
         target: dict[str, object],
         source: dict[str, object],
+        merge_details: dict[str, object],
     ) -> None:
         """Merge one subject group into another in place."""
 
@@ -533,12 +717,28 @@ class EmailService:
             target["has_reply_or_forward_subject"] or source["has_reply_or_forward_subject"]
         )
         target["looks_like_notification"] = bool(
-            target["looks_like_notification"] and source["looks_like_notification"]
+            target["looks_like_notification"] or source["looks_like_notification"]
+        )
+        target["looks_like_calendar_thread"] = bool(
+            target["looks_like_calendar_thread"] or source["looks_like_calendar_thread"]
         )
         target["has_business_signal"] = bool(
             target["has_business_signal"] or source["has_business_signal"]
         )
+        target["subject_tokens"] = set(target["subject_tokens"]) | set(source["subject_tokens"])
+        target["subject_identifier_tokens"] = set(
+            target["subject_identifier_tokens"]
+        ) | set(source["subject_identifier_tokens"])
         target["grouping_reason"] = "subject_merge"
+        target["merge_signals"] = self._dedupe_strings(
+            list(target.get("merge_signals", []))
+            + list(source.get("merge_signals", []))
+            + list(merge_details.get("signals", []))
+        )
+        target["merge_confidence"] = self._lowest_merge_confidence(
+            target.get("merge_confidence"),
+            merge_details.get("confidence"),
+        )
 
         latest_thread_id = ""
         latest_date = datetime.min.replace(tzinfo=timezone.utc)
@@ -579,11 +779,118 @@ class EmailService:
         """Strip reply prefixes so split threads can share one conversation key."""
 
         normalized = self.REPLY_FORWARD_PREFIX_RE.sub("", value or "")
+        normalized = self.LEADING_SUBJECT_TAG_RE.sub("", normalized)
         normalized = re.sub(r"[,:;_/\\-]+", " ", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip().lower()
         if normalized in {"", "(no subject)"}:
             return ""
         return normalized
+
+    def _subject_token_set(self, value: str) -> set[str]:
+        """Extract meaningful subject words for cross-thread merge checks."""
+
+        normalized = self._normalize_subject(value)
+        tokens: set[str] = set()
+        for token in self.SUBJECT_TOKEN_RE.findall(normalized):
+            if token in self.SUBJECT_STOPWORDS:
+                continue
+            if len(token) < 3 and not any(character.isdigit() for character in token):
+                continue
+            tokens.add(token)
+        return tokens
+
+    def _subject_identifier_tokens(self, value: str) -> set[str]:
+        """Keep business identifiers like RFQ or solicitation numbers."""
+
+        identifiers: set[str] = set()
+        for token in self._subject_token_set(value):
+            if not any(character.isdigit() for character in token):
+                continue
+            if self._is_low_signal_identifier_token(token):
+                continue
+            identifiers.add(token)
+        return identifiers
+
+    def _subjects_look_related(
+        self,
+        left: dict[str, object],
+        right: dict[str, object],
+    ) -> bool:
+        """Allow merge when subjects clearly point to the same real conversation."""
+
+        return bool(self._subject_relationship_details(left, right)["signals"])
+
+    def _subject_relationship_details(
+        self,
+        left: dict[str, object],
+        right: dict[str, object],
+    ) -> dict[str, object]:
+        """Describe how strongly two normalized subjects point to the same work item."""
+
+        left_subject = str(left["normalized_subject"])
+        right_subject = str(right["normalized_subject"])
+        if not left_subject or not right_subject:
+            return {
+                "signals": [],
+                "exact_subject_match": False,
+                "contained_subject_match": False,
+                "strong_token_overlap": False,
+                "token_overlap": False,
+            }
+
+        signals: list[str] = []
+        exact_subject_match = False
+        contained_subject_match = False
+        strong_token_overlap = False
+        token_overlap = False
+
+        if left_subject == right_subject:
+            signals.append("exact_subject_match")
+            exact_subject_match = True
+
+        shorter_subject, longer_subject = sorted(
+            (left_subject, right_subject),
+            key=len,
+        )
+        if len(shorter_subject) >= 12 and shorter_subject in longer_subject:
+            signals.append("subject_contains_other")
+            contained_subject_match = True
+
+        left_identifiers = set(left["subject_identifier_tokens"])
+        right_identifiers = set(right["subject_identifier_tokens"])
+        if left_identifiers & right_identifiers:
+            signals.append("shared_subject_identifier")
+
+        left_tokens = set(left["subject_tokens"])
+        right_tokens = set(right["subject_tokens"])
+        if not left_tokens or not right_tokens:
+            return {
+                "signals": self._dedupe_strings(signals),
+                "exact_subject_match": exact_subject_match,
+                "contained_subject_match": contained_subject_match,
+                "strong_token_overlap": strong_token_overlap,
+                "token_overlap": token_overlap,
+            }
+
+        shared_tokens = left_tokens & right_tokens
+        minimum_token_count = min(len(left_tokens), len(right_tokens))
+        if len(shared_tokens) >= 4:
+            signals.append("strong_subject_token_overlap")
+            strong_token_overlap = True
+
+        if minimum_token_count >= 3 and len(shared_tokens) >= 3:
+            overlap_ratio = len(shared_tokens) / float(minimum_token_count)
+            if overlap_ratio >= 0.6:
+                signals.append("high_subject_token_overlap")
+                token_overlap = True
+
+        return {
+            "signals": self._dedupe_strings(signals),
+            "exact_subject_match": exact_subject_match,
+            "contained_subject_match": contained_subject_match,
+            "strong_token_overlap": strong_token_overlap,
+            "token_overlap": token_overlap,
+        }
 
     def _subject_has_reply_or_forward_prefix(self, value: str) -> bool:
         return bool(self.REPLY_FORWARD_PREFIX_RE.match(value or ""))
@@ -600,9 +907,98 @@ class EmailService:
             return True
         return False
 
+    def _looks_like_calendar_subject(self, value: str) -> bool:
+        """Return True for calendar-style invitation subjects that should never snowball."""
+
+        normalized = self._normalize_subject(value)
+        if not normalized:
+            return False
+
+        has_calendar_marker = any(
+            marker in normalized for marker in self.CALENDAR_SUBJECT_MARKERS
+        )
+        has_time_marker = bool(
+            re.search(r"\b\d{1,4}(?:am|pm)\b", normalized, re.IGNORECASE)
+        )
+        has_day_or_month_marker = any(
+            re.search(rf"\b{marker}\b", normalized)
+            for marker in self.CALENDAR_MONTH_OR_DAY_MARKERS
+        )
+
+        if "google calendar" in normalized:
+            return True
+
+        return bool(has_calendar_marker and (has_time_marker or has_day_or_month_marker))
+
     def _subject_has_business_signal(self, value: str) -> bool:
         normalized = self._normalize_subject(value)
         return any(keyword in normalized for keyword in self.CONVERSATION_MERGE_KEYWORDS)
+
+    def _is_low_signal_identifier_token(self, token: str) -> bool:
+        """Filter out date/time tokens that are too weak for cross-thread merging."""
+
+        normalized = str(token or "").strip().lower()
+        if not normalized:
+            return True
+
+        if self.TIME_TOKEN_RE.match(normalized):
+            return True
+
+        if normalized.isdigit():
+            numeric_value = int(normalized)
+            if len(normalized) <= 2:
+                return True
+            if 1900 <= numeric_value <= 2100:
+                return True
+            return False
+
+        has_alpha = any(character.isalpha() for character in normalized)
+        has_digit = any(character.isdigit() for character in normalized)
+        if has_alpha and has_digit:
+            if normalized.endswith("am") or normalized.endswith("pm"):
+                return True
+            return len(normalized) < 4
+
+        return True
+
+    def _merge_confidence_from_score(self, score: int) -> str:
+        if score >= 6:
+            return "high"
+        if score >= 4:
+            return "medium"
+        return "low"
+
+    def _lowest_merge_confidence(
+        self,
+        left: str | None,
+        right: str | None,
+    ) -> str | None:
+        ranking = {"low": 0, "medium": 1, "high": 2}
+        candidates = [value for value in [left, right] if value in ranking]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda value: ranking[value])
+
+    def _dedupe_strings(self, values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for value in values:
+            normalized = str(value or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+        return deduped
+
+    def _detect_sensitive_markers(self, thread: EmailThread) -> list[str]:
+        """Return sensitive markings that should keep the thread out of AI."""
+
+        text = f" {thread.subject.lower()} {thread.combined_thread_text.lower()} "
+        markers: list[str] = []
+        for label, variants in self.SENSITIVE_MARKERS:
+            if any(variant in text for variant in variants):
+                markers.append(label)
+        return markers
 
     def _collect_participants(self, emails: list[EmailMessage]) -> list[str]:
         participants: list[str] = []

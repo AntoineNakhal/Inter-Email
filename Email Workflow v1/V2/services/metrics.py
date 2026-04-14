@@ -4,11 +4,24 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import quote
 
 
 REVIEW_SCALE = {"Yes": 1.0, "Partially": 0.5, "No": 0.0}
+RELEVANCE_SORT_ORDER = {
+    "must_review": 0,
+    "important": 1,
+    "maybe": 2,
+    "noise": 3,
+}
+URGENCY_SORT_ORDER = {
+    "high": 0,
+    "medium": 1,
+    "low": 2,
+}
 
 
 @dataclass
@@ -26,9 +39,14 @@ class ReviewMetrics:
     total_correct: int
     total_incorrect: int
     total_partial: int
+    reviewed_merged_threads: int
+    incorrect_merge_count: int
     category_accuracy_pct: float
     urgency_accuracy_pct: float
     summary_usefulness_pct: float
+    merge_accuracy_pct: float
+    ai_overreach_count: int
+    ai_underreach_count: int
 
 
 def build_gmail_links(
@@ -92,6 +110,112 @@ def normalize_text(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _safe_record_date(record: dict[str, Any]) -> datetime:
+    minimum = datetime.min.replace(tzinfo=timezone.utc)
+    value = str(record.get("latest_message_date") or "").strip()
+    if not value:
+        return minimum
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
+        return minimum
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_ai_covered(record: dict[str, Any]) -> bool:
+    analysis_status = record.get("analysis_status")
+    return bool(record.get("included_in_ai", False)) or analysis_status in {
+        "fresh",
+        "cached",
+    }
+
+
+def sort_records(
+    unified_records: list[dict[str, Any]],
+    sort_option: str = "Latest first",
+) -> list[dict[str, Any]]:
+    """Return a sorted copy of records for the review queue."""
+
+    records = list(unified_records)
+
+    if sort_option == "Oldest first":
+        records.sort(
+            key=lambda record: (
+                _safe_record_date(record),
+                normalize_text(record.get("subject")),
+            )
+        )
+        return records
+
+    if sort_option == "Priority first":
+        records.sort(key=lambda record: _safe_record_date(record), reverse=True)
+        records.sort(key=lambda record: _safe_int(record.get("relevance_score")), reverse=True)
+        records.sort(
+            key=lambda record: URGENCY_SORT_ORDER.get(
+                normalize_text(record.get("predicted_urgency")),
+                len(URGENCY_SORT_ORDER),
+            )
+        )
+        records.sort(
+            key=lambda record: 0 if record.get("predicted_needs_action_today") is True else 1
+        )
+        records.sort(
+            key=lambda record: RELEVANCE_SORT_ORDER.get(
+                normalize_text(record.get("relevance_bucket")),
+                len(RELEVANCE_SORT_ORDER),
+            )
+        )
+        return records
+
+    if sort_option == "Urgency first":
+        records.sort(key=lambda record: _safe_record_date(record), reverse=True)
+        records.sort(key=lambda record: _safe_int(record.get("relevance_score")), reverse=True)
+        records.sort(
+            key=lambda record: URGENCY_SORT_ORDER.get(
+                normalize_text(record.get("predicted_urgency")),
+                len(URGENCY_SORT_ORDER),
+            )
+        )
+        return records
+
+    if sort_option == "Highest score first":
+        records.sort(key=lambda record: _safe_record_date(record), reverse=True)
+        records.sort(key=lambda record: _safe_int(record.get("relevance_score")), reverse=True)
+        return records
+
+    if sort_option == "Most messages first":
+        records.sort(key=lambda record: _safe_record_date(record), reverse=True)
+        records.sort(key=lambda record: _safe_int(record.get("message_count")), reverse=True)
+        return records
+
+    if sort_option == "Subject A-Z":
+        records.sort(
+            key=lambda record: (
+                normalize_text(record.get("subject")),
+                -_safe_int(record.get("relevance_score")),
+            )
+        )
+        return records
+
+    records.sort(
+        key=lambda record: (
+            _safe_record_date(record),
+            _safe_int(record.get("relevance_score")),
+        ),
+        reverse=True,
+    )
+    return records
+
+
 def compute_top_metrics(
     run_data: dict[str, Any],
     unified_records: list[dict[str, Any]],
@@ -124,7 +248,7 @@ def compute_top_metrics(
             "ai_thread_count",
             run_data.get(
                 "ai_email_count",
-                len([r for r in unified_records if r.get("included_in_ai", False)]),
+                len([r for r in unified_records if _is_ai_covered(r)]),
             ),
         )
     )
@@ -161,6 +285,11 @@ def compute_top_metrics(
         for record in unified_records
         if is_reviewed(reviews_by_message_id.get(record["id"], {}))
     ]
+    merge_reviewed_records = [
+        (record, reviews_by_message_id.get(record["id"], {}))
+        for record in unified_records
+        if reviews_by_message_id.get(record["id"], {}).get("merge_correct") in {"Yes", "No"}
+    ]
     total_reviewed = len(reviewed_records)
     total_correct = len(
         [1 for _, review in reviewed_records if review.get("ai_result_correct") == "Yes"]
@@ -170,6 +299,21 @@ def compute_top_metrics(
     )
     total_partial = len(
         [1 for _, review in reviewed_records if review.get("ai_result_correct") == "Partially"]
+    )
+    reviewed_merged_threads = len(
+        [
+            1
+            for record, _ in merge_reviewed_records
+            if len(record.get("source_thread_ids", [])) > 1
+        ]
+    )
+    incorrect_merge_count = len(
+        [
+            1
+            for record, review in merge_reviewed_records
+            if len(record.get("source_thread_ids", [])) > 1
+            and review.get("merge_correct") == "No"
+        ]
     )
 
     category_pairs = [
@@ -204,6 +348,26 @@ def compute_top_metrics(
         len(urgency_pairs),
     )
     summary_usefulness = safe_pct(sum(summary_scores), len(summary_scores))
+    merge_accuracy = safe_pct(
+        reviewed_merged_threads - incorrect_merge_count,
+        reviewed_merged_threads,
+    )
+    ai_overreach_count = len(
+        [
+            1
+            for record, review in reviewed_records
+            if _is_ai_covered(record)
+            and review.get("should_have_been_filtered") == "Yes"
+        ]
+    )
+    ai_underreach_count = len(
+        [
+            1
+            for record, review in reviewed_records
+            if not _is_ai_covered(record)
+            and review.get("should_have_been_filtered") == "No"
+        ]
+    )
 
     return ReviewMetrics(
         total_fetched=total_fetched,
@@ -219,9 +383,14 @@ def compute_top_metrics(
         total_correct=total_correct,
         total_incorrect=total_incorrect,
         total_partial=total_partial,
+        reviewed_merged_threads=reviewed_merged_threads,
+        incorrect_merge_count=incorrect_merge_count,
         category_accuracy_pct=category_accuracy,
         urgency_accuracy_pct=urgency_accuracy,
         summary_usefulness_pct=summary_usefulness,
+        merge_accuracy_pct=merge_accuracy,
+        ai_overreach_count=ai_overreach_count,
+        ai_underreach_count=ai_underreach_count,
     )
 
 
@@ -235,6 +404,8 @@ def apply_record_filters(
     tag_filter: str,
     relevance_filter: str = "All",
     change_filter: str = "All",
+    security_filter: str = "All",
+    ai_decision_filter: str = "All",
 ) -> list[dict[str, Any]]:
     """Filter records according to sidebar controls."""
 
@@ -244,10 +415,8 @@ def apply_record_filters(
         ai_result = review.get("ai_result_correct")
         tags = set(review.get("improvement_tags", []) or [])
         analysis_status = record.get("analysis_status")
-        ai_covered = bool(record.get("included_in_ai", False)) or analysis_status in {
-            "fresh",
-            "cached",
-        }
+        security_status = record.get("security_status") or "standard"
+        ai_covered = _is_ai_covered(record)
 
         if review_state == "Only reviewed" and not is_reviewed(review):
             continue
@@ -274,6 +443,12 @@ def apply_record_filters(
         if relevance_filter != "All" and (record.get("relevance_bucket") or "Unknown") != relevance_filter:
             continue
         if change_filter != "All" and (record.get("change_status") or "Unknown") != change_filter:
+            continue
+        if security_filter == "Only classified / sensitive" and security_status != "classified":
+            continue
+        if security_filter == "Only standard" and security_status == "classified":
+            continue
+        if ai_decision_filter != "All" and (record.get("ai_decision") or "Unknown") != ai_decision_filter:
             continue
         if tag_filter != "All" and tag_filter not in tags:
             continue
@@ -364,6 +539,80 @@ def records_needing_improvement(
     return [item[1] for item in scored[:top_n]]
 
 
+def build_failure_patterns(
+    unified_records: list[dict[str, Any]],
+    reviews_by_message_id: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Summarize the most actionable failure themes from manual review data."""
+
+    patterns: list[str] = []
+    reviewed_records = [
+        (record, reviews_by_message_id.get(record["id"], {}))
+        for record in unified_records
+        if is_reviewed(reviews_by_message_id.get(record["id"], {}))
+    ]
+    merge_reviewed_records = [
+        (record, reviews_by_message_id.get(record["id"], {}))
+        for record in unified_records
+        if reviews_by_message_id.get(record["id"], {}).get("merge_correct") in {"Yes", "No"}
+    ]
+    if not reviewed_records and not merge_reviewed_records:
+        return ["No review patterns yet. Review a few threads to unlock targeted feedback."]
+
+    incorrect_merges = [
+        record
+        for record, review in merge_reviewed_records
+        if len(record.get("source_thread_ids", [])) > 1
+        and review.get("merge_correct") == "No"
+    ]
+    if incorrect_merges:
+        patterns.append(
+            f"{len(incorrect_merges)} merged thread(s) were marked incorrect. Tighten subject-merge rules before expanding them."
+        )
+
+    ai_overreach = [
+        record
+        for record, review in reviewed_records
+        if _is_ai_covered(record) and review.get("should_have_been_filtered") == "Yes"
+    ]
+    if ai_overreach:
+        patterns.append(
+            f"{len(ai_overreach)} AI-covered thread(s) looked low-value in review. Filtering and AI-eligibility rules are still too loose."
+        )
+
+    ai_underreach = [
+        record
+        for record, review in reviewed_records
+        if not _is_ai_covered(record) and review.get("should_have_been_filtered") == "No"
+    ]
+    if ai_underreach:
+        patterns.append(
+            f"{len(ai_underreach)} visible thread(s) were judged worth AI coverage. Scoring is still missing some useful work."
+        )
+
+    common_tags = common_improvement_tags(reviews_by_message_id)
+    if common_tags:
+        top_tag = common_tags[0]
+        if top_tag["count"] >= 2:
+            patterns.append(
+                f"Most repeated review tag: {top_tag['tag']} ({top_tag['count']}x). This is the clearest short-term improvement target."
+            )
+
+    category_mismatches = sum(item["count"] for item in category_confusion(unified_records, reviews_by_message_id))
+    if category_mismatches >= 2:
+        patterns.append(
+            "Category drift is recurring across reviewed threads. Prompt examples or post-rules need tightening."
+        )
+
+    urgency_mismatches = sum(item["count"] for item in urgency_mismatch_counts(unified_records, reviews_by_message_id))
+    if urgency_mismatches >= 2:
+        patterns.append(
+            "Urgency is drifting from reviewer expectations. The latest thread state is not being weighted strongly enough."
+        )
+
+    return patterns or ["No dominant failure pattern yet. Keep collecting reviewed threads."]
+
+
 def generate_recommendations(
     unified_records: list[dict[str, Any]],
     reviews_by_message_id: dict[str, dict[str, Any]],
@@ -403,6 +652,14 @@ def generate_recommendations(
         recommendations.append("Tighten filtering rules for low-value automated threads.")
     if "email should not have been filtered out" in tag_names:
         recommendations.append("Relax filtering rules or lower relevance threshold for edge-case threads.")
+    if "merge incorrect" in tag_names:
+        recommendations.append("Tighten cross-thread merge rules and inspect subject-only merge cases first.")
+    if "thread should have been merged" in tag_names:
+        recommendations.append("Expand merge rules only in patterns already confirmed by reviewer feedback.")
+    if "AI should have covered this" in tag_names:
+        recommendations.append("Raise recall for useful threads by promoting similar maybe threads into AI coverage.")
+    if "AI should not have covered this" in tag_names:
+        recommendations.append("Reduce AI overreach by tightening low-value coverage rules.")
     if "wrong urgency" in tag_names:
         recommendations.append("Add stronger urgency rules that weigh the latest thread state more heavily.")
     if "wrong category" in tag_names:

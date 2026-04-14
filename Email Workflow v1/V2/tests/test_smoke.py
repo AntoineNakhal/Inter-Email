@@ -1,5 +1,6 @@
 """Basic smoke tests for project imports and core thread objects."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import unittest
@@ -74,7 +75,13 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(TriageManager(settings).settings.openai_model, "gpt-4.1-mini")
         self.assertEqual(TriageManager(settings).settings.processing_mode, "fallback")
         self.assertEqual(TriageManager(settings).settings.gmail_thread_source, "received")
-        self.assertEqual(GmailReadonlyClient.build_query("sent"), "in:sent")
+        self.assertEqual(
+            GmailReadonlyClient.build_query(
+                "sent",
+                now=datetime(2026, 4, 13, 9, 0, tzinfo=timezone.utc),
+            ),
+            "in:sent after:2026/04/06",
+        )
         self.assertEqual(len(threads), 2)
         self.assertEqual(threads[0].thread_id, "thread-2")
         self.assertEqual(next(t for t in threads if t.thread_id == "thread-1").message_count, 2)

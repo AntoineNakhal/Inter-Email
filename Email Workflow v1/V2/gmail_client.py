@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 class GmailReadonlyClient:
     """Handles Gmail authentication and basic message retrieval."""
 
+    PAGE_SIZE = 500
     QUERY_BY_SOURCE = {
         "anywhere": "in:anywhere",
         "sent": "in:sent",
@@ -60,24 +62,39 @@ class GmailReadonlyClient:
     def list_recent_messages(
         self, max_results: int = 10, source: str = "anywhere"
     ) -> list[dict[str, Any]]:
-        """Return messages from the selected source, expanded to full threads."""
+        """Return every message from recent matching threads within the 7-day window."""
 
         service = self._build_service()
         query = self.build_query(source)
-        response = (
-            service.users()
-            .messages()
-            .list(userId="me", maxResults=max_results, q=query)
-            .execute()
-        )
-        message_refs = response.get("messages", [])
+        message_refs: list[dict[str, Any]] = []
+        next_page_token: str | None = None
+
+        while True:
+            response = (
+                service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    maxResults=self.PAGE_SIZE,
+                    q=query,
+                    pageToken=next_page_token,
+                )
+                .execute()
+            )
+            message_refs.extend(response.get("messages", []))
+            next_page_token = response.get("nextPageToken")
+            if not next_page_token:
+                break
 
         messages: list[dict[str, Any]] = []
         seen_thread_ids: set[str] = set()
         for message_ref in message_refs:
             thread_id = message_ref.get("threadId")
 
-            if thread_id and thread_id not in seen_thread_ids:
+            if thread_id:
+                if thread_id in seen_thread_ids:
+                    continue
+
                 raw_thread = (
                     service.users()
                     .threads()
@@ -100,11 +117,21 @@ class GmailReadonlyClient:
         return messages
 
     @classmethod
-    def build_query(cls, source: str) -> str:
+    def build_query(cls, source: str, now: datetime | None = None) -> str:
         """Map the UI/backend source toggle to a Gmail search query."""
 
         normalized = (source or "anywhere").strip().lower()
-        return cls.QUERY_BY_SOURCE.get(normalized, cls.QUERY_BY_SOURCE["anywhere"])
+        base_query = cls.QUERY_BY_SOURCE.get(normalized, cls.QUERY_BY_SOURCE["anywhere"])
+        window_start = cls.rolling_window_start(now=now)
+        return f"{base_query} after:{window_start.strftime('%Y/%m/%d')}"
+
+    @staticmethod
+    def rolling_window_start(now: datetime | None = None) -> datetime:
+        """Return the local midnight for 7 days ago."""
+
+        local_now = (now or datetime.now().astimezone()).astimezone()
+        start = local_now - timedelta(days=7)
+        return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
     def _normalize_message(self, message: dict[str, Any]) -> dict[str, Any]:
         """Convert a Gmail API response into a smaller, friendlier shape."""

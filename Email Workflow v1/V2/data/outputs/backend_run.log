@@ -475,3 +475,335 @@ Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Work
 [summary] processing 16 threads
 [summary] payload size: 51236 bytes
 Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=5 fresh=5 cached=0 fetched_threads=46 fetched_messages=71 filtered=41
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Relevance bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d86fdbc335d712 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d73897df657aed bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed. Signals: latest message asks for action.
+[filter] skipped 19d6cf70a19e1518 bucket=maybe score=3 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed. Signals: latest message asks for action, latest message asks a question.
+[filter] skipped 19d86606005ae32d bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7daa23710e53a bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7d9023a4e93d2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7c8a73cbb5914 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78bf2beff4173 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Relevance bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d77dad42640823 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77dac0bd70a02 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da96be1ede0 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da89d4030eb bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da30e7da807 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da25c3931a2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d9d749579ff bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d9c6df27aa2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d99670cda91 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da18ac47b84 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d976301495d bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d776aeafc41dca bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d776af75c4ac1a bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d92b06005f6 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78675af842187 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78674d16b2401 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867335a74000 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78672cf6b7fb4 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78671cfc957bb bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867123c84f1f bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78670d0ad7610 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867006fda30e bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866f2fa7b7de bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866e32952857 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866d693820a7 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866c84a29795 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866bf40b2626 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866b29e12fc2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866a93757ba1 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78667840cc1b6 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78666393ea7cd bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[triage] processing 5 threads
+[triage] payload size: 27520 bytes
+[crm] processing 5 threads
+[crm] payload size: 27520 bytes
+[summary] processing 5 threads
+[summary] payload size: 29469 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=5 fresh=0 cached=5 fetched_threads=46 fetched_messages=71 filtered=41
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Relevance bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d86fdbc335d712 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d73897df657aed bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed. Signals: latest message asks for action.
+[filter] skipped 19d6cf70a19e1518 bucket=maybe score=3 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed. Signals: latest message asks for action, latest message asks a question.
+[filter] skipped 19d86606005ae32d bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7daa23710e53a bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7d9023a4e93d2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7c8a73cbb5914 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78bf2beff4173 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Relevance bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d77dad42640823 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77dac0bd70a02 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da96be1ede0 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da89d4030eb bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da30e7da807 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da25c3931a2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d9d749579ff bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d9c6df27aa2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d99670cda91 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da18ac47b84 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d976301495d bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d776aeafc41dca bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d776af75c4ac1a bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d92b06005f6 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78675af842187 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78674d16b2401 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867335a74000 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78672cf6b7fb4 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78671cfc957bb bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867123c84f1f bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78670d0ad7610 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867006fda30e bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866f2fa7b7de bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866e32952857 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866d693820a7 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866c84a29795 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866bf40b2626 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866b29e12fc2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866a93757ba1 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78667840cc1b6 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78666393ea7cd bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[reply_draft] processing 5 threads
+[reply_draft] payload size: 31720 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=5 fresh=5 cached=0 fetched_threads=46 fetched_messages=71 filtered=41
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Relevance bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d86fdbc335d712 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d73897df657aed bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed. Signals: latest message asks for action.
+[filter] skipped 19d6cf70a19e1518 bucket=maybe score=3 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed. Signals: latest message asks for action, latest message asks a question.
+[filter] skipped 19d86606005ae32d bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7daa23710e53a bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7d9023a4e93d2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7c8a73cbb5914 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78bf2beff4173 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Relevance bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d77dad42640823 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77dac0bd70a02 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da96be1ede0 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da89d4030eb bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da30e7da807 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da25c3931a2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d9d749579ff bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d9c6df27aa2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d99670cda91 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77da18ac47b84 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d976301495d bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d776aeafc41dca bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d776af75c4ac1a bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d77d92b06005f6 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78675af842187 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78674d16b2401 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867335a74000 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78672cf6b7fb4 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78671cfc957bb bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867123c84f1f bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78670d0ad7610 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7867006fda30e bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866f2fa7b7de bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866e32952857 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866d693820a7 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866c84a29795 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866bf40b2626 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866b29e12fc2 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d7866a93757ba1 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78667840cc1b6 bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[filter] skipped 19d78666393ea7cd bucket=maybe score=2 reason=Relevance bucket maybe: Thread may still be useful for AI review. Visible in review, but not auto-analyzed.
+[triage] processing 5 threads
+[triage] payload size: 27520 bytes
+[crm] processing 5 threads
+[crm] payload size: 27520 bytes
+[reply_draft] processing 5 threads
+[reply_draft] payload size: 31502 bytes
+[summary] processing 5 threads
+[summary] payload size: 29344 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=44 fresh=39 cached=5 fetched_threads=46 fetched_messages=71 filtered=2
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[triage] processing 39 threads
+[triage] payload size: 70115 bytes
+[crm] processing 39 threads
+[crm] payload size: 70115 bytes
+[reply_draft] processing 39 threads
+[reply_draft] payload size: 84969 bytes
+[summary] processing 44 threads
+[summary] payload size: 101654 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=41 fresh=33 cached=8 fetched_threads=42 fetched_messages=78 filtered=1
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[triage] processing 33 threads
+[triage] payload size: 89629 bytes
+[crm] processing 33 threads
+[crm] payload size: 89629 bytes
+[reply_draft] processing 33 threads
+[reply_draft] payload size: 106108 bytes
+[summary] processing 41 threads
+[summary] payload size: 119317 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=7 fresh=1 cached=6 fetched_threads=8 fetched_messages=71 filtered=1
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[triage] processing 1 threads
+[triage] payload size: 17229 bytes
+[crm] processing 1 threads
+[crm] payload size: 17229 bytes
+[reply_draft] processing 1 threads
+[reply_draft] payload size: 45361 bytes
+[summary] processing 7 threads
+[summary] payload size: 40951 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=7 fresh=7 cached=0 fetched_threads=8 fetched_messages=71 filtered=1
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[triage] processing 7 threads
+[triage] payload size: 38112 bytes
+[crm] processing 7 threads
+[crm] payload size: 38112 bytes
+[reply_draft] processing 7 threads
+[reply_draft] payload size: 69933 bytes
+[summary] processing 7 threads
+[summary] payload size: 40955 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=15 fresh=12 cached=3 fetched_threads=19 fetched_messages=138 filtered=4
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[triage] processing 12 threads
+[triage] payload size: 56844 bytes
+[crm] processing 12 threads
+[crm] payload size: 56844 bytes
+[reply_draft] processing 12 threads
+[reply_draft] payload size: 119255 bytes
+[summary] processing 15 threads
+[summary] payload size: 78920 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=15 fresh=3 cached=12 fetched_threads=19 fetched_messages=145 filtered=4
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[triage] processing 3 threads
+[triage] payload size: 27737 bytes
+[crm] processing 3 threads
+[crm] payload size: 27737 bytes
+[reply_draft] processing 3 threads
+[reply_draft] payload size: 91380 bytes
+[summary] processing 15 threads
+[summary] payload size: 76218 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=67 cached=14 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[triage] processing 67 threads
+[triage] payload size: 139063 bytes
+[crm] processing 67 threads
+[crm] payload size: 139063 bytes
+[reply_draft] processing 67 threads
+[reply_draft] payload size: 184828 bytes
+[summary] processing 81 threads
+[summary] payload size: 211103 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=1 cached=80 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[triage] processing 1 threads
+[triage] payload size: 1194 bytes
+[crm] processing 1 threads
+[crm] payload size: 1194 bytes
+[reply_draft] processing 13 threads
+[reply_draft] payload size: 36691 bytes
+[summary] processing 81 threads
+[summary] payload size: 211402 bytes
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=0 cached=81 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=0 cached=81 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=0 cached=81 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=0 cached=81 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=0 cached=81 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json
+Using Gmail token file: data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+Resolved Gmail token path: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\raw\gmail_tokens\m.elayoubi_inter-op.ca.json
+[manager] mode=ai model=gpt-4.1-mini covered_threads=81 fresh=0 cached=81 fetched_threads=87 fetched_messages=147 filtered=6
+[filter] skipped 19d87097aeacfc51 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+[filter] skipped 19d787bce2f7be1b bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6ae43faa23c26 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is inbound, external participants, thread looks resolved.
+[filter] skipped 19d68f4a7e43c23e bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Latest thread state looks resolved or closed. Signals: latest message is from us, thread looks resolved.
+[filter] skipped 19d4a90184405643 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected. Signals: latest message is from us.
+[filter] skipped 19d6814ecf045012 bucket=noise score=1 reason=Skipped because relevance score 1 is below the score threshold 2. Bucket noise: Low-signal thread with no current action detected.
+Saved triage output to: C:\Users\antoi\OneDrive\Bureau\Inter-Email\Email Workflow v1\V2\data\outputs\latest_run.json

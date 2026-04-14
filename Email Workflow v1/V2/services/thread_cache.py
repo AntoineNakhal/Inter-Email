@@ -8,7 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from schemas import EmailThread, SummaryOutput, ThreadCrmRecord, ThreadTriageItem
+from schemas import (
+    EmailThread,
+    SummaryOutput,
+    ThreadCrmRecord,
+    ThreadReplyDraftRecord,
+    ThreadTriageItem,
+)
 
 
 DEFAULT_THREAD_CACHE_PATH = "data/outputs/thread_cache.json"
@@ -145,6 +151,12 @@ def cache_entry_has_predictions(cache_entry: dict[str, Any]) -> bool:
     )
 
 
+def cache_entry_has_reply_draft(cache_entry: dict[str, Any]) -> bool:
+    """Return True when the cache already knows whether a reply draft is needed."""
+
+    return bool(cache_entry) and "should_draft_reply" in cache_entry
+
+
 def apply_cached_predictions(thread: EmailThread, cache_entry: dict[str, Any]) -> None:
     """Copy reusable cached predictions back onto the current thread."""
 
@@ -156,6 +168,15 @@ def apply_cached_predictions(thread: EmailThread, cache_entry: dict[str, Any]) -
         "predicted_needs_action_today"
     )
     thread.predicted_next_action = cache_entry.get("predicted_next_action")
+    thread.should_draft_reply = cache_entry.get("should_draft_reply")
+    thread.draft_needs_date = bool(cache_entry.get("draft_needs_date", False))
+    thread.draft_date_reason = cache_entry.get("draft_date_reason")
+    thread.draft_needs_attachment = bool(
+        cache_entry.get("draft_needs_attachment", False)
+    )
+    thread.draft_attachment_reason = cache_entry.get("draft_attachment_reason")
+    thread.predicted_reply_subject = None
+    thread.predicted_reply_body = None
     thread.crm_contact_name = cache_entry.get("crm_contact_name")
     thread.crm_company = cache_entry.get("crm_company")
     thread.crm_opportunity_type = cache_entry.get("crm_opportunity_type")
@@ -198,6 +219,25 @@ def build_cached_crm_record(
         opportunity_type=cache_entry.get("crm_opportunity_type"),
         next_action=cache_entry.get("predicted_next_action"),
         urgency=cache_entry.get("crm_urgency") or "unknown",
+    )
+
+
+def build_cached_reply_draft_record(
+    thread_id: str,
+    cache_entry: dict[str, Any],
+) -> ThreadReplyDraftRecord | None:
+    """Rebuild one reply draft record from cached thread predictions."""
+
+    if not cache_entry_has_reply_draft(cache_entry):
+        return None
+
+    return ThreadReplyDraftRecord(
+        thread_id=thread_id,
+        should_draft_reply=bool(cache_entry.get("should_draft_reply")),
+        needs_date=bool(cache_entry.get("draft_needs_date", False)),
+        date_reason=cache_entry.get("draft_date_reason"),
+        needs_attachment=bool(cache_entry.get("draft_needs_attachment", False)),
+        attachment_reason=cache_entry.get("draft_attachment_reason"),
     )
 
 
@@ -275,6 +315,14 @@ def upsert_thread_cache_entry(
         entry["predicted_status"] = thread.predicted_status
         entry["predicted_needs_action_today"] = thread.predicted_needs_action_today
         entry["predicted_next_action"] = thread.predicted_next_action
+        if thread.should_draft_reply is not None:
+            entry["should_draft_reply"] = thread.should_draft_reply
+            entry["draft_needs_date"] = bool(thread.draft_needs_date)
+            entry["draft_date_reason"] = thread.draft_date_reason
+            entry["draft_needs_attachment"] = bool(thread.draft_needs_attachment)
+            entry["draft_attachment_reason"] = thread.draft_attachment_reason
+            entry.pop("predicted_reply_subject", None)
+            entry.pop("predicted_reply_body", None)
         entry["crm_contact_name"] = thread.crm_contact_name
         entry["crm_company"] = thread.crm_company
         entry["crm_opportunity_type"] = thread.crm_opportunity_type

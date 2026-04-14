@@ -8,6 +8,17 @@ One category and urgency decision now apply to the thread as a whole.
 
 V1 remains untouched in its own folder and acts as the baseline.
 
+## What V2 Achieves Today
+
+Today, V2 provides a repeatable Gmail thread triage workflow that:
+
+1. classifies Gmail threads
+2. summarizes priorities at the thread and executive level
+3. identifies the current status of each conversation
+4. surfaces the latest useful next action
+5. drafts reply suggestions for threads that need a response
+6. tracks follow-ups in the daily review flow
+
 ## What Changed In V2
 
 V2 still:
@@ -42,6 +53,9 @@ Each main thread record includes:
 - `predicted_summary`
 - `predicted_status`
 - `predicted_next_action`
+- `should_draft_reply`
+- `predicted_reply_subject`
+- `predicted_reply_body`
 - CRM fields when relevant
 - filtering and relevance fields used by the review UI
 
@@ -72,6 +86,7 @@ V2/
     triage_agent.py
     summary_agent.py
     crm_agent.py
+    reply_draft_agent.py
     manager_agent.py
   services/
     __init__.py
@@ -114,6 +129,7 @@ The review UI now shows:
 - one expandable card per thread
 - subject, participants, message count, and latest message date
 - predicted category, urgency, summary, status, and next action
+- optional reply draft suggestion when a thread likely needs a response
 - nested child messages in order
 - thread-level manual review controls
 - Gmail links for the thread
@@ -180,3 +196,18 @@ In the review sidebar, use the `Thread source` toggle to switch between:
 - `Anywhere`
 - `Sent`
 - `Received`
+
+## Run The End-User UI
+
+For the non-technical day-to-day queue:
+
+```powershell
+streamlit run V2\end_user_app.py
+```
+
+This view is designed for a PO / operations user and focuses on:
+
+- what needs attention today
+- what should be reviewed soon
+- what can stay as FYI
+- the recommended next step for each thread

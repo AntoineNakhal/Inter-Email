@@ -6,13 +6,14 @@ The goal of this first step is to set up a simple, repeatable manual workflow fo
 
 This is **not** an automation phase.
 
-By the end of Week 1, the objective is to confirm that ChatGPT can help with:
+By the end of this phase, the system achieved a repeatable Gmail triage workflow that can:
 
-- inbox triage
-- email classification
-- summarization
-- draft replies
-- follow-up tracking
+- classify Gmail threads
+- summarize priorities
+- identify the current status of a conversation
+- surface the latest useful next action
+- draft reply suggestions for threads that need a response
+- track follow-ups for daily review
 
 ---
 

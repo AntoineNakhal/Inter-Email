@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inter-Email V2 Documentation</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121933;
+      --panel-2: #182246;
+      --text: #eaf0ff;
+      --muted: #aeb8d6;
+      --accent: #6ea8fe;
+      --accent-2: #8ef0c5;
+      --line: #2a376b;
+      --warn: #ffd479;
+      --shadow: 0 12px 30px rgba(0, 0, 0, .25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #0b1020 0%, #111933 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    aside {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 28px 20px;
+      border-right: 1px solid var(--line);
+      background: rgba(9, 13, 28, 0.82);
+      backdrop-filter: blur(10px);
+    }
+
+    aside h1 {
+      font-size: 1.25rem;
+      margin: 0 0 8px;
+    }
+
+    aside p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0 0 20px;
+    }
+
+    nav a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 10px 12px;
+      margin: 4px 0;
+      border-radius: 12px;
+      transition: 0.2s ease;
+    }
+
+    nav a:hover {
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    main {
+      padding: 36px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, rgba(110, 168, 254, 0.18), rgba(142, 240, 197, 0.12));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+
+    .hero h2 {
+      margin: 0 0 12px;
+      font-size: 2rem;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 850px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .chip {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+    }
+
+    section {
+      margin-bottom: 26px;
+      background: rgba(18, 25, 51, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    section h3 {
+      margin-top: 0;
+      font-size: 1.45rem;
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card h4 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+    }
+
+    .card p,
+    li {
+      color: var(--muted);
+    }
+
+    ul {
+      padding-left: 18px;
+      margin-bottom: 0;
+    }
+
+    .flow-wrap {
+      overflow: auto;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: #0d1430;
+      padding: 16px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    .lg1::before {
+      background: #6ea8fe;
+    }
+
+    .lg2::before {
+      background: #8ef0c5;
+    }
+
+    .lg3::before {
+      background: #ffd479;
+    }
+
+    .lg4::before {
+      background: #f29bb2;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 12px 10px;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text);
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    .note {
+      border-left: 4px solid var(--warn);
+      padding: 12px 14px;
+      background: rgba(255, 212, 121, 0.08);
+      border-radius: 12px;
+      color: var(--text);
+    }
+
+    footer {
+      color: var(--muted);
+      padding: 8px 0 30px;
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: relative;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+
+      main {
+        padding: 20px;
+      }
+
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="layout">
+    <aside>
+      <h1>Inter-Email V2</h1>
+      <p>Functional documentation and technical overview.</p>
+      <nav>
+        <a href="#overview">Overview</a>
+        <a href="#goals">Goals</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#flow">Application Flow</a>
+        <a href="#ui">UI Surfaces</a>
+        <a href="#ai">AI Decision Layer</a>
+        <a href="#drafting">Draft Generation Flow</a>
+        <a href="#data">Data Model</a>
+        <a href="#stack">Technology Stack</a>
+        <a href="#trust">Trust & Quality</a>
+        <a href="#next">Current Status & Next Steps</a>
+      </nav>
+    </aside>
+
+    <main>
+      <div class="hero" id="overview">
+        <h2>Inter-Email V2 Documentation</h2>
+        <p>
+          Inter-Email V2 is an AI-assisted email workflow system focused on Gmail thread review, prioritization,
+          structured analysis,
+          and controlled draft support. The product has evolved from single-email processing to a thread-based model so
+          the user can
+          work the way real email conversations happen in practice.
+        </p>
+        <div class="chips">
+          <div class="chip">Thread-based processing</div>
+          <div class="chip">Human-in-the-loop</div>
+          <div class="chip">Operational end-user UI</div>
+          <div class="chip">Internal review UI</div>
+          <div class="chip">CRM-ready structured outputs</div>
+        </div>
+      </div>
+
+      <section id="goals">
+        <h3>1. Product Goals</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>Operational value</h4>
+            <p>Help a PO or non-technical end user quickly find the most important conversations without reading every
+              single email.</p>
+          </div>
+          <div class="card">
+            <h4>Trustworthy assistance</h4>
+            <p>Use AI to summarize, classify, and suggest actions while keeping manual review and decision-making in
+              user control.</p>
+          </div>
+          <div class="card">
+            <h4>Future automation base</h4>
+            <p>Structure outputs so the system can later integrate with CRM, tracking, and deeper workflow automation.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <h3>2. Solution Architecture</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Main layers</h4>
+            <ul>
+              <li>Gmail fetch layer</li>
+              <li>Thread grouping and merge logic</li>
+              <li>AI analysis layer</li>
+              <li>Structured JSON persistence</li>
+              <li>Internal review application</li>
+              <li>End-user application</li>
+              <li>State persistence for user actions</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>Design principle</h4>
+            <p>
+              The system is intentionally human-supervised. AI produces summaries, categories, urgency, recommendations,
+              and draft support,
+              but the final operational judgment stays with the user.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="flow">
+        <h3>3. Application Flow</h3>
+        <style>
+          #flow .flow-wrap {
+            padding: 0;
+            overflow: auto;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 0;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background:
+              radial-gradient(circle at 14% 12%, rgba(110, 168, 254, 0.16), transparent 28%),
+              radial-gradient(circle at 86% 84%, rgba(142, 240, 197, 0.11), transparent 30%),
+              linear-gradient(180deg, #0d1430 0%, #111b3e 100%);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          }
+
+          #flow .flow-svg {
+            display: block;
+            width: 100%;
+            max-width: 1120px;
+            max-height: 98vh;
+            margin: 0 auto;
+            overflow: visible;
+            shape-rendering: geometricPrecision;
+          }
+
+          /* Focused chart: keep same scale as unfocused */
+          #flow.flow-mode-detail .flow-svg {
+            max-width: 1120px;
+            max-height: 98vh;
+          }
+
+          #flow .ov-node,
+          #flow .ov-connector,
+          #flow .ov-note {
+            transition:
+              opacity 0.36s ease,
+              transform 0.46s cubic-bezier(0.22, 1, 0.36, 1),
+              filter 0.28s ease;
+          }
+
+          #flow .ov-node {
+            cursor: pointer;
+            transform-box: fill-box;
+            transform-origin: center;
+          }
+
+          #flow .ov-node rect {
+            transition:
+              transform 0.22s ease,
+              filter 0.22s ease,
+              stroke 0.22s ease,
+              stroke-width 0.22s ease;
+            stroke: transparent;
+            stroke-width: 0;
+          }
+
+          #flow .ov-node:hover rect,
+          #flow .ov-node:focus rect {
+            filter: brightness(1.05);
+            stroke: rgba(255, 255, 255, 0.88);
+            stroke-width: 2;
+          }
+
+          #flow .ov-node:focus-visible {
+            outline: none;
+          }
+
+          #flow.flow-mode-detail .ov-node.is-dim {
+            opacity: 0.16;
+            transform: scale(0.965);
+            filter: saturate(0.82);
+          }
+
+          #flow.flow-mode-detail .ov-node.is-active {
+            opacity: 0.07;
+            transform: scale(1.02);
+          }
+
+          #flow.flow-mode-detail .ov-node {
+            pointer-events: none;
+          }
+
+          #flow.flow-mode-detail .ov-connector,
+          #flow.flow-mode-detail .ov-note {
+            opacity: 0.16;
+          }
+
+          #flow .flow-back-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 5;
+            appearance: none;
+            border: 1px solid rgba(110, 168, 254, 0.34);
+            color: #eef3ff;
+            background: rgba(13, 20, 48, 0.74);
+            border-radius: 999px;
+            padding: 9px 14px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px);
+            transition:
+              opacity 0.24s ease,
+              transform 0.24s ease,
+              background 0.2s ease,
+              border-color 0.2s ease;
+            backdrop-filter: blur(8px);
+          }
+
+          #flow.flow-mode-detail .flow-back-btn {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+          }
+
+          #flow .flow-back-btn:hover {
+            background: rgba(110, 168, 254, 0.22);
+            border-color: rgba(110, 168, 254, 0.54);
+          }
+
+          #flow .flow-nav-btn {
+            position: absolute;
+            top: 73px;
+            z-index: 6;
+            width: 42px;
+            height: 42px;
+            appearance: none;
+            border: 1px solid rgba(110, 168, 254, 0.34);
+            color: #eef3ff;
+            background: rgba(13, 20, 48, 0.8);
+            border-radius: 999px;
+            font-size: 1.15rem;
+            font-weight: 800;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px);
+            transition:
+              opacity 0.24s ease,
+              transform 0.24s ease,
+              background 0.2s ease,
+              border-color 0.2s ease,
+              color 0.2s ease;
+            backdrop-filter: blur(8px);
+          }
+
+          #flow .flow-nav-btn:hover:not(:disabled) {
+            background: rgba(110, 168, 254, 0.22);
+            border-color: rgba(110, 168, 254, 0.54);
+          }
+
+          #flow .flow-nav-btn:disabled {
+            cursor: default;
+            opacity: 0.34;
+            color: rgba(238, 243, 255, 0.54);
+          }
+
+          #flow .flow-nav-prev {
+            left: calc(50% - 262px);
+          }
+
+          #flow .flow-nav-next {
+            right: calc(50% - 262px);
+          }
+
+          #flow.flow-mode-detail .flow-nav-btn {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+          }
+
+          #flow .detail-layer {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.34s ease;
+          }
+
+          #flow.flow-mode-detail .detail-layer {
+            opacity: 1;
+          }
+
+          #flow .detail-surface {
+            fill: rgba(8, 15, 36, 0.9);
+            stroke: rgba(78, 101, 184, 0.34);
+            stroke-width: 1.2;
+            filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.18));
+          }
+
+          #flow .detail-band {
+            fill: rgba(255, 255, 255, 0.028);
+            stroke: rgba(110, 168, 254, 0.13);
+            stroke-width: 1;
+          }
+
+          #flow .detail-band-chip {
+            fill: rgba(255, 255, 255, 0.05);
+            stroke: rgba(110, 168, 254, 0.22);
+            stroke-width: 1;
+          }
+
+          #flow .detail-band-label {
+            fill: #cbd8fb;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+
+          #flow .detail-root {
+            animation: flowRootIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+            transform-origin: center;
+          }
+
+          #flow .detail-root-card {
+            fill: rgba(16, 24, 53, 0.94);
+            stroke-width: 1.4;
+          }
+
+          #flow .detail-root-kicker {
+            fill: #b7c7ef;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          #flow .detail-root-title {
+            fill: #eff4ff;
+            font-size: 24px;
+            font-weight: 700;
+          }
+
+          #flow .detail-root-subtitle {
+            fill: #aebddf;
+            font-size: 13px;
+          }
+
+          #flow .detail-seed-line {
+            fill: none;
+            stroke: rgba(141, 164, 239, 0.76);
+            stroke-width: 2.6;
+            stroke-dasharray: 8 6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            marker-end: url(#detail-arrow);
+            animation: edgeDraw 0.5s ease both;
+            vector-effect: non-scaling-stroke;
+          }
+
+          #flow .detail-edge {
+            fill: none;
+            stroke: rgba(220, 230, 255, 0.82);
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            marker-end: url(#detail-arrow);
+            animation: edgeDraw 0.52s ease forwards;
+            vector-effect: non-scaling-stroke;
+          }
+
+          #flow .detail-node {
+            opacity: 0;
+            transform: translateY(10px) scale(0.985);
+            transform-origin: center;
+            animation: detailNodeIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+          }
+
+          #flow .node-process {
+            fill: rgba(24, 35, 74, 0.96);
+            stroke: rgba(110, 168, 254, 0.34);
+            stroke-width: 1.3;
+          }
+
+          #flow .node-decision {
+            fill: rgba(34, 40, 78, 0.98);
+            stroke: rgba(255, 212, 121, 0.8);
+            stroke-width: 1.8;
+          }
+
+          #flow .node-output {
+            fill: rgba(23, 51, 51, 0.96);
+            stroke: rgba(142, 240, 197, 0.54);
+            stroke-width: 1.5;
+          }
+
+          #flow .detail-node-main {
+            fill: #eef3ff;
+            font-size: 13px;
+            font-weight: 600;
+          }
+
+          #flow .detail-node-sub {
+            fill: #aebddf;
+            font-size: 10.5px;
+            font-weight: 500;
+          }
+
+          #flow .edge-pill {
+            opacity: 0;
+            animation: labelIn 0.26s ease forwards;
+          }
+
+          #flow .detail-label-layer {
+            pointer-events: none;
+          }
+
+          #flow .edge-pill-bg {
+            stroke-width: 1.1;
+            vector-effect: non-scaling-stroke;
+          }
+
+          #flow .edge-pill-text {
+            fill: #ffffff;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            dominant-baseline: middle;
+          }
+
+          #flow .edge-pill.yes .edge-pill-bg {
+            fill: rgba(142, 240, 197, 0.67);
+            stroke: rgba(142, 240, 197, 0.66);
+          }
+
+          #flow .edge-pill.no .edge-pill-bg {
+            fill: rgba(255, 212, 121, 0.67);
+            stroke: rgba(255, 212, 121, 0.7);
+          }
+
+          #flow .edge-pill.maybe .edge-pill-bg {
+            fill: rgba(110, 168, 254, 0.16);
+            stroke: rgba(110, 168, 254, 0.72);
+          }
+
+          #flow .edge-pill.neutral .edge-pill-bg {
+            fill: rgba(206, 220, 255, 0.12);
+            stroke: rgba(190, 208, 255, 0.46);
+          }
+
+          @keyframes detailNodeIn {
+            from {
+              opacity: 0;
+              transform: translateY(10px) scale(0.985);
+            }
+
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+
+          @keyframes edgeDraw {
+            to {
+              stroke-dashoffset: 0;
+            }
+          }
+
+          @keyframes labelIn {
+            from {
+              opacity: 0;
+              transform: translateY(-3px);
+            }
+
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          @keyframes flowRootIn {
+            from {
+              opacity: 0;
+              transform: translateY(-8px) scale(0.985);
+            }
+
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+
+            #flow .ov-node,
+            #flow .ov-connector,
+            #flow .ov-note,
+            #flow .detail-layer,
+            #flow .flow-back-btn,
+            #flow .detail-root,
+            #flow .detail-node,
+            #flow .detail-edge,
+            #flow .edge-pill,
+            #flow .detail-seed-line {
+              transition: none !important;
+              animation: none !important;
+            }
+          }
+
+          @media (max-width: 980px) {
+            #flow .flow-wrap {
+              min-height: 0;
+            }
+
+            #flow .flow-svg {
+              max-width: 100%;
+              max-height: 98vh;
+            }
+
+            #flow.flow-mode-detail .flow-svg {
+              max-height: 98vh;
+            }
+          }
+        </style>
+
+        <div class="flow-wrap">
+          <button id="flow-back-btn" class="flow-back-btn" type="button">Back to overview</button>
+          <button id="flow-prev-btn" class="flow-nav-btn flow-nav-prev" type="button" aria-label="Open previous workflow">&#8249;</button>
+          <button id="flow-next-btn" class="flow-nav-btn flow-nav-next" type="button" aria-label="Open next workflow">&#8250;</button>
+
+          <svg id="flow-svg" class="flow-svg" viewBox="0 0 1250 720" preserveAspectRatio="xMidYMid meet" role="img"
+            aria-label="Interactive application flow chart">
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"
+                markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="#dce6ff"></path>
+              </marker>
+              <marker id="detail-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"
+                markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="rgba(220,230,255,0.92)"></path>
+              </marker>
+            </defs>
+
+            <g id="flow-overview-layer">
+              <g class="ov-node" data-flow="gmail_fetch" tabindex="0" role="button"
+                aria-label="Open Gmail Fetch workflow">
+                <rect x="40" y="60" width="180" height="70" rx="16" fill="#6ea8fe" opacity="0.95" />
+                <text x="130" y="95" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">Gmail Fetch</text>
+                <text x="130" y="118" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">raw messages + metadata</text>
+              </g>
+
+              <g class="ov-node" data-flow="thread_grouping" tabindex="0" role="button"
+                aria-label="Open Thread Grouping workflow">
+                <rect x="280" y="60" width="210" height="70" rx="16" fill="#6ea8fe" opacity="0.95" />
+                <text x="385" y="95" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">Thread Grouping</text>
+                <text x="385" y="118" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">merge logic + diagnostics</text>
+              </g>
+
+              <g class="ov-node" data-flow="ai_analysis" tabindex="0" role="button"
+                aria-label="Open AI Analysis workflow">
+                <rect x="550" y="60" width="230" height="70" rx="16" fill="#8ef0c5" opacity="0.95" />
+                <text x="665" y="95" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">AI Analysis</text>
+                <text x="665" y="118" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">summary, urgency, category, actions</text>
+              </g>
+
+              <g class="ov-node" data-flow="structured_output" tabindex="0" role="button"
+                aria-label="Open Structured Output workflow">
+                <rect x="840" y="60" width="220" height="70" rx="16" fill="#8ef0c5" opacity="0.95" />
+                <text x="950" y="95" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">Structured Output</text>
+                <text x="950" y="118" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">thread JSON + versioning</text>
+              </g>
+
+              <g class="ov-node" data-flow="internal_review_ui" tabindex="0" role="button"
+                aria-label="Open Internal Review UI workflow">
+                <rect x="930" y="210" width="250" height="86" rx="18" fill="#ffd479" opacity="0.95" />
+                <text x="1055" y="245" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">Internal Review UI</text>
+                <text x="1055" y="268" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">debugging, evaluation, trust analysis</text>
+              </g>
+
+              <g class="ov-node" data-flow="end_user_ui" tabindex="0" role="button"
+                aria-label="Open End-User UI workflow">
+                <rect x="620" y="340" width="290" height="96" rx="18" fill="#f29bb2" opacity="0.95" />
+                <text x="765" y="378" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">End-User UI</text>
+                <text x="765" y="402" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">recommended queue, details, Gmail links</text>
+                <text x="765" y="422" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">seen-state + daily work surface</text>
+              </g>
+
+              <g class="ov-node" data-flow="user_state_storage" tabindex="0" role="button"
+                aria-label="Open User State Storage workflow">
+                <rect x="260" y="340" width="260" height="96" rx="18" fill="#ffd479" opacity="0.95" />
+                <text x="390" y="378" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">User State Storage</text>
+                <text x="390" y="402" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">seen threads, hidden until changed</text>
+                <text x="390" y="422" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">thread version tracking</text>
+              </g>
+
+              <g class="ov-node" data-flow="draft_assistance" tabindex="0" role="button"
+                aria-label="Open Draft Assistance workflow">
+                <rect x="610" y="520" width="320" height="96" rx="18" fill="#8ef0c5" opacity="0.95" />
+                <text x="770" y="558" text-anchor="middle" fill="#08111f" font-size="20" font-weight="700"
+                  style="pointer-events:none;">Draft Assistance Flow</text>
+                <text x="770" y="582" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">conditional inputs -> AI draft -> user review</text>
+                <text x="770" y="602" text-anchor="middle" fill="#08111f" font-size="13"
+                  style="pointer-events:none;">future CRM and operational actions</text>
+              </g>
+
+              <line class="ov-connector" x1="220" y1="95" x2="280" y2="95" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="490" y1="95" x2="550" y2="95" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="780" y1="95" x2="840" y2="95" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="950" y1="130" x2="950" y2="190" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="860" y1="296" x2="815" y2="340" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="520" y1="388" x2="620" y2="388" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="765" y1="436" x2="770" y2="520" stroke="#dce6ff" stroke-width="4"
+                marker-end="url(#arrow)" />
+              <line class="ov-connector" x1="665" y1="130" x2="665" y2="320" stroke="#dce6ff" stroke-width="3"
+                stroke-dasharray="8 8" marker-end="url(#arrow)" />
+              <text class="ov-note" x="680" y="240" fill="#aeb8d6" font-size="12">AI-driven thread metadata</text>
+            </g>
+
+            <g id="flow-detail-layer" class="detail-layer"></g>
+          </svg>
+        </div>
+
+        <div class="legend">
+          <span class="lg1">Data ingestion and thread construction</span>
+          <span class="lg2">AI processing and output shaping</span>
+          <span class="lg3">Review / persistence support layers</span>
+          <span class="lg4">Operational end-user interaction</span>
+        </div>
+
+        <script>
+          (function () {
+            const section = document.getElementById("flow");
+            if (!section || section.dataset.flowReady === "1") {
+              return;
+            }
+            section.dataset.flowReady = "1";
+
+            const detailLayer = section.querySelector("#flow-detail-layer");
+            const backBtn = section.querySelector("#flow-back-btn");
+            const prevBtn = section.querySelector("#flow-prev-btn");
+            const nextBtn = section.querySelector("#flow-next-btn");
+            const flowSvg = section.querySelector("#flow-svg");
+            const overviewNodes = Array.from(section.querySelectorAll(".ov-node"));
+            const flowOrder = overviewNodes
+              .map(function (nodeEl) { return nodeEl.dataset.flow || ""; })
+              .filter(Boolean);
+            let currentFlowId = "";
+
+            const OVERVIEW_VIEW = {
+              width: 1250,
+              height: 720,
+              padX: 40,
+              topY: 154,
+              bottomY: 640,
+              gap: 16,
+              surfaceX: 24,
+              surfaceY: 22,
+              surfaceWidth: 1202,
+              surfaceHeight: 674,
+              bandY: 150,
+              bandHeight: 500,
+              bandChipY: 166,
+              bandChipHeight: 24,
+              rootY: 42
+            };
+            let activeView = OVERVIEW_VIEW;
+
+            function detailViewFor(flow) {
+              const cols = Math.max(5, (flow && flow.columns ? flow.columns.length : 5));
+              const rowCount = Math.max(
+                2,
+                flow && flow.nodes
+                  ? flow.nodes.reduce(function (maxRow, node) {
+                    return Math.max(maxRow, Number(node.row || 0));
+                  }, 0) + 1
+                  : 4
+              );
+              const extraCols = Math.max(0, cols - 5);
+              const width = OVERVIEW_VIEW.width + extraCols * 86;
+              const extraRows = Math.max(0, rowCount - 4);
+              const height = OVERVIEW_VIEW.height + (cols >= 6 ? 24 : 0) + extraRows * 96;
+              const padX = cols >= 6 ? 34 : OVERVIEW_VIEW.padX;
+              const gap = cols >= 6 ? 12 : OVERVIEW_VIEW.gap;
+              const bandY = 150;
+              const bottomPadding = rowCount >= 5 ? 52 : 80;
+
+              return {
+                width: width,
+                height: height,
+                padX: padX,
+                topY: 154,
+                bottomY: height - bottomPadding,
+                gap: gap,
+                surfaceX: 24,
+                surfaceY: 22,
+                surfaceWidth: width - 48,
+                surfaceHeight: height - 46,
+                bandY: bandY,
+                bandHeight: height - bandY - bottomPadding + 10,
+                bandChipY: 166,
+                bandChipHeight: 24,
+                rootY: 42
+              };
+            }
+
+            function setSvgView(view) {
+              activeView = view;
+              flowSvg.setAttribute("viewBox", "0 0 " + view.width + " " + view.height);
+            }
+
+            function clamp(value, min, max) {
+              return Math.min(max, Math.max(min, value));
+            }
+
+            function wrapWords(text, maxCharsPerLine, maxLines) {
+              const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+              if (!words.length) {
+                return [""];
+              }
+
+              const lines = [];
+              let current = words[0];
+
+              for (let index = 1; index < words.length; index += 1) {
+                const candidate = current + " " + words[index];
+                if (candidate.length <= maxCharsPerLine) {
+                  current = candidate;
+                } else {
+                  lines.push(current);
+                  current = words[index];
+                }
+              }
+              lines.push(current);
+
+              if (!maxLines || lines.length <= maxLines) {
+                return lines;
+              }
+
+              const trimmed = lines.slice(0, maxLines);
+              while (trimmed.length > 0 && trimmed[trimmed.length - 1].length > maxCharsPerLine - 3) {
+                trimmed[trimmed.length - 1] = trimmed[trimmed.length - 1].slice(0, -1);
+              }
+              trimmed[maxLines - 1] = trimmed[maxLines - 1].replace(/[.,;:!?-]*$/, "") + "...";
+              return trimmed;
+            }
+
+            function setMultilineText(textEl, x, centerY, lines, lineGap) {
+              while (textEl.firstChild) {
+                textEl.removeChild(textEl.firstChild);
+              }
+
+              const gap = lineGap || 17;
+              const startY = centerY - ((lines.length - 1) * gap) / 2;
+              lines.forEach(function (line, index) {
+                const tspan = createSvg("tspan");
+                tspan.setAttribute("x", String(x));
+                tspan.setAttribute("y", String(startY + index * gap));
+                tspan.textContent = line;
+                textEl.appendChild(tspan);
+              });
+            }
+
+            function updateFlowNavButtons(flowId) {
+              const index = flowOrder.indexOf(flowId);
+              const hasFlow = index >= 0;
+              prevBtn.disabled = !hasFlow || index === 0;
+              nextBtn.disabled = !hasFlow || index === flowOrder.length - 1;
+            }
+
+            function stepFlow(direction) {
+              const index = flowOrder.indexOf(currentFlowId);
+              if (index < 0) {
+                return;
+              }
+              const nextIndex = index + direction;
+              if (nextIndex < 0 || nextIndex >= flowOrder.length) {
+                return;
+              }
+              renderDetail(flowOrder[nextIndex]);
+            }
+
+            // Manual label offsets.
+            // Key format (most specific): "flowId:fromId->toId:Label"
+            // Optional generic key: "fromId->toId:Label"
+            // Example: "gmail_fetch:ok->fail:No": { x: -16, y: -10 }
+            const EDGE_LABEL_OFFSETS = {
+              // Gmail Fetch
+              "gmail_fetch:ok->norm:Yes": { x: -30, y: 0 },
+              "gmail_fetch:ok->fail:No": { x: 0, y: 0 },
+              "gmail_fetch:meta->out:Yes": { x: -30, y: 0 },
+              "gmail_fetch:meta->safe:No/Partial": { x: 0, y: 45 },
+
+              // Thread Grouping
+              "thread_grouping:hasId->join:Yes": { x: 0, y: 0 },
+              "thread_grouping:hasId->solo:No": { x: 0, y: 0 },
+              "thread_grouping:merge->mergeYes:Yes": { x: 0, y: 0 },
+              "thread_grouping:merge->mergeNo:No": { x: 0, y: 0 },
+              "thread_grouping:merge->mergeMaybe:Maybe": { x: 0, y: 0 },
+
+              // AI Analysis
+              "ai_analysis:gate->hold:Yes": { x: 0, y: 0 },
+              "ai_analysis:gate->cache:No": { x: 0, y: 0 },
+              "ai_analysis:cache->reuse:No": { x: 0, y: 0 },
+              "ai_analysis:cache->fresh:Yes": { x: 0, y: 0 },
+              "ai_analysis:weak->fallback:Yes": { x: 0, y: 0 },
+              "ai_analysis:weak->persist:No": { x: 0, y: 0 },
+
+              // Structured Output
+              "structured_output:valid->ui:Yes": { x: 0, y: 0 },
+              "structured_output:valid->fallbackOut:No": { x: 0, y: 0 },
+
+              // Internal Review UI
+              "internal_review_ui:mismatch->refine:Yes": { x: 0, y: 0 },
+              "internal_review_ui:mismatch->approve:No": { x: 0, y: 0 },
+
+              // End-User UI
+              "end_user_ui:mode->recommended:Recommended": { x: 0, y: 0 },
+              "end_user_ui:mode->all:All": { x: 0, y: 0 },
+              "end_user_ui:seen->show:No": { x: 0, y: 0 },
+              "end_user_ui:seen->changed:Yes": { x: 0, y: 0 },
+              "end_user_ui:changed->show:Yes": { x: 0, y: 0 },
+              "end_user_ui:changed->hide:No": { x: 0, y: 0 },
+
+              // User State Storage
+              "user_state_storage:same->hidden:Yes": { x: -10, y: 0 },
+              "user_state_storage:same->visible:No": { x: -10, y: 0 },
+              "user_state_storage:clear->visible:Clear": { x: -20, y: 0 },
+
+              // Draft Assistance Flow
+              "draft_assistance:need->dateCheck:Yes": { x: -50, y: -10 },
+              "draft_assistance:need->stop:No": { x: 10, y: 0 },
+              "draft_assistance:dateCheck->dateStep:Yes": { x: -50, y: -12 },
+              "draft_assistance:dateCheck->attachCheck:No": { x: -10, y: -10 },
+              "draft_assistance:dateStep->attachCheck": { x: 10, y: 12 },
+              "draft_assistance:attachCheck->attachStep:Yes": { x: -10, y: -10 },
+              "draft_assistance:attachCheck->guidance:No / Maybe": { x: 0, y: -10 }
+            };
+
+            const NODE_POSITION_OFFSETS = {
+              "draft_assistance:attachStep": { y: 22 }
+            };
+
+            function flowKeyFor(flow) {
+              const match = Object.keys(flows).find(function (key) {
+                return flows[key] === flow;
+              });
+              return match || "";
+            }
+
+            function nodeOffsetFor(flow, nodeId) {
+              const key = flowKeyFor(flow) + ":" + nodeId;
+              return NODE_POSITION_OFFSETS[key] || { x: 0, y: 0 };
+            }
+
+            const flows = {
+              gmail_fetch: {
+                title: "Gmail Fetch",
+                subtitle: "Ingestion, validation, and normalization before grouping",
+                accent: "#6ea8fe",
+                columns: ["Source", "Fetch", "Check", "Normalize", "Result"],
+                start: "cfg",
+                nodes: [
+                  { id: "cfg", type: "process", col: 0, row: 1, text: "Load config|and scope" },
+                  { id: "fetch", type: "process", col: 1, row: 1, text: "Read recent|Gmail messages" },
+                  { id: "ok", type: "decision", col: 2, row: 0, text: "Fetch|success?" },
+                  { id: "norm", type: "process", col: 3, row: 0, text: "Normalize|headers + body" },
+                  { id: "meta", type: "decision", col: 3, row: 1, text: "Metadata|complete?" },
+                  { id: "safe", type: "process", col: 4, row: 2, text: "Apply defaults|and sanitize" },
+                  { id: "out", type: "output", col: 4, row: 0, text: "Validated|EmailMessage list" },
+                  { id: "fail", type: "process", col: 2, row: 2, text: "Mark fetch|failure" }
+                ],
+                edges: [
+                  ["cfg", "fetch"],
+                  ["fetch", "ok"],
+                  ["ok", "norm", "Yes"],
+                  ["ok", "fail", "No"],
+                  ["norm", "meta"],
+                  ["meta", "out", "Yes"],
+                  ["meta", "safe", "No/Partial"],
+                  ["safe", "out"]
+                ]
+              },
+
+              thread_grouping: {
+                title: "Thread Grouping",
+                subtitle: "Associate messages, merge conservatively, and preserve diagnostics",
+                accent: "#6ea8fe",
+                columns: ["Seed", "Association", "Branch", "Decision", "Result"],
+                start: "seed",
+                nodes: [
+                  { id: "seed", type: "process", col: 0, row: 1, text: "Seed message|into grouping" },
+                  { id: "hasId", type: "decision", col: 1, row: 1, text: "Has Gmail|thread id?" },
+                  { id: "join", type: "process", col: 2, row: 0, text: "Join candidate|thread bucket" },
+                  { id: "solo", type: "process", col: 2, row: 2, text: "Create standalone|seed bucket" },
+                  { id: "merge", type: "decision", col: 3, row: 1, text: "Merge signals|strong?" },
+                  { id: "mergeYes", type: "process", col: 4, row: 0, text: "Merge buckets|with confidence" },
+                  { id: "mergeNo", type: "process", col: 4, row: 1, text: "Keep separate|thread entity" },
+                  { id: "mergeMaybe", type: "process", col: 4, row: 2, text: "Keep diagnostics|lower confidence" },
+                  { id: "groupOut", type: "output", col: 4, row: 3, text: "EmailThread with|merge rationale" }
+                ],
+                edges: [
+                  ["seed", "hasId"],
+                  ["hasId", "join", "Yes"],
+                  ["hasId", "solo", "No"],
+                  ["join", "merge"],
+                  ["solo", "merge"],
+                  ["merge", "mergeYes", "Yes"],
+                  ["merge", "mergeNo", "No"],
+                  ["merge", "mergeMaybe", "Maybe"],
+                  ["mergeYes", "groupOut"],
+                  ["mergeNo", "groupOut"],
+                  ["mergeMaybe", "groupOut"]
+                ]
+              },
+
+              ai_analysis: {
+                title: "AI Analysis",
+                subtitle: "Guardrails, cache strategy, fallback behavior, and final thread decisions",
+                accent: "#8ef0c5",
+                columns: ["Gate", "Strategy", "Execution", "Quality", "Result"],
+                start: "gate",
+                nodes: [
+                  { id: "gate", type: "decision", col: 0, row: 1, text: "Sensitive|or blocked?" },
+                  { id: "hold", type: "process", col: 1, row: 0, text: "Hold thread|for manual review" },
+                  { id: "cache", type: "decision", col: 1, row: 2, text: "Thread changed|since cache?" },
+                  { id: "reuse", type: "process", col: 2, row: 1, text: "Reuse cached|predictions" },
+                  { id: "fresh", type: "process", col: 2, row: 3, text: "Run triage +|CRM extraction" },
+                  { id: "weak", type: "decision", col: 3, row: 2, text: "Output weak|or partial?" },
+                  { id: "fallback", type: "process", col: 4, row: 3, text: "Fallback summary|and safe defaults" },
+                  { id: "persist", type: "output", col: 4, row: 0, text: "Persist summary,|urgency, action" }
+                ],
+                edges: [
+                  ["gate", "hold", "Yes"],
+                  ["gate", "cache", "No"],
+                  ["hold", "persist"],
+                  ["cache", "reuse", "No"],
+                  ["cache", "fresh", "Yes"],
+                  ["reuse", "persist"],
+                  ["fresh", "weak"],
+                  ["weak", "fallback", "Yes"],
+                  ["weak", "persist", "No"],
+                  ["fallback", "persist"]
+                ]
+              },
+
+              structured_output: {
+                title: "Structured Output",
+                subtitle: "Write JSON, update reuse state, validate, and feed both UIs",
+                accent: "#8ef0c5",
+                columns: ["Write", "Version", "State", "Validate", "Consumers"],
+                start: "json",
+                nodes: [
+                  { id: "json", type: "process", col: 0, row: 1, text: "Write latest|run JSON" },
+                  { id: "sig", type: "process", col: 1, row: 1, text: "Update thread|signature" },
+                  { id: "cacheState", type: "process", col: 2, row: 1, text: "Update cache +|progress state" },
+                  { id: "valid", type: "decision", col: 3, row: 1, text: "Output|valid?" },
+                  { id: "ui", type: "output", col: 4, row: 0, text: "Feed review +|end-user UIs" },
+                  { id: "fallbackOut", type: "process", col: 4, row: 2, text: "Flag issue|and fallback" },
+                  { id: "contract", type: "output", col: 4, row: 3, text: "Stable data|contract" }
+                ],
+                edges: [
+                  ["json", "sig"],
+                  ["sig", "cacheState"],
+                  ["cacheState", "valid"],
+                  ["valid", "ui", "Yes"],
+                  ["valid", "fallbackOut", "No"],
+                  ["ui", "contract"],
+                  ["fallbackOut", "contract"]
+                ]
+              },
+
+              internal_review_ui: {
+                title: "Internal Review UI",
+                subtitle: "Validate grouping and AI decisions, then persist quality feedback",
+                accent: "#ffd479",
+                columns: ["Load", "Inspect", "Assess", "Action", "Persist"],
+                start: "run",
+                nodes: [
+                  { id: "run", type: "process", col: 0, row: 1, text: "Launch run|and poll progress" },
+                  { id: "grouping", type: "process", col: 1, row: 0, text: "Inspect grouping|and confidence" },
+                  { id: "decisions", type: "process", col: 1, row: 2, text: "Inspect AI|decisions" },
+                  { id: "mismatch", type: "decision", col: 2, row: 1, text: "Mismatch|detected?" },
+                  { id: "refine", type: "process", col: 3, row: 0, text: "Tag issue for|refinement" },
+                  { id: "approve", type: "process", col: 3, row: 2, text: "Mark result|as validated" },
+                  { id: "reviewOut", type: "output", col: 4, row: 1, text: "Persist review|feedback" }
+                ],
+                edges: [
+                  ["run", "grouping"],
+                  ["run", "decisions"],
+                  ["grouping", "mismatch"],
+                  ["decisions", "mismatch"],
+                  ["mismatch", "refine", "Yes"],
+                  ["mismatch", "approve", "No"],
+                  ["refine", "reviewOut"],
+                  ["approve", "reviewOut"]
+                ]
+              },
+
+              end_user_ui: {
+                title: "End-User UI",
+                subtitle: "Queue logic, seen-state behavior, and thread detail actions",
+                accent: "#f29bb2",
+                columns: ["Load", "Queue", "Mode", "Visibility", "Action"],
+                start: "records",
+                nodes: [
+                  { id: "records", type: "process", col: 0, row: 1, text: "Build user-facing|thread records" },
+                  { id: "mode", type: "decision", col: 1, row: 1, text: "Recommended|or all?" },
+                  { id: "recommended", type: "process", col: 2, row: 0, text: "Rank priority|queue" },
+                  { id: "all", type: "process", col: 2, row: 2, text: "Sort all by|latest message" },
+                  { id: "seen", type: "decision", col: 3, row: 0, text: "Thread already|seen?" },
+                  { id: "changed", type: "decision", col: 3, row: 2, text: "Version|changed?" },
+                  { id: "show", type: "output", col: 4, row: 1, text: "Show in queue|and details" },
+                  { id: "hide", type: "process", col: 3, row: 3, text: "Keep hidden|from dashboard" }
+                ],
+                edges: [
+                  ["records", "mode"],
+                  ["mode", "recommended", "Recommended"],
+                  ["mode", "all", "All"],
+                  ["recommended", "seen"],
+                  ["all", "seen"],
+                  ["seen", "show", "No"],
+                  ["seen", "changed", "Yes"],
+                  ["changed", "show", "Yes"],
+                  ["changed", "hide", "No"]
+                ]
+              },
+
+              user_state_storage: {
+                title: "User State Storage",
+                subtitle: "Remember seen versions and resurface only when the thread changes",
+                accent: "#ffd479",
+                columns: ["Mark", "Version", "Compare", "Override", "Result"],
+                start: "seenMark",
+                nodes: [
+                  { id: "seenMark", type: "process", col: 0, row: 1, text: "Mark thread|as seen" },
+                  { id: "version", type: "process", col: 1, row: 1, text: "Compute current|thread version" },
+                  { id: "same", type: "decision", col: 2, row: 1, text: "Stored version|same?" },
+                  { id: "hidden", type: "process", col: 3, row: 0, text: "Keep hidden|in dashboard" },
+                  { id: "visible", type: "process", col: 3, row: 2, text: "Resurface thread|as updated" },
+                  { id: "clear", type: "process", col: 3, row: 3, text: "Manual clear|seen marker" },
+                  { id: "memory", type: "output", col: 4, row: 1, text: "Reliable seen-state|memory" }
+                ],
+                edges: [
+                  ["seenMark", "version"],
+                  ["version", "same"],
+                  ["same", "hidden", "Yes"],
+                  ["same", "visible", "No"],
+                  ["hidden", "memory"],
+                  ["visible", "memory"],
+                  ["clear", "visible", "Clear"]
+                ]
+              },
+
+              draft_assistance: {
+                title: "Draft Assistance Flow",
+                subtitle: "Conditional wizard steps before the final email preview",
+                accent: "#8ef0c5",
+                columns: ["Trigger", "Need", "Date", "Attachment", "Guidance", "Preview"],
+                start: "trigger",
+                nodes: [
+                  { id: "trigger", type: "process", col: 0, row: 1, text: "Click Create|Draft" },
+                  { id: "need", type: "decision", col: 1, row: 1, text: "Reply|needed?" },
+                  { id: "dateCheck", type: "decision", col: 2, row: 0, text: "Needs|date?" },
+                  { id: "dateStep", type: "process", col: 2, row: 1, text: "Capture date|or skip" },
+                  { id: "attachCheck", type: "decision", col: 3, row: 1, text: "Needs|attachment?" },
+                  { id: "attachStep", type: "process", col: 3, row: 2, text: "Add files|or skip" },
+                  { id: "guidance", type: "process", col: 4, row: 1, text: "Keywords +|tone guidance" },
+                  { id: "preview", type: "output", col: 5, row: 1, text: "Draft preview|for review" },
+                  { id: "stop", type: "process", col: 1, row: 3, text: "Do not open|draft flow" }
+                ],
+                edges: [
+                  ["trigger", "need"],
+                  ["need", "dateCheck", "Yes"],
+                  ["need", "stop", "No"],
+                  ["dateCheck", "dateStep", "Yes"],
+                  ["dateCheck", "attachCheck", "No"],
+                  ["dateStep", "attachCheck"],
+                  ["attachCheck", "attachStep", "Yes"],
+                  ["attachCheck", "guidance", "No / Maybe"],
+                  ["attachStep", "guidance"],
+                  ["guidance", "preview"]
+                ]
+              }
+            };
+
+            function createSvg(tag) {
+              return document.createElementNS("http://www.w3.org/2000/svg", tag);
+            }
+
+            function clearDetail() {
+              while (detailLayer.firstChild) {
+                detailLayer.removeChild(detailLayer.firstChild);
+              }
+            }
+
+            function addMultiline(parent, x, y, text, className, lineGap) {
+              const lines = String(text || "").split("|");
+              const textEl = createSvg("text");
+              textEl.setAttribute("x", String(x));
+              textEl.setAttribute("text-anchor", "middle");
+              textEl.setAttribute("class", className);
+              const gap = lineGap || 17;
+              const startY = y - ((lines.length - 1) * gap) / 2;
+
+              lines.forEach(function (line, index) {
+                const tspan = createSvg("tspan");
+                tspan.setAttribute("x", String(x));
+                tspan.setAttribute("y", String(startY + index * gap));
+                tspan.textContent = line;
+                textEl.appendChild(tspan);
+              });
+
+              parent.appendChild(textEl);
+            }
+
+            function toneFromLabel(label) {
+              const value = String(label || "").toLowerCase();
+              if (value.indexOf("yes") === 0) return "yes";
+              if (value.indexOf("no") === 0) return "no";
+              if (value.indexOf("maybe") === 0) return "maybe";
+              return "neutral";
+            }
+
+            function computeLayout(flow) {
+              const cols = flow.columns.length;
+              const bandGap = activeView.gap;
+              const innerWidth = activeView.width - activeView.padX * 2;
+              const bandWidth = (innerWidth - bandGap * (cols - 1)) / cols;
+              const rowCount = Math.max(
+                2,
+                flow.nodes.reduce(function (maxRow, node) {
+                  return Math.max(maxRow, Number(node.row || 0));
+                }, 0) + 1
+              );
+              const innerTop = activeView.bandY + (cols >= 6 ? 78 : rowCount >= 5 ? 72 : 64);
+              const innerBottom = activeView.bandY + activeView.bandHeight - (cols >= 6 ? 64 : rowCount >= 5 ? 58 : 52);
+              const fullSpread = Math.max(140, innerBottom - innerTop);
+              const compactSpread = fullSpread * (cols >= 6 ? 0.94 : rowCount >= 5 ? 0.88 : 0.82);
+              const rowStart = innerTop + (fullSpread - compactSpread) / 2;
+              const rowGap = rowCount === 1 ? 0 : compactSpread / (rowCount - 1);
+              const rowYs = Array.from({ length: rowCount }, function (_, index) {
+                return rowStart + rowGap * index;
+              });
+
+              const nodesById = {};
+
+              flow.nodes.forEach(function (node) {
+                const centerX = activeView.padX + node.col * (bandWidth + bandGap) + bandWidth / 2;
+                const centerY = rowYs[node.row];
+                const nodeOffset = nodeOffsetFor(flow, node.id);
+                let width;
+                const isDenseFlow = cols >= 6;
+
+                if (node.type === "decision") {
+                  width = Math.min(isDenseFlow ? 126 : 150, bandWidth - 30);
+                } else if (node.type === "output") {
+                  width = Math.min(isDenseFlow ? 170 : 210, bandWidth - 18);
+                } else {
+                  width = Math.min(isDenseFlow ? 160 : 198, bandWidth - 22);
+                }
+
+                const height = isDenseFlow
+                  ? (node.type === "decision" ? 82 : node.type === "output" ? 62 : 58)
+                  : (node.type === "decision" ? 92 : node.type === "output" ? 70 : 64);
+
+                nodesById[node.id] = {
+                  id: node.id,
+                  type: node.type,
+                  text: node.text,
+                  col: node.col,
+                  row: node.row,
+                  x: centerX + (nodeOffset.x || 0),
+                  y: centerY + (nodeOffset.y || 0),
+                  w: width,
+                  h: height
+                };
+              });
+
+              return {
+                bandWidth: bandWidth,
+                bandGap: bandGap,
+                rowYs: rowYs,
+                nodesById: nodesById
+              };
+            }
+
+            function drawSurface() {
+              const rect = createSvg("rect");
+              rect.setAttribute("x", String(activeView.surfaceX));
+              rect.setAttribute("y", String(activeView.surfaceY));
+              rect.setAttribute("width", String(activeView.surfaceWidth));
+              rect.setAttribute("height", String(activeView.surfaceHeight));
+              rect.setAttribute("rx", "24");
+              rect.setAttribute("class", "detail-surface");
+              detailLayer.appendChild(rect);
+            }
+
+            function drawBands(flow, layout) {
+              flow.columns.forEach(function (label, index) {
+                const x = activeView.padX + index * (layout.bandWidth + layout.bandGap);
+                const band = createSvg("rect");
+                band.setAttribute("x", String(x));
+                band.setAttribute("y", String(activeView.bandY));
+                band.setAttribute("width", String(layout.bandWidth));
+                band.setAttribute("height", String(activeView.bandHeight));
+                band.setAttribute("rx", "18");
+                band.setAttribute("class", "detail-band");
+                band.style.opacity = String(0.88 - index * 0.04);
+                detailLayer.appendChild(band);
+
+                const chipWidth = Math.min(160, Math.max(92, label.length * 8 + 26));
+                const chipX = x + layout.bandWidth / 2 - chipWidth / 2;
+
+                const chip = createSvg("rect");
+                chip.setAttribute("x", String(chipX));
+                chip.setAttribute("y", String(activeView.bandChipY));
+                chip.setAttribute("width", String(chipWidth));
+                chip.setAttribute("height", String(activeView.bandChipHeight));
+                chip.setAttribute("rx", "12");
+                chip.setAttribute("class", "detail-band-chip");
+                detailLayer.appendChild(chip);
+
+                const chipText = createSvg("text");
+                chipText.setAttribute("x", String(x + layout.bandWidth / 2));
+                chipText.setAttribute("y", String(activeView.bandChipY + 15));
+                chipText.setAttribute("text-anchor", "middle");
+                chipText.setAttribute("class", "detail-band-label");
+                chipText.textContent = label;
+                detailLayer.appendChild(chipText);
+              });
+            }
+
+            function drawRoot(flow, layout) {
+              const group = createSvg("g");
+              group.setAttribute("class", "detail-root");
+
+              const rootWidth = Math.min(400, Math.max(340, flow.title.length * 10 + 110));
+              const x = activeView.width / 2 - rootWidth / 2;
+              const y = activeView.rootY;
+              const headerTop = y;
+              const headerBottom = activeView.topY;
+              const headerCenterY = (headerTop + headerBottom) / 2;
+
+              const titleLines = wrapWords(flow.title, Math.max(14, Math.floor((rootWidth - 88) / 11)), 2);
+              const titleCenterY = headerCenterY - (titleLines.length > 1 ? 6 : 2);
+              const subtitleCenterY = headerCenterY + (titleLines.length > 1 ? 30 : 28);
+
+              const kicker = createSvg("text");
+              kicker.setAttribute("x", String(activeView.width / 2));
+              kicker.setAttribute("y", String(headerCenterY - 26));
+              kicker.setAttribute("text-anchor", "middle");
+              kicker.setAttribute("class", "detail-root-kicker");
+              kicker.textContent = "Workflow drill-down";
+              group.appendChild(kicker);
+
+              const title = createSvg("text");
+              title.setAttribute("x", String(activeView.width / 2));
+              title.setAttribute("y", String(titleCenterY));
+              title.setAttribute("text-anchor", "middle");
+              title.setAttribute("class", "detail-root-title");
+              setMultilineText(title, activeView.width / 2, titleCenterY, titleLines, 28);
+              group.appendChild(title);
+
+              const subtitle = createSvg("text");
+              subtitle.setAttribute("x", String(activeView.width / 2));
+              subtitle.setAttribute("y", String(subtitleCenterY));
+              subtitle.setAttribute("text-anchor", "middle");
+              subtitle.setAttribute("class", "detail-root-subtitle");
+              const subtitleLines = wrapWords(flow.subtitle, Math.max(18, Math.floor((rootWidth - 92) / 8)), 2);
+              setMultilineText(
+                subtitle,
+                activeView.width / 2,
+                subtitleCenterY,
+                subtitleLines,
+                18
+              );
+              group.appendChild(subtitle);
+
+              detailLayer.appendChild(group);
+
+              // Intentionally no seed arrow from title to first column.
+            }
+
+            function boundsFor(node) {
+              if (node.type === "decision") {
+                return {
+                  left: node.x - node.w / 2,
+                  right: node.x + node.w / 2,
+                  top: node.y - node.h / 2,
+                  bottom: node.y + node.h / 2
+                };
+              }
+
+              return {
+                left: node.x - node.w / 2,
+                right: node.x + node.w / 2,
+                top: node.y - node.h / 2,
+                bottom: node.y + node.h / 2
+              };
+            }
+
+            function edgeAnchors(fromNode, toNode) {
+              const fromBounds = boundsFor(fromNode);
+              const toBounds = boundsFor(toNode);
+
+              let sx = fromNode.x;
+              let sy = fromNode.y;
+              let tx = toNode.x;
+              let ty = toNode.y;
+
+              if (toNode.col > fromNode.col) {
+                sx = fromBounds.right;
+                sy = fromNode.y;
+                tx = toBounds.left;
+                ty = toNode.y;
+              } else if (toNode.col < fromNode.col) {
+                sx = fromBounds.left;
+                sy = fromNode.y;
+                tx = toBounds.right;
+                ty = toNode.y;
+              } else if (toNode.row > fromNode.row) {
+                sx = fromNode.x;
+                sy = fromBounds.bottom;
+                tx = toNode.x;
+                ty = toBounds.top;
+              } else {
+                sx = fromNode.x;
+                sy = fromBounds.top;
+                tx = toNode.x;
+                ty = toBounds.bottom;
+              }
+
+              return { sx: sx, sy: sy, tx: tx, ty: ty };
+            }
+
+            function buildPath(fromNode, toNode) {
+              const anchors = edgeAnchors(fromNode, toNode);
+              const sx = anchors.sx;
+              const sy = anchors.sy;
+              const tx = anchors.tx;
+              const ty = anchors.ty;
+
+              function labelFromSegments(segments) {
+                let longest = null;
+                let longestLen = -1;
+
+                segments.forEach(function (seg) {
+                  const len = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
+                  if (len > longestLen) {
+                    longestLen = len;
+                    longest = seg;
+                  }
+                });
+
+                if (!longest) {
+                  return { labelX: (sx + tx) / 2, labelY: (sy + ty) / 2 - 14 };
+                }
+
+                const midX = (longest.x1 + longest.x2) / 2;
+                const midY = (longest.y1 + longest.y2) / 2;
+                const dx = longest.x2 - longest.x1;
+                const dy = longest.y2 - longest.y1;
+
+                if (Math.abs(dx) >= Math.abs(dy)) {
+                  // Horizontal segment: center label above the line.
+                  return { labelX: midX, labelY: midY - 14 };
+                }
+
+                const offset = midX < activeView.width * 0.5 ? 18 : -18;
+                return { labelX: midX + offset, labelY: midY };
+              }
+
+              if (Math.abs(tx - sx) < 6 || Math.abs(ty - sy) < 6) {
+                const segments = [{ x1: sx, y1: sy, x2: tx, y2: ty }];
+                const label = labelFromSegments(segments);
+                return {
+                  d: "M " + sx + " " + sy + " L " + tx + " " + ty,
+                  labelX: label.labelX,
+                  labelY: label.labelY
+                };
+              }
+
+              const midX = sx + (tx - sx) / 2;
+              const segments = [
+                { x1: sx, y1: sy, x2: midX, y2: sy },
+                { x1: midX, y1: sy, x2: midX, y2: ty },
+                { x1: midX, y1: ty, x2: tx, y2: ty }
+              ];
+              const label = labelFromSegments(segments);
+
+              return {
+                d: "M " + sx + " " + sy + " L " + midX + " " + sy + " L " + midX + " " + ty + " L " + tx + " " + ty,
+                labelX: label.labelX,
+                labelY: label.labelY
+              };
+            }
+
+            function drawEdge(flowId, fromNode, toNode, label, delayIndex, labelLayer) {
+              const routed = buildPath(fromNode, toNode);
+              const path = createSvg("path");
+              path.setAttribute("class", "detail-edge");
+              path.setAttribute("d", routed.d);
+              path.style.animationDelay = String(0.04 + delayIndex * 0.028) + "s";
+              const pathLength = path.getTotalLength();
+              path.style.strokeDasharray = String(pathLength);
+              path.style.strokeDashoffset = String(pathLength);
+              detailLayer.appendChild(path);
+
+              if (label) {
+                const specificKey = flowId + ":" + fromNode.id + "->" + toNode.id + ":" + label;
+                const genericKey = fromNode.id + "->" + toNode.id + ":" + label;
+                const manualOffset = EDGE_LABEL_OFFSETS[specificKey] || EDGE_LABEL_OFFSETS[genericKey] || { x: 0, y: 0 };
+                const tone = toneFromLabel(label);
+                const width = Math.max(44, label.length * 8 + 18);
+                const labelX = clamp(
+                  routed.labelX + (manualOffset.x || 0),
+                  activeView.surfaceX + width / 2 + 12,
+                  activeView.surfaceX + activeView.surfaceWidth - width / 2 - 12
+                );
+                const labelY = clamp(
+                  routed.labelY + (manualOffset.y || 0),
+                  activeView.surfaceY + 22,
+                  activeView.surfaceY + activeView.surfaceHeight - 22
+                );
+                const group = createSvg("g");
+                group.setAttribute("class", "edge-pill " + tone);
+                group.style.animationDelay = String(0.18 + delayIndex * 0.028) + "s";
+
+                const bg = createSvg("rect");
+                bg.setAttribute("x", String(labelX - width / 2));
+                bg.setAttribute("y", String(labelY - 12));
+                bg.setAttribute("width", String(width));
+                bg.setAttribute("height", "24");
+                bg.setAttribute("rx", "12");
+                bg.setAttribute("class", "edge-pill-bg");
+                group.appendChild(bg);
+
+                const text = createSvg("text");
+                text.setAttribute("x", String(labelX));
+                text.setAttribute("y", String(labelY + 0.5));
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("class", "edge-pill-text");
+                text.textContent = label;
+                group.appendChild(text);
+
+                labelLayer.appendChild(group);
+              }
+            }
+
+            function drawNode(node, delayIndex) {
+              const group = createSvg("g");
+              group.setAttribute("class", "detail-node");
+              group.style.animationDelay = String(0.08 + delayIndex * 0.03) + "s";
+              const nodeLineGap = activeView.width > OVERVIEW_VIEW.width ? 15 : 18;
+
+              if (node.type === "decision") {
+                const halfW = node.w / 2;
+                const halfH = node.h / 2;
+                const poly = createSvg("polygon");
+                poly.setAttribute(
+                  "points",
+                  node.x + "," + (node.y - halfH) + " " +
+                  (node.x + halfW) + "," + node.y + " " +
+                  node.x + "," + (node.y + halfH) + " " +
+                  (node.x - halfW) + "," + node.y
+                );
+                poly.setAttribute("class", "node-decision");
+                group.appendChild(poly);
+              } else {
+                const rect = createSvg("rect");
+                rect.setAttribute("x", String(node.x - node.w / 2));
+                rect.setAttribute("y", String(node.y - node.h / 2));
+                rect.setAttribute("width", String(node.w));
+                rect.setAttribute("height", String(node.h));
+                rect.setAttribute("rx", node.type === "output" ? "16" : "14");
+                rect.setAttribute("class", node.type === "output" ? "node-output" : "node-process");
+                group.appendChild(rect);
+              }
+
+              addMultiline(group, node.x, node.y, node.text, "detail-node-main", nodeLineGap);
+              detailLayer.appendChild(group);
+            }
+
+            function renderDetail(flowId) {
+              const flow = flows[flowId];
+              if (!flow) {
+                return;
+              }
+
+              currentFlowId = flowId;
+              setSvgView(detailViewFor(flow));
+              clearDetail();
+              const layout = computeLayout(flow);
+
+              drawSurface();
+              drawBands(flow, layout);
+              drawRoot(flow, layout);
+
+              const labelLayer = createSvg("g");
+              labelLayer.setAttribute("class", "detail-label-layer");
+
+              flow.edges.forEach(function (edge, index) {
+                const fromNode = layout.nodesById[edge[0]];
+                const toNode = layout.nodesById[edge[1]];
+                if (!fromNode || !toNode) {
+                  return;
+                }
+                drawEdge(flowId, fromNode, toNode, edge[2], index, labelLayer);
+              });
+
+              flow.nodes.forEach(function (node, index) {
+                drawNode(layout.nodesById[node.id], index);
+              });
+
+              detailLayer.appendChild(labelLayer);
+
+              section.classList.add("flow-mode-detail");
+              updateFlowNavButtons(flowId);
+              overviewNodes.forEach(function (nodeEl) {
+                const active = nodeEl.dataset.flow === flowId;
+                nodeEl.classList.toggle("is-active", active);
+                nodeEl.classList.toggle("is-dim", !active);
+              });
+            }
+
+            function resetOverview() {
+              currentFlowId = "";
+              clearDetail();
+              setSvgView(OVERVIEW_VIEW);
+              section.classList.remove("flow-mode-detail");
+              updateFlowNavButtons("");
+              overviewNodes.forEach(function (nodeEl) {
+                nodeEl.classList.remove("is-active");
+                nodeEl.classList.remove("is-dim");
+              });
+            }
+
+            overviewNodes.forEach(function (nodeEl) {
+              const open = function () {
+                renderDetail(nodeEl.dataset.flow || "");
+              };
+
+              nodeEl.addEventListener("click", open);
+              nodeEl.addEventListener("keydown", function (event) {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  open();
+                }
+              });
+            });
+
+            backBtn.addEventListener("click", resetOverview);
+            prevBtn.addEventListener("click", function () {
+              stepFlow(-1);
+            });
+            nextBtn.addEventListener("click", function () {
+              stepFlow(1);
+            });
+
+            document.addEventListener("keydown", function (event) {
+              if (event.key === "Escape" && section.classList.contains("flow-mode-detail")) {
+                resetOverview();
+              }
+              if (event.key === "ArrowLeft" && section.classList.contains("flow-mode-detail")) {
+                event.preventDefault();
+                stepFlow(-1);
+              }
+              if (event.key === "ArrowRight" && section.classList.contains("flow-mode-detail")) {
+                event.preventDefault();
+                stepFlow(1);
+              }
+            });
+          })();
+        </script>
+      </section>
+
+      <section id="ui">
+        <h3>4. User Interfaces</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Internal review UI</h4>
+            <ul>
+              <li>Made for technical evaluation and debugging</li>
+              <li>Helps inspect thread grouping and AI decisions</li>
+              <li>Supports error analysis and trust tuning</li>
+              <li>Useful during refinement and validation</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>End-user UI</h4>
+            <ul>
+              <li>Made for daily operational use by a non-technical user</li>
+              <li>Shows recommended queue or all conversations</li>
+              <li>Supports thread detail view, Gmail links, and queue handling</li>
+              <li>Seen-state hides already-processed threads until they change</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="ai">
+        <h3>5. AI Decision Layer</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>Purpose</th>
+              <th>Operational value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Thread summary</td>
+              <td>Summarize the whole conversation instead of isolated messages</td>
+              <td>Gives fast context without reading the full thread</td>
+            </tr>
+            <tr>
+              <td>Urgency classification</td>
+              <td>Identify which threads likely require faster attention</td>
+              <td>Improves ranking and queue usefulness</td>
+            </tr>
+            <tr>
+              <td>Category classification</td>
+              <td>Assign operational categories to each thread</td>
+              <td>Supports triage and future reporting/CRM routing</td>
+            </tr>
+            <tr>
+              <td>Action guidance</td>
+              <td>Suggest what should happen next</td>
+              <td>Reduces interpretation effort for the user</td>
+            </tr>
+            <tr>
+              <td>Draft support</td>
+              <td>Help generate response drafts when requested</td>
+              <td>Speeds up response creation while keeping review manual</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="drafting">
+        <h3>6. Draft Generation Flow</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Desired user flow</h4>
+            <ol>
+              <li>User opens thread details</li>
+              <li>User clicks <strong>Create Draft</strong></li>
+              <li>Modal checks whether a date is needed</li>
+              <li>Modal checks whether attachments are needed</li>
+              <li>User adds keywords/instructions for AI</li>
+              <li>System generates draft preview</li>
+              <li>User reviews before any final action</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h4>Why this is better</h4>
+            <ul>
+              <li>Drafts are generated intentionally, not passively shown</li>
+              <li>The user sees only the inputs that matter for that thread</li>
+              <li>The flow feels guided and operationally safer</li>
+              <li>It better matches real-world drafting needs such as dates or files</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note" style="margin-top:16px;">
+          Recommended AI metadata fields for this flow: <strong>needs_date</strong>, <strong>needs_attachment</strong>,
+          and optional explanation fields to justify why the extra input is being requested.
+        </div>
+      </section>
+
+      <section id="data">
+        <h3>7. Data Model and Persistence</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>Input data</h4>
+            <p>Gmail messages, thread relationships, timestamps, senders, recipients, subject lines, and raw body
+              content.</p>
+          </div>
+          <div class="card">
+            <h4>Processed objects</h4>
+            <p>Thread-level entities containing merged conversation information, child messages, AI decisions,
+              diagnostics, and version state.</p>
+          </div>
+          <div class="card">
+            <h4>User state</h4>
+            <p>Seen-state persistence allows processed threads to stay hidden until a new message arrives or the thread
+              version changes.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <h3>8. Technology Stack</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Functional stack</h4>
+            <ul>
+              <li>Python services for data fetch and processing</li>
+              <li>Gmail integration for source messages</li>
+              <li>AI model layer for summary, classification, and drafting</li>
+              <li>JSON-based structured output and persistence</li>
+              <li>UI applications for review and end-user operations</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>Documentation note</h4>
+            <p>
+              This section is intentionally broad for now. It can later be expanded with exact frameworks, model
+              choices, file names,
+              deployment method, storage details, and environment setup instructions.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="trust">
+        <h3>9. Trust, Safety, and Quality</h3>
+        <div class="grid-3">
+          <div class="card">
+            <h4>Safer merging</h4>
+            <p>Thread merging now includes diagnostics and merge confidence to reduce incorrect conversation grouping.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Explicit AI fields</h4>
+            <p>Decisions are more inspectable because the system exposes structured AI outputs instead of opaque
+              results.</p>
+          </div>
+          <div class="card">
+            <h4>Review loop</h4>
+            <p>The internal review UI and metrics layer make it possible to tune, validate, and improve the pipeline
+              over time.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="next">
+        <h3>10. Current Status and Next Steps</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Current phase</h4>
+            <p>
+              The system is in late refinement / early operationalization. It is already useful, but still needs
+              validation around queue ranking,
+              clarity of recommendations, and consistency of trust signals.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Best next priorities</h4>
+            <ul>
+              <li>Validate whether the recommended queue surfaces the right threads first</li>
+              <li>Improve explanation of why a thread is shown and what to do next</li>
+              <li>Complete the guided draft creation workflow</li>
+              <li>Document exact architecture and setup details</li>
+              <li>Prepare structured handoff toward CRM integration</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        Inter-Email V2 — HTML functional and technical documentation draft.
+      </footer>
+    </main>
+  </div>
+</body>
+
+</html>

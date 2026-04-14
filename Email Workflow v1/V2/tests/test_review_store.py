@@ -28,10 +28,12 @@ class ReviewStoreTests(unittest.TestCase):
             "abc123",
             {
                 "ai_result_correct": "Yes",
+                "merge_correct": "No",
                 "correct_category": "Finance / Admin",
                 "correct_urgency": "Medium",
                 "summary_useful": "Partially",
                 "next_action_useful": "No",
+                "reply_draft_useful": "Yes",
                 "crm_useful": "Not applicable",
                 "should_have_been_filtered": "Yes",
                 "notes": "Needs cleaner summary wording.",
@@ -43,6 +45,8 @@ class ReviewStoreTests(unittest.TestCase):
 
         self.assertIn("abc123", loaded)
         self.assertEqual(loaded["abc123"]["ai_result_correct"], "Yes")
+        self.assertEqual(loaded["abc123"]["merge_correct"], "No")
+        self.assertEqual(loaded["abc123"]["reply_draft_useful"], "Yes")
         self.assertEqual(loaded["abc123"]["should_have_been_filtered"], "Yes")
         self.assertIn("updated_at", loaded["abc123"])
 

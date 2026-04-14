@@ -48,10 +48,12 @@ def normalize_review_payload(raw_review: dict[str, Any]) -> dict[str, Any]:
 
     normalized = {
         "ai_result_correct": raw_review.get("ai_result_correct"),
+        "merge_correct": raw_review.get("merge_correct"),
         "correct_category": raw_review.get("correct_category"),
         "correct_urgency": raw_review.get("correct_urgency"),
         "summary_useful": raw_review.get("summary_useful"),
         "next_action_useful": raw_review.get("next_action_useful"),
+        "reply_draft_useful": raw_review.get("reply_draft_useful"),
         "crm_useful": raw_review.get("crm_useful"),
         "should_have_been_filtered": raw_review.get("should_have_been_filtered"),
         "notes": raw_review.get("notes", ""),

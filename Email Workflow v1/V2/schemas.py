@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 
 TriageCategory = Literal[
@@ -14,12 +14,29 @@ TriageCategory = Literal[
     "Events / Logistics",
     "Finance / Admin",
     "FYI / Low Priority",
+    "Classified / Sensitive",
 ]
 
 UrgencyLevel = Literal["high", "medium", "low", "unknown"]
 RelevanceBucket = Literal["must_review", "important", "maybe", "noise"]
 ChangeStatus = Literal["new", "changed", "unchanged"]
-AnalysisStatus = Literal["fresh", "cached", "not_requested", "skipped", "failed"]
+MergeConfidence = Literal["high", "medium", "low"]
+AIDecision = Literal[
+    "must_send_to_ai",
+    "good_candidate",
+    "maybe",
+    "skip",
+    "blocked_sensitive",
+]
+AnalysisStatus = Literal[
+    "fresh",
+    "cached",
+    "not_requested",
+    "skipped",
+    "failed",
+    "guardrailed",
+]
+SecurityStatus = Literal["standard", "classified"]
 
 
 class EmailMessage(BaseModel):
@@ -92,12 +109,34 @@ class ThreadTriageBatch(BaseModel):
     items: list[ThreadTriageItem]
 
 
+class SummaryActionItem(BaseModel):
+    """One global next action linked to a thread when possible."""
+
+    thread_id: str | None = None
+    label: str = Field(validation_alias=AliasChoices("label", "action", "text"))
+
+
 class SummaryOutput(BaseModel):
     """High-level summary across the selected threads."""
 
     top_priorities: list[str] = Field(default_factory=list)
     executive_summary: str
     next_actions: list[str] = Field(default_factory=list)
+    action_items: list[SummaryActionItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def sync_action_lists(self) -> "SummaryOutput":
+        """Keep legacy string lists and structured action items aligned."""
+
+        if not self.next_actions and self.action_items:
+            self.next_actions = [item.label for item in self.action_items if item.label]
+        elif not self.action_items and self.next_actions:
+            self.action_items = [
+                SummaryActionItem(thread_id=None, label=action)
+                for action in self.next_actions
+                if action
+            ]
+        return self
 
 
 class ThreadCrmRecord(BaseModel):
@@ -117,10 +156,65 @@ class ThreadCrmBatch(BaseModel):
     records: list[ThreadCrmRecord]
 
 
+class ThreadReplyDraftRecord(BaseModel):
+    """Reply-draft metadata for one thread."""
+
+    thread_id: str
+    should_draft_reply: bool = False
+    needs_date: bool = False
+    date_reason: str | None = None
+    needs_attachment: bool = False
+    attachment_reason: str | None = None
+    reply_subject: str | None = None
+    reply_body: str | None = None
+
+
+class ThreadReplyDraftBatch(BaseModel):
+    """Structured batch wrapper for reply draft outputs."""
+
+    records: list[ThreadReplyDraftRecord]
+
+
+class DraftGenerationRequest(BaseModel):
+    """User-provided inputs gathered in the end-user draft wizard."""
+
+    thread_id: str
+    selected_date: str | None = None
+    skipped_date: bool = False
+    attachment_names: list[str] = Field(default_factory=list)
+    skipped_attachments: bool = False
+    user_instructions: str = ""
+
+
+class GeneratedReplyDraft(BaseModel):
+    """On-demand email draft generated after the wizard is completed."""
+
+    subject: str
+    body: str
+
+
+class SensitiveThreadRecord(BaseModel):
+    """Local-only safe handling record for sensitive threads."""
+
+    thread_id: str
+    markers: list[str] = Field(default_factory=list)
+    summary: str
+    current_status: str
+    next_action: str
+    urgency: UrgencyLevel = "high"
+    needs_action_today: bool = True
+
+
+class SensitiveThreadBatch(BaseModel):
+    """Structured batch wrapper for sensitive-thread handling."""
+
+    records: list[SensitiveThreadRecord]
+
+
 class PipelineError(BaseModel):
     """Structured error details for any workflow step that needed a fallback."""
 
-    step: Literal["triage", "summary", "crm"]
+    step: Literal["triage", "summary", "crm", "reply_draft"]
     message: str
     used_fallback: bool = True
 
@@ -131,12 +225,17 @@ class EmailThread(BaseModel):
     thread_id: str
     source_thread_ids: list[str] = Field(default_factory=list)
     grouping_reason: str = "gmail_thread_id"
+    merge_signals: list[str] = Field(default_factory=list)
+    merge_confidence: MergeConfidence | None = None
     subject: str
     participants: list[str] = Field(default_factory=list)
     message_count: int
     latest_message_date: str
     messages: list[ThreadMessage] = Field(default_factory=list)
     combined_thread_text: str = ""
+    security_status: SecurityStatus = "standard"
+    sensitivity_markers: list[str] = Field(default_factory=list)
+    sensitivity_reason: str | None = None
     latest_message_from_me: bool = False
     latest_message_from_external: bool = False
     latest_message_has_question: bool = False
@@ -149,12 +248,21 @@ class EmailThread(BaseModel):
     predicted_status: str | None = None
     predicted_needs_action_today: bool | None = None
     predicted_next_action: str | None = None
+    should_draft_reply: bool | None = None
+    draft_needs_date: bool = False
+    draft_date_reason: str | None = None
+    draft_needs_attachment: bool = False
+    draft_attachment_reason: str | None = None
+    predicted_reply_subject: str | None = None
+    predicted_reply_body: str | None = None
     crm_contact_name: str | None = None
     crm_company: str | None = None
     crm_opportunity_type: str | None = None
     crm_urgency: UrgencyLevel | None = None
     thread_signature: str = ""
     relevance_bucket: RelevanceBucket | None = None
+    ai_decision: AIDecision | None = None
+    ai_decision_reason: str | None = None
     change_status: ChangeStatus | None = None
     analysis_status: AnalysisStatus | None = None
     last_analysis_at: str | None = None

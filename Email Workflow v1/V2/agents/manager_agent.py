@@ -6,7 +6,9 @@ import os
 import re
 from datetime import datetime, timezone
 
+from agents.classified_agent import ClassifiedThreadAgentRunner
 from agents.crm_agent import CrmAgentRunner
+from agents.reply_draft_agent import ReplyDraftAgentRunner
 from agents.summary_agent import SummaryAgentRunner
 from agents.triage_agent import TriageAgentRunner
 from config import Settings
@@ -15,16 +17,27 @@ from schemas import (
     EmailThread,
     FinalRunOutput,
     PipelineError,
+    SensitiveThreadRecord,
+    SummaryActionItem,
     SummaryOutput,
     ThreadCrmBatch,
     ThreadCrmRecord,
+    ThreadReplyDraftBatch,
+    ThreadReplyDraftRecord,
     ThreadTriageBatch,
     ThreadTriageItem,
 )
 from services.email_service import EmailService
+from services.draft_workflow import (
+    extract_first_name,
+    fallback_reply_plan,
+    fallback_reply_plan_batch,
+)
+from services.progress_state import WorkflowProgressTracker
 from services.thread_cache import (
     apply_cached_predictions,
     build_cached_crm_record,
+    build_cached_reply_draft_record,
     build_cached_triage_item,
     build_summary_signature,
     cache_entry_has_predictions,
@@ -40,18 +53,32 @@ from services.thread_cache import (
 
 
 class TriageManager:
-    """Simple manager that runs fetch -> group -> triage -> summary -> CRM extraction."""
+    """Simple manager that runs fetch -> group -> triage -> CRM -> drafting -> summary."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        progress_tracker: WorkflowProgressTracker | None = None,
+    ) -> None:
         self.settings = settings
+        self.progress_tracker = progress_tracker
         self.email_service = EmailService(settings)
+        self.classified_agent = ClassifiedThreadAgentRunner()
         self.triage_agent = TriageAgentRunner(model=settings.openai_model)
         self.summary_agent = SummaryAgentRunner(model=settings.openai_model)
         self.crm_agent = CrmAgentRunner(model=settings.openai_model)
+        self.reply_draft_agent = ReplyDraftAgentRunner(model=settings.openai_model)
+
+    def _update_progress(self, phase: str, progress: int, detail: str) -> None:
+        """Write a progress update when a tracker is attached."""
+
+        if self.progress_tracker is not None:
+            self.progress_tracker.update(phase, progress, detail)
 
     def run(self) -> FinalRunOutput:
         """Run the full workflow in a deterministic order."""
 
+        self._update_progress("fetching_threads", 8, "Fetching Gmail threads...")
         if self.settings.processing_mode == "ai" and not os.getenv("OPENAI_API_KEY"):
             raise ValueError(
                 "OPENAI_API_KEY is missing. Add it to .env before running the app."
@@ -61,9 +88,22 @@ class TriageManager:
             max_results=self.settings.gmail_max_results
         )
         total_messages = sum(thread.message_count for thread in threads)
+        self._update_progress(
+            "grouping_threads",
+            22,
+            f"Fetched {len(threads)} thread(s). Grouping conversations...",
+        )
         candidate_agent_threads = self.email_service.select_threads_for_ai(threads)
         cache_payload = load_thread_cache(self.settings.resolved_thread_cache_path)
         run_started_at = datetime.now(timezone.utc).isoformat()
+        sensitive_threads = [thread for thread in threads if thread.security_status == "classified"]
+        self._update_progress(
+            "checking_sensitive_and_cache",
+            34,
+            "Checking sensitive threads and reusable cached analysis...",
+        )
+        sensitive_records = self.classified_agent.run(sensitive_threads).records
+        self._apply_sensitive_predictions(threads=threads, sensitive_records=sensitive_records)
 
         agent_threads_by_id = {
             thread.thread_id: thread for thread in candidate_agent_threads
@@ -71,6 +111,8 @@ class TriageManager:
         fresh_agent_threads: list[AgentThread] = []
         cached_triage_items: list[ThreadTriageItem] = []
         cached_crm_records: list[ThreadCrmRecord] = []
+        cached_reply_draft_records: list[ThreadReplyDraftRecord] = []
+        draft_refresh_threads: list[EmailThread] = []
 
         for thread in threads:
             thread.thread_signature = compute_thread_signature(thread)
@@ -81,6 +123,11 @@ class TriageManager:
             )
             if cache_entry.get("last_analysis_at"):
                 thread.last_analysis_at = str(cache_entry.get("last_analysis_at"))
+
+            if thread.security_status == "classified":
+                thread.analysis_status = "guardrailed"
+                thread.last_analysis_at = run_started_at
+                continue
 
             if not thread.included_in_ai:
                 if thread.relevance_bucket == "noise":
@@ -98,10 +145,17 @@ class TriageManager:
                 thread.analysis_status = "cached"
                 cached_triage_item = build_cached_triage_item(thread.thread_id, cache_entry)
                 cached_crm_record = build_cached_crm_record(thread.thread_id, cache_entry)
+                cached_reply_draft_record = build_cached_reply_draft_record(
+                    thread.thread_id, cache_entry
+                )
                 if cached_triage_item is not None:
                     cached_triage_items.append(cached_triage_item)
                 if cached_crm_record is not None:
                     cached_crm_records.append(cached_crm_record)
+                if cached_reply_draft_record is not None:
+                    cached_reply_draft_records.append(cached_reply_draft_record)
+                else:
+                    draft_refresh_threads.append(thread)
                 continue
 
             thread.analysis_status = "fresh"
@@ -143,6 +197,12 @@ class TriageManager:
             )
 
         if not covered_threads:
+            self._update_progress(
+                "saving_cache",
+                88,
+                "No AI analysis needed. Saving refreshed queue...",
+            )
+            sensitive_count = len(sensitive_threads)
             for thread in threads:
                 upsert_thread_cache_entry(
                     cache_payload=cache_payload,
@@ -165,12 +225,44 @@ class TriageManager:
                 ),
                 threads=threads,
                 summary=SummaryOutput(
-                    top_priorities=[],
-                    executive_summary=(
-                        "No threads landed in the auto-analysis buckets for this run. "
-                        "The review UI still shows maybe and noise threads."
+                    top_priorities=(
+                        [
+                            f"{thread.subject}: sensitive/classified hold for manual review."
+                            for thread in sensitive_threads[:5]
+                        ]
+                        if sensitive_threads
+                        else []
                     ),
-                    next_actions=[],
+                    executive_summary=(
+                        (
+                            f"{sensitive_count} sensitive/classified thread(s) were held out "
+                            "of AI and need manual review. The review UI still shows them "
+                            "alongside maybe and noise threads."
+                        )
+                        if sensitive_threads
+                        else (
+                            "No threads landed in the auto-analysis buckets for this run. "
+                            "The review UI still shows maybe and noise threads."
+                        )
+                    ),
+                    next_actions=(
+                        [
+                            "Review sensitive/classified threads manually outside the AI workflow."
+                        ]
+                        if sensitive_threads
+                        else []
+                    ),
+                    action_items=(
+                        [
+                            SummaryActionItem(
+                                thread_id=thread.thread_id,
+                                label=f"Review sensitive/classified hold: {thread.subject}",
+                            )
+                            for thread in sensitive_threads[:5]
+                        ]
+                        if sensitive_threads
+                        else []
+                    ),
                 ),
                 errors=[],
             )
@@ -181,6 +273,11 @@ class TriageManager:
         fresh_crm_records: list[ThreadCrmRecord] = []
 
         if fresh_agent_threads:
+            self._update_progress(
+                "triage_and_crm",
+                52,
+                f"Running AI triage on {len(fresh_agent_threads)} conversation(s)...",
+            )
             if self.settings.processing_mode == "fallback":
                 print("[manager] fallback mode selected. Skipping OpenAI calls.")
                 fresh_triage_items = [
@@ -231,6 +328,50 @@ class TriageManager:
             crm_records=crm_batch.records,
         )
 
+        reply_draft_batch = ThreadReplyDraftBatch(records=list(cached_reply_draft_records))
+        draft_target_threads = list(fresh_threads) + draft_refresh_threads
+        if draft_target_threads:
+            self._update_progress(
+                "reply_drafts",
+                68,
+                f"Preparing reply suggestions for {len(draft_target_threads)} conversation(s)...",
+            )
+            fresh_reply_draft_records: list[ThreadReplyDraftRecord] = []
+            if self.settings.processing_mode == "fallback":
+                fresh_reply_draft_records = self._fallback_reply_draft_batch(
+                    draft_target_threads
+                ).records
+                errors.append(
+                    PipelineError(
+                        step="reply_draft",
+                        message="Processing mode was set to fallback.",
+                        used_fallback=True,
+                    )
+                )
+            else:
+                try:
+                    fresh_reply_draft_records = self.reply_draft_agent.run(
+                        draft_target_threads
+                    ).records
+                except RuntimeError as exc:
+                    print(f"[reply_draft] failed. Using fallback drafting. {exc}")
+                    errors.append(
+                        PipelineError(
+                            step="reply_draft",
+                            message=str(exc),
+                            used_fallback=True,
+                        )
+                    )
+                    fresh_reply_draft_records = self._fallback_reply_draft_batch(
+                        draft_target_threads
+                    ).records
+
+            reply_draft_batch = ThreadReplyDraftBatch(
+                records=reply_draft_batch.records + fresh_reply_draft_records
+            )
+
+        self._apply_reply_drafts(threads=threads, draft_records=reply_draft_batch.records)
+
         covered_agent_threads = [
             agent_threads_by_id[thread.thread_id]
             for thread in covered_threads
@@ -240,8 +381,18 @@ class TriageManager:
         cached_summary = load_cached_summary(cache_payload, coverage_signature)
 
         if cached_summary is not None:
+            self._update_progress(
+                "summary",
+                82,
+                "Reusing cached executive summary...",
+            )
             summary = cached_summary
         elif self.settings.processing_mode == "fallback":
+            self._update_progress(
+                "summary",
+                82,
+                "Building fallback executive summary...",
+            )
             summary = self._fallback_summary(triage_batch.items)
             errors.append(
                 PipelineError(
@@ -251,6 +402,11 @@ class TriageManager:
                 )
             )
         else:
+            self._update_progress(
+                "summary",
+                82,
+                "Building executive summary and top actions...",
+            )
             try:
                 summary = self.summary_agent.run(covered_agent_threads, triage_batch.items)
             except RuntimeError as exc:
@@ -266,6 +422,11 @@ class TriageManager:
             summary=summary,
             cached_at=run_started_at,
         )
+        self._update_progress(
+            "saving_cache",
+            92,
+            "Saving cache and final workflow state...",
+        )
         for thread in threads:
             upsert_thread_cache_entry(
                 cache_payload=cache_payload,
@@ -273,6 +434,32 @@ class TriageManager:
                 seen_at=run_started_at,
             )
         save_thread_cache(cache_payload, self.settings.resolved_thread_cache_path)
+
+        final_summary = summary.model_copy(deep=True)
+        if sensitive_threads:
+            sensitive_notice = (
+                f"{len(sensitive_threads)} sensitive/classified thread(s) were held out "
+                "of AI and shown separately for manual review."
+            )
+            final_summary.top_priorities = [sensitive_notice, *final_summary.top_priorities][:5]
+            final_summary.executive_summary = (
+                f"{sensitive_notice}\n{final_summary.executive_summary}".strip()
+            )
+            final_summary.next_actions = [
+                "Review the sensitive/classified hold section before acting on AI outputs.",
+                *final_summary.next_actions,
+            ][:5]
+            sensitive_action_items = [
+                SummaryActionItem(
+                    thread_id=thread.thread_id,
+                    label="Review sensitive/classified hold",
+                )
+                for thread in sensitive_threads[:5]
+            ]
+            final_summary.action_items = [
+                *sensitive_action_items,
+                *final_summary.action_items,
+            ][:5]
 
         return FinalRunOutput(
             thread_count=len(threads),
@@ -288,7 +475,7 @@ class TriageManager:
                 [thread for thread in threads if thread.change_status == "changed"]
             ),
             threads=threads,
-            summary=summary,
+            summary=final_summary,
             errors=errors,
         )
 
@@ -320,6 +507,59 @@ class TriageManager:
                 thread.crm_company = crm_record.company
                 thread.crm_opportunity_type = crm_record.opportunity_type
                 thread.crm_urgency = crm_record.urgency
+
+    def _apply_sensitive_predictions(
+        self,
+        threads: list[EmailThread],
+        sensitive_records: list[SensitiveThreadRecord],
+    ) -> None:
+        """Apply local safe-handling outputs to sensitive threads."""
+
+        sensitive_map = {record.thread_id: record for record in sensitive_records}
+
+        for thread in threads:
+            sensitive_record = sensitive_map.get(thread.thread_id)
+            if sensitive_record is None:
+                continue
+
+            thread.predicted_category = "Classified / Sensitive"
+            thread.predicted_urgency = sensitive_record.urgency
+            thread.predicted_summary = sensitive_record.summary
+            thread.predicted_status = sensitive_record.current_status
+            thread.predicted_needs_action_today = sensitive_record.needs_action_today
+            thread.predicted_next_action = sensitive_record.next_action
+            thread.should_draft_reply = False
+            thread.draft_needs_date = False
+            thread.draft_date_reason = None
+            thread.draft_needs_attachment = False
+            thread.draft_attachment_reason = None
+            thread.predicted_reply_subject = None
+            thread.predicted_reply_body = None
+            thread.crm_contact_name = None
+            thread.crm_company = None
+            thread.crm_opportunity_type = None
+            thread.crm_urgency = "unknown"
+
+    def _apply_reply_drafts(
+        self,
+        threads: list[EmailThread],
+        draft_records: list[ThreadReplyDraftRecord],
+    ) -> None:
+        """Merge reply draft suggestions back onto the stored thread records."""
+
+        draft_map = {record.thread_id: record for record in draft_records}
+
+        for thread in threads:
+            draft_record = draft_map.get(thread.thread_id)
+            if draft_record is None:
+                continue
+            thread.should_draft_reply = draft_record.should_draft_reply
+            thread.draft_needs_date = bool(draft_record.needs_date)
+            thread.draft_date_reason = draft_record.date_reason
+            thread.draft_needs_attachment = bool(draft_record.needs_attachment)
+            thread.draft_attachment_reason = draft_record.attachment_reason
+            thread.predicted_reply_subject = None
+            thread.predicted_reply_body = None
 
     def _fallback_triage(self, thread: AgentThread) -> ThreadTriageItem:
         text = f"{thread.subject} {thread.combined_thread_text}".lower()
@@ -396,6 +636,14 @@ class TriageManager:
             for item in triage_items
             if item.needs_action_today
         ][:5]
+        action_items = [
+            SummaryActionItem(
+                thread_id=item.thread_id,
+                label=f"Review {item.category.lower()} thread: {item.summary}",
+            )
+            for item in triage_items
+            if item.needs_action_today
+        ][:5]
 
         return SummaryOutput(
             top_priorities=priorities,
@@ -405,6 +653,7 @@ class TriageManager:
                 "The rest are informational or lower priority."
             ),
             next_actions=next_actions,
+            action_items=action_items,
         )
 
     def _fallback_crm_batch(self, threads: list[AgentThread]) -> ThreadCrmBatch:
@@ -445,6 +694,14 @@ class TriageManager:
             urgency=urgency,
         )
 
+    def _fallback_reply_draft_batch(
+        self, threads: list[EmailThread]
+    ) -> ThreadReplyDraftBatch:
+        return fallback_reply_plan_batch(threads)
+
+    def _fallback_reply_draft(self, thread: EmailThread) -> ThreadReplyDraftRecord:
+        return fallback_reply_plan(thread)
+
     def _short_summary(self, thread: AgentThread, fallback: str | None = None) -> str:
         latest_message = thread.messages[-1] if thread.messages else None
         source = (
@@ -462,3 +719,9 @@ class TriageManager:
         parts = [part for part in match.group(1).split(".") if part]
         company_part = parts[-2] if len(parts) >= 2 else parts[0]
         return company_part.replace("-", " ").title()
+
+    def _should_generate_reply_draft(self, thread: EmailThread) -> bool:
+        return fallback_reply_plan(thread).should_draft_reply
+
+    def _extract_first_name(self, value: str) -> str:
+        return extract_first_name(value)
