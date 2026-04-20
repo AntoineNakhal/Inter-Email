@@ -1,0 +1,359 @@
+"""Thread repository and mapping helpers."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from backend.domain.thread import (
+    AnalysisStatus,
+    DraftDocument,
+    EmailThread,
+    ReviewDecision,
+    SeenState,
+    ThreadAnalysis,
+    ThreadMessage,
+)
+from backend.persistence.models.draft import DraftModel
+from backend.persistence.models.review import ReviewDecisionModel
+from backend.persistence.models.thread import (
+    EmailThreadModel,
+    ThreadAnalysisModel,
+    ThreadMessageModel,
+    ThreadStateModel,
+)
+
+
+class ThreadRepository:
+    """Repository for thread, analysis, and seen-state persistence."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list_threads(self) -> list[EmailThread]:
+        query = (
+            select(EmailThreadModel)
+            .options(
+                selectinload(EmailThreadModel.messages),
+                selectinload(EmailThreadModel.analysis),
+                selectinload(EmailThreadModel.review),
+                selectinload(EmailThreadModel.state),
+                selectinload(EmailThreadModel.drafts),
+            )
+            .order_by(EmailThreadModel.latest_message_date.desc())
+        )
+        models = self.session.scalars(query).all()
+        return [self._to_domain(model) for model in models]
+
+    def get_thread(self, external_thread_id: str) -> EmailThread | None:
+        query = (
+            select(EmailThreadModel)
+            .where(EmailThreadModel.external_thread_id == external_thread_id)
+            .options(
+                selectinload(EmailThreadModel.messages),
+                selectinload(EmailThreadModel.analysis),
+                selectinload(EmailThreadModel.review),
+                selectinload(EmailThreadModel.state),
+                selectinload(EmailThreadModel.drafts),
+            )
+        )
+        model = self.session.scalar(query)
+        return self._to_domain(model) if model else None
+
+    def upsert_thread(
+        self,
+        thread: EmailThread,
+        message_progress_callback: Callable[[int, int], None] | None = None,
+    ) -> EmailThread:
+        model = self.session.scalar(
+            select(EmailThreadModel).where(
+                EmailThreadModel.external_thread_id == thread.external_thread_id
+            )
+        )
+        if model is None:
+            model = EmailThreadModel(external_thread_id=thread.external_thread_id)
+            self.session.add(model)
+
+        previous_signature = model.signature
+        next_signature = thread.signature or thread.compute_signature()
+        signature_unchanged = (
+            bool(previous_signature)
+            and previous_signature == next_signature
+            and model.analysis is not None
+        )
+
+        model.subject = thread.subject
+        model.participants_json = json.dumps(thread.participants, ensure_ascii=False)
+        model.message_count = thread.message_count
+        model.latest_message_date = thread.latest_message_date
+        model.combined_thread_text = thread.combined_thread_text
+        model.security_status = thread.security_status.value
+        model.sensitivity_markers_json = json.dumps(
+            thread.sensitivity_markers,
+            ensure_ascii=False,
+        )
+        model.latest_message_from_me = thread.latest_message_from_me
+        model.latest_message_from_external = thread.latest_message_from_external
+        model.latest_message_has_question = thread.latest_message_has_question
+        model.latest_message_has_action_request = thread.latest_message_has_action_request
+        model.waiting_on_us = thread.waiting_on_us
+        model.resolved_or_closed = thread.resolved_or_closed
+        model.relevance_score = thread.relevance_score
+        model.relevance_bucket = (
+            thread.relevance_bucket.value if thread.relevance_bucket else None
+        )
+        model.included_in_ai = thread.included_in_ai
+        model.ai_decision = thread.ai_decision
+        model.ai_decision_reason = thread.ai_decision_reason
+        model.analysis_status = (
+            AnalysisStatus.COMPLETE.value
+            if signature_unchanged
+            else thread.analysis_status.value
+        )
+        model.signature = next_signature
+        model.last_synced_at = datetime.now(timezone.utc)
+
+        existing_messages = {
+            message.external_message_id: message
+            for message in model.messages
+        }
+        seen_message_ids: set[str] = set()
+        total_messages = len(thread.messages)
+        for index, message in enumerate(thread.messages, start=1):
+            if message.external_message_id in seen_message_ids:
+                continue
+
+            seen_message_ids.add(message.external_message_id)
+            message_model = existing_messages.pop(message.external_message_id, None)
+            if message_model is None:
+                message_model = ThreadMessageModel(
+                    external_message_id=message.external_message_id,
+                )
+                model.messages.append(message_model)
+
+            message_model.sender = message.sender
+            message_model.recipients_json = json.dumps(
+                message.recipients,
+                ensure_ascii=False,
+            )
+            message_model.subject = message.subject
+            message_model.sent_at = message.sent_at
+            message_model.snippet = message.snippet
+            message_model.cleaned_body = message.cleaned_body
+            message_model.label_ids_json = json.dumps(
+                message.label_ids,
+                ensure_ascii=False,
+            )
+            if message_progress_callback is not None:
+                message_progress_callback(index, total_messages)
+
+        for stale_message in list(model.messages):
+            if stale_message.external_message_id not in seen_message_ids:
+                model.messages.remove(stale_message)
+
+        self.session.flush()
+        return self._to_domain(model)
+
+    def delete_threads(
+        self,
+        external_thread_ids: list[str],
+    ) -> None:
+        normalized_ids = [
+            str(thread_id).strip()
+            for thread_id in external_thread_ids
+            if str(thread_id or "").strip()
+        ]
+        if not normalized_ids:
+            return
+
+        models = self.session.scalars(
+            select(EmailThreadModel).where(
+                EmailThreadModel.external_thread_id.in_(normalized_ids)
+            )
+        ).all()
+        for model in models:
+            self.session.delete(model)
+        self.session.flush()
+
+    def save_analysis(
+        self,
+        external_thread_id: str,
+        analysis: ThreadAnalysis,
+    ) -> EmailThread:
+        model = self._require_thread_model(external_thread_id)
+        if model.analysis is None:
+            model.analysis = ThreadAnalysisModel()
+
+        model.analysis.category = analysis.category.value
+        model.analysis.urgency = analysis.urgency.value
+        model.analysis.summary = analysis.summary
+        model.analysis.current_status = analysis.current_status
+        model.analysis.next_action = analysis.next_action
+        model.analysis.needs_action_today = analysis.needs_action_today
+        model.analysis.should_draft_reply = analysis.should_draft_reply
+        model.analysis.draft_needs_date = analysis.draft_needs_date
+        model.analysis.draft_date_reason = analysis.draft_date_reason
+        model.analysis.draft_needs_attachment = analysis.draft_needs_attachment
+        model.analysis.draft_attachment_reason = analysis.draft_attachment_reason
+        model.analysis.crm_contact_name = analysis.crm_contact_name
+        model.analysis.crm_company = analysis.crm_company
+        model.analysis.crm_opportunity_type = analysis.crm_opportunity_type
+        model.analysis.crm_urgency = (
+            analysis.crm_urgency.value if analysis.crm_urgency else None
+        )
+        model.analysis.provider_name = analysis.provider_name
+        model.analysis.model_name = analysis.model_name
+        model.analysis.prompt_version = analysis.prompt_version
+        model.analysis.used_fallback = analysis.used_fallback
+        model.analysis.analyzed_at = analysis.analyzed_at
+        model.analysis.thread = model
+        model.analysis_status = AnalysisStatus.COMPLETE.value
+        model.last_analyzed_at = analysis.analyzed_at
+        self.session.flush()
+        return self.get_thread(external_thread_id) or self._to_domain(model)
+
+    def mark_seen(self, external_thread_id: str, seen: bool, version: str) -> EmailThread:
+        model = self._require_thread_model(external_thread_id)
+        if model.state is None:
+            model.state = ThreadStateModel()
+        model.state.seen = seen
+        model.state.seen_version = version
+        model.state.seen_at = datetime.now(timezone.utc) if seen else None
+        self.session.flush()
+        return self.get_thread(external_thread_id) or self._to_domain(model)
+
+    def _require_thread_model(self, external_thread_id: str) -> EmailThreadModel:
+        model = self.session.scalar(
+            select(EmailThreadModel).where(
+                EmailThreadModel.external_thread_id == external_thread_id
+            )
+        )
+        if model is None:
+            raise ValueError(f"Thread `{external_thread_id}` was not found.")
+        return model
+
+    def _to_domain(self, model: EmailThreadModel) -> EmailThread:
+        latest_draft = model.drafts[0] if model.drafts else None
+        return EmailThread(
+            external_thread_id=model.external_thread_id,
+            source_thread_ids=[model.external_thread_id],
+            subject=model.subject,
+            participants=_load_json_list(model.participants_json),
+            message_count=model.message_count,
+            latest_message_date=model.latest_message_date,
+            messages=[
+                ThreadMessage(
+                    external_message_id=message.external_message_id,
+                    sender=message.sender,
+                    recipients=_load_json_list(message.recipients_json),
+                    subject=message.subject,
+                    sent_at=message.sent_at,
+                    snippet=message.snippet,
+                    cleaned_body=message.cleaned_body,
+                    label_ids=_load_json_list(message.label_ids_json),
+                )
+                for message in model.messages
+            ],
+            combined_thread_text=model.combined_thread_text,
+            security_status=model.security_status,
+            sensitivity_markers=_load_json_list(model.sensitivity_markers_json),
+            latest_message_from_me=model.latest_message_from_me,
+            latest_message_from_external=model.latest_message_from_external,
+            latest_message_has_question=model.latest_message_has_question,
+            latest_message_has_action_request=model.latest_message_has_action_request,
+            waiting_on_us=model.waiting_on_us,
+            resolved_or_closed=model.resolved_or_closed,
+            relevance_score=model.relevance_score,
+            relevance_bucket=model.relevance_bucket,
+            included_in_ai=model.included_in_ai,
+            ai_decision=model.ai_decision,
+            ai_decision_reason=model.ai_decision_reason,
+            analysis_status=model.analysis_status,
+            signature=model.signature,
+            last_synced_at=model.last_synced_at,
+            last_analyzed_at=model.last_analyzed_at,
+            analysis=_to_analysis(model.analysis),
+            seen_state=_to_seen_state(model.state),
+            review=_to_review(model.review),
+            latest_draft=_to_draft(latest_draft),
+        )
+
+
+def _load_json_list(payload: str | None) -> list[str]:
+    if not payload:
+        return []
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        return []
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _to_analysis(model: ThreadAnalysisModel | None) -> ThreadAnalysis | None:
+    if model is None:
+        return None
+    return ThreadAnalysis(
+        category=model.category,
+        urgency=model.urgency,
+        summary=model.summary,
+        current_status=model.current_status,
+        next_action=model.next_action,
+        needs_action_today=model.needs_action_today,
+        should_draft_reply=model.should_draft_reply,
+        draft_needs_date=model.draft_needs_date,
+        draft_date_reason=model.draft_date_reason,
+        draft_needs_attachment=model.draft_needs_attachment,
+        draft_attachment_reason=model.draft_attachment_reason,
+        crm_contact_name=model.crm_contact_name,
+        crm_company=model.crm_company,
+        crm_opportunity_type=model.crm_opportunity_type,
+        crm_urgency=model.crm_urgency,
+        provider_name=model.provider_name,
+        model_name=model.model_name,
+        prompt_version=model.prompt_version,
+        used_fallback=model.used_fallback,
+        analyzed_at=model.analyzed_at,
+    )
+
+
+def _to_review(model: ReviewDecisionModel | None) -> ReviewDecision | None:
+    if model is None:
+        return None
+    return ReviewDecision(
+        queue_belongs=model.queue_belongs,
+        merge_correct=model.merge_correct,
+        summary_useful=model.summary_useful,
+        next_action_useful=model.next_action_useful,
+        draft_useful=model.draft_useful,
+        crm_useful=model.crm_useful,
+        notes=model.notes,
+        improvement_tags=_load_json_list(model.improvement_tags_json),
+        updated_at=model.reviewed_at,
+    )
+
+
+def _to_seen_state(model: ThreadStateModel | None) -> SeenState | None:
+    if model is None:
+        return None
+    return SeenState(
+        seen=model.seen,
+        seen_version=model.seen_version,
+        seen_at=model.seen_at,
+    )
+
+
+def _to_draft(model: DraftModel | None) -> DraftDocument | None:
+    if model is None:
+        return None
+    return DraftDocument(
+        subject=model.subject,
+        body=model.body,
+        provider_name=model.provider_name,
+        model_name=model.model_name,
+        used_fallback=model.used_fallback,
+        created_at=model.created_at,
+    )

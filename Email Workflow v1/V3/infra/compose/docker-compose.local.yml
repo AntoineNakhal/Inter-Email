@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    env_file:
+      - ../../.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../data:/app/data
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: infra/docker/frontend.Dockerfile
+    env_file:
+      - ../../.env
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api

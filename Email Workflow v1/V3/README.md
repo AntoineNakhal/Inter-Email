@@ -1,0 +1,87 @@
+# V3 Product Architecture
+
+V3 is the first product-oriented version of the Inter-Op email workflow app.
+
+The goal is to keep the system small enough for a single team to build, while separating it enough that it can move from:
+
+- local development with OpenAI
+- to a stable internal product
+- to self-hosted AI later
+- to self-hosted or cloud deployment without a rewrite
+
+## Core Shape
+
+V3 should have two real runtime applications and several internal support layers:
+
+- `frontend/`: the user-facing web app
+- `api/`: the HTTP entrypoint and request/response boundary
+- `backend/`: business logic, orchestration, provider adapters, and persistence code
+- `shared/`: API contract artifacts such as OpenAPI
+- `infra/`: deployment, Docker, and environment setup
+- `data/`: local runtime storage and mounted volumes
+
+`api/` and `backend/` are separate code layers, but they should ship together as one backend service for now. That keeps deployment simple while preserving clean boundaries.
+
+## Recommended Tree
+
+```text
+V3/
+  README.md
+  .env.example
+  docs/
+    architecture.md
+  frontend/
+    README.md
+    src/
+      app/
+      routes/
+      components/
+      features/
+      hooks/
+      lib/
+      api/
+      types/
+  api/
+    README.md
+    app/
+      dependencies/
+      routers/
+      schemas/
+    tests/
+  backend/
+    README.md
+    core/
+    application/
+    domain/
+    providers/
+      ai/
+      gmail/
+    persistence/
+      models/
+      repositories/
+      migrations/
+    jobs/
+  shared/
+    README.md
+    openapi/
+  infra/
+    README.md
+    docker/
+    compose/
+  data/
+    README.md
+    sqlite/
+    cache/
+    exports/
+```
+
+## Practical Recommendations
+
+- Keep one frontend app, not separate review and end-user codebases.
+- Keep one backend API service, not multiple networked microservices.
+- Move all Gmail, AI, database, and cache access behind adapters or repositories.
+- Use OpenAI first through a provider interface you own.
+- Use SQLite first through repositories so Postgres later only changes config and infra.
+- Use OpenAPI as the shared contract between frontend and backend.
+
+More detail is in [docs/architecture.md](/C:/Users/antoi/OneDrive/Bureau/Inter-Email/Email%20Workflow%20v1/V3/docs/architecture.md).

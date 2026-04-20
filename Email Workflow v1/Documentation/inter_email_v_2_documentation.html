@@ -274,9 +274,10 @@
       <p>Functional documentation and technical overview.</p>
       <nav>
         <a href="#overview">Overview</a>
-        <a href="#goals">Goals</a>
+        <a href="#project-brief">Brief</a>
         <a href="#architecture">Architecture</a>
         <a href="#flow">Application Flow</a>
+        <a href="#class-chart">Class Chart</a>
         <a href="#ui">UI Surfaces</a>
         <a href="#ai">AI Decision Layer</a>
         <a href="#drafting">Draft Generation Flow</a>
@@ -306,24 +307,132 @@
         </div>
       </div>
 
-      <section id="goals">
-        <h3>1. Product Goals</h3>
-        <div class="grid-3">
+      <section id="project-brief">
+        <h3>1. Project Brief</h3>
+        <p style="color: var(--muted); max-width: 920px; margin-top: -6px; margin-bottom: 18px;">
+          This section summarizes the functional intent, operational goals, and delivery constraints of the Inter-Op
+          email workflow project.
+        </p>
+
+        <div class="grid-2">
           <div class="card">
-            <h4>Operational value</h4>
-            <p>Help a PO or non-technical end user quickly find the most important conversations without reading every
-              single email.</p>
-          </div>
-          <div class="card">
-            <h4>Trustworthy assistance</h4>
-            <p>Use AI to summarize, classify, and suggest actions while keeping manual review and decision-making in
-              user control.</p>
-          </div>
-          <div class="card">
-            <h4>Future automation base</h4>
-            <p>Structure outputs so the system can later integrate with CRM, tracking, and deeper workflow automation.
+            <h4>Project Context</h4>
+            <p>
+              Inter-Email V2 is an AI-assisted operational email workflow system designed to help a small organization
+              process Gmail conversations
+              more efficiently. The application is intended to reduce inbox overload, improve prioritization, and
+              support human-in-the-loop decision-making
+              through thread summaries, urgency classification, recommended actions, and guided draft generation.
             </p>
           </div>
+
+          <div class="card">
+            <h4>Main Purpose</h4>
+            <p>
+              The purpose of the solution is not to replace human judgment, but to help the user quickly identify which
+              conversations matter,
+              understand them faster, and act on them with more consistency. The system is built for internal
+              operational use and is designed
+              to remain practical, trustworthy, and easy to use for non-technical users.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top: 16px;">
+          <div class="card">
+            <h4>Business Objectives</h4>
+            <ul>
+              <li>Reduce the time required to review incoming email conversations.</li>
+              <li>Help the user focus first on the most relevant or urgent threads.</li>
+              <li>Support clearer operational follow-up and response planning.</li>
+              <li>Create structured outputs that can later support CRM integration.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h4>User Objectives</h4>
+            <ul>
+              <li>Give the PO a simple daily queue of useful conversations.</li>
+              <li>Provide summaries without forcing full-thread reading every time.</li>
+              <li>Allow safe review before using any AI-generated draft response.</li>
+              <li>Keep the interface understandable for non-technical end users.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h4>Technical Objectives</h4>
+            <ul>
+              <li>Process emails at the thread level instead of the single-message level.</li>
+              <li>Preserve child-message visibility for transparency and trust.</li>
+              <li>Store structured JSON outputs for review, ranking, and reuse.</li>
+              <li>Support future extension toward CRM and workflow automation.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 16px;">
+          <div class="card">
+            <h4>Functional Requirements</h4>
+            <ul>
+              <li>The system must fetch Gmail messages and group them into threads.</li>
+              <li>The system must summarize each thread as a whole conversation.</li>
+              <li>The system must classify urgency, category, and suggested next action at thread level.</li>
+              <li>The system must expose child messages in the detail view.</li>
+              <li>The system must provide an internal review UI for technical validation.</li>
+              <li>The system must provide a cleaner end-user UI for daily use.</li>
+              <li>The user must be able to mark threads as seen.</li>
+              <li>Seen threads must stay hidden until the thread changes again.</li>
+              <li>The system must allow a guided draft creation flow instead of always showing a pre-generated response.
+              </li>
+              <li>The draft flow must support conditional steps such as date input, attachment handling, keyword
+                guidance, and final preview.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h4>Non-Functional Requirements</h4>
+            <ul>
+              <li>The interface must remain simple, readable, and operationally clear.</li>
+              <li>The system must support human-in-the-loop review at all important stages.</li>
+              <li>The application must make AI decisions more transparent through explicit fields and diagnostics.</li>
+              <li>The queue behavior must remain predictable over time.</li>
+              <li>The system must be maintainable and structured for iterative improvement.</li>
+              <li>The solution should be lightweight enough for practical internal deployment and testing.</li>
+              <li>The architecture should be extensible toward future automation and CRM handoff.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 16px;">
+          <div class="card">
+            <h4>Constraints</h4>
+            <ul>
+              <li>The project is being built in an internship context with limited weekly development time.</li>
+              <li>The solution must stay realistic for a small organization.</li>
+              <li>Human approval is required before sending or relying on generated outputs.</li>
+              <li>The system should prioritize usefulness and trust over aggressive automation.</li>
+              <li>The product must evolve incrementally, with validation before broader automation.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h4>Acceptance Criteria</h4>
+            <ul>
+              <li>The system correctly groups Gmail messages into operational threads.</li>
+              <li>The recommended queue surfaces useful conversations in a meaningful order.</li>
+              <li>The end-user can open thread details reliably and understand what to do next.</li>
+              <li>The seen-state logic works consistently and only resurfaces changed threads.</li>
+              <li>The draft workflow supports guided generation instead of passive pre-drafting.</li>
+              <li>The internal review surface provides enough visibility to evaluate trust and errors.</li>
+              <li>The structured outputs are stable enough to support later CRM-related work.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="note" style="margin-top: 16px;">
+          This project is currently in a late refinement / early operationalization phase: the core workflow is usable,
+          but ranking quality,
+          trust clarity, and long-term operational usefulness still need validation before deeper automation.
         </div>
       </section>
 
@@ -778,8 +887,10 @@
 
         <div class="flow-wrap">
           <button id="flow-back-btn" class="flow-back-btn" type="button">Back to overview</button>
-          <button id="flow-prev-btn" class="flow-nav-btn flow-nav-prev" type="button" aria-label="Open previous workflow">&#8249;</button>
-          <button id="flow-next-btn" class="flow-nav-btn flow-nav-next" type="button" aria-label="Open next workflow">&#8250;</button>
+          <button id="flow-prev-btn" class="flow-nav-btn flow-nav-prev" type="button"
+            aria-label="Open previous workflow">&#8249;</button>
+          <button id="flow-next-btn" class="flow-nav-btn flow-nav-next" type="button"
+            aria-label="Open next workflow">&#8250;</button>
 
           <svg id="flow-svg" class="flow-svg" viewBox="0 0 1250 720" preserveAspectRatio="xMidYMid meet" role="img"
             aria-label="Interactive application flow chart">
@@ -1043,6 +1154,11 @@
               nextBtn.disabled = !hasFlow || index === flowOrder.length - 1;
             }
 
+            function setNavArrowsVisible(visible) {
+              prevBtn.hidden = !visible;
+              nextBtn.hidden = !visible;
+            }
+
             function stepFlow(direction) {
               const index = flowOrder.indexOf(currentFlowId);
               if (index < 0) {
@@ -1061,17 +1177,17 @@
             // Example: "gmail_fetch:ok->fail:No": { x: -16, y: -10 }
             const EDGE_LABEL_OFFSETS = {
               // Gmail Fetch
-              "gmail_fetch:ok->norm:Yes": { x: -30, y: 0 },
-              "gmail_fetch:ok->fail:No": { x: 0, y: 0 },
-              "gmail_fetch:meta->out:Yes": { x: -30, y: 0 },
-              "gmail_fetch:meta->safe:No/Partial": { x: 0, y: 45 },
+              "gmail_fetch:ok->norm:Yes": { x: 0, y: -10 },
+              "gmail_fetch:ok->fail:No": { x: -10, y: 0 },
+              "gmail_fetch:meta->out:Yes": { x: -10, y: 0 },
+              "gmail_fetch:meta->safe:No/Partial": { x: -35, y: 20 },
 
               // Thread Grouping
-              "thread_grouping:hasId->join:Yes": { x: 0, y: 0 },
-              "thread_grouping:hasId->solo:No": { x: 0, y: 0 },
-              "thread_grouping:merge->mergeYes:Yes": { x: 0, y: 0 },
-              "thread_grouping:merge->mergeNo:No": { x: 0, y: 0 },
-              "thread_grouping:merge->mergeMaybe:Maybe": { x: 0, y: 0 },
+              "thread_grouping:hasId->join:Yes": { x: -50, y: 0 },
+              "thread_grouping:hasId->solo:No": { x: -50, y: 0 },
+              "thread_grouping:merge->mergeYes:Yes": { x: -10, y: 0 },
+              "thread_grouping:merge->mergeNo:No": { x: -25, y: 0 },
+              "thread_grouping:merge->mergeMaybe:Maybe": { x: -15, y: 0 },
 
               // AI Analysis
               "ai_analysis:gate->hold:Yes": { x: 0, y: 0 },
@@ -1763,6 +1879,8 @@
                 return;
               }
 
+              setNavArrowsVisible(true);
+
               currentFlowId = flowId;
               setSvgView(detailViewFor(flow));
               clearDetail();
@@ -1804,12 +1922,15 @@
               clearDetail();
               setSvgView(OVERVIEW_VIEW);
               section.classList.remove("flow-mode-detail");
+              setNavArrowsVisible(false);
               updateFlowNavButtons("");
               overviewNodes.forEach(function (nodeEl) {
                 nodeEl.classList.remove("is-active");
                 nodeEl.classList.remove("is-dim");
               });
             }
+
+            setNavArrowsVisible(false);
 
             overviewNodes.forEach(function (nodeEl) {
               const open = function () {
@@ -1848,6 +1969,436 @@
             });
           })();
         </script>
+      </section>
+
+      <section id="class-chart">
+        <h3>Class Chart</h3>
+        <style>
+          #class-chart .class-wrap {
+            padding: 0;
+            overflow: auto;
+            position: relative;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background:
+              radial-gradient(circle at 14% 16%, rgba(110, 168, 254, 0.16), transparent 28%),
+              radial-gradient(circle at 86% 82%, rgba(142, 240, 197, 0.11), transparent 32%),
+              linear-gradient(180deg, #0d1430 0%, #111b3e 100%);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          }
+
+          #class-chart .class-svg {
+            display: block;
+            width: 100%;
+            max-width: 1480px;
+            margin: 0 auto;
+          }
+
+          #class-chart .uml-link {
+            fill: none;
+            stroke: rgba(220, 230, 255, 0.74);
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            marker-end: url(#class-arrow);
+          }
+
+          #class-chart .uml-link.dashed {
+            stroke-dasharray: 8 7;
+          }
+
+          #class-chart .uml-label {
+            font-size: 12px;
+            font-weight: 700;
+            fill: #d8e4ff;
+            text-anchor: middle;
+          }
+
+          #class-chart .uml-card {
+            filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.18));
+          }
+
+          #class-chart .uml-surface {
+            fill: rgba(15, 24, 52, 0.95);
+            stroke: rgba(189, 208, 255, 0.24);
+            stroke-width: 1.3;
+          }
+
+          #class-chart .uml-divider {
+            stroke: rgba(189, 208, 255, 0.18);
+            stroke-width: 1;
+          }
+
+          #class-chart .uml-accent {
+            fill: #6ea8fe;
+          }
+
+          #class-chart .accent-green .uml-accent {
+            fill: #8ef0c5;
+          }
+
+          #class-chart .accent-gold .uml-accent {
+            fill: #ffd479;
+          }
+
+          #class-chart .accent-pink .uml-accent {
+            fill: #f29bb2;
+          }
+
+          #class-chart .accent-blue .uml-surface {
+            stroke: rgba(110, 168, 254, 0.46);
+          }
+
+          #class-chart .accent-green .uml-surface {
+            stroke: rgba(142, 240, 197, 0.4);
+          }
+
+          #class-chart .accent-gold .uml-surface {
+            stroke: rgba(255, 212, 121, 0.42);
+          }
+
+          #class-chart .accent-pink .uml-surface {
+            stroke: rgba(242, 155, 178, 0.38);
+          }
+
+          #class-chart .uml-kind {
+            font-size: 10px;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            font-weight: 700;
+            fill: #9fb8e8;
+          }
+
+          #class-chart .uml-title {
+            font-size: 17px;
+            font-weight: 700;
+            fill: #eff4ff;
+          }
+
+          #class-chart .uml-attr {
+            font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 10.8px;
+            fill: #cad7f4;
+          }
+
+          #class-chart .uml-note {
+            font-size: 12px;
+            fill: #aebddf;
+            text-anchor: middle;
+          }
+        </style>
+
+        <div class="class-wrap">
+          <svg class="class-svg" viewBox="0 0 1680 1540" role="img"
+            aria-label="Class chart for the shared Inter-Email V2 data models">
+            <defs>
+              <marker id="class-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"
+                markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="#dce6ff"></path>
+              </marker>
+            </defs>
+
+            <path class="uml-link" d="M 320 140 L 380 140" />
+            <text x="350" y="128" class="uml-label">1 account fetches 0..* emails</text>
+
+            <path class="uml-link dashed" d="M 720 170 L 820 170 L 820 450 L 900 450" />
+            <text x="820" y="156" class="uml-label">grouped by thread_id</text>
+
+            <path class="uml-link dashed" d="M 720 210 L 790 210 L 790 520 L 340 520" />
+            <text x="790" y="198" class="uml-label">normalized into child messages</text>
+
+            <path class="uml-link" d="M 340 430 L 380 430" />
+            <text x="360" y="418" class="uml-label">1 thread contains 1..* messages</text>
+
+            <path class="uml-link" d="M 1160 190 L 1160 120 L 1280 120" />
+            <text x="1220" y="106" class="uml-label">1 run has 1 summary</text>
+
+            <path class="uml-link" d="M 1160 230 L 1160 300 L 900 300" />
+            <text x="1088" y="286" class="uml-label">1 run has 1..* threads</text>
+
+            <path class="uml-link" d="M 900 360 L 1040 360" />
+            <text x="970" y="346" class="uml-label">0..1 draft metadata</text>
+
+            <path class="uml-link" d="M 1340 410 L 1340 490" />
+            <text x="1415" y="458" class="uml-label">guides wizard</text>
+
+            <path class="uml-link" d="M 1340 670 L 1340 740" />
+            <text x="1415" y="708" class="uml-label">generates</text>
+
+            <path class="uml-link dashed" d="M 620 1090 L 340 1090" />
+            <text x="480" y="1076" class="uml-label">thread_id key</text>
+
+            <path class="uml-link dashed" d="M 620 1180 L 340 1180" />
+            <text x="480" y="1166" class="uml-label">thread_id key</text>
+
+            <path class="uml-link dashed" d="M 180 1210 L 180 1320 L 340 1320" />
+            <text x="256" y="1306" class="uml-label">account scope</text>
+
+            <path class="uml-link" d="M 1460 250 L 1460 760" />
+            <text x="1526" y="520" class="uml-label">0..* errors</text>
+
+            <path class="uml-link" d="M 1160 130 L 1160 360 L 1560 360 L 1560 300" />
+            <text x="1448" y="286" class="uml-label">0..* action items</text>
+
+            <path class="uml-link dashed" d="M 1500 400 L 1500 520 L 900 520" />
+            <text x="1376" y="506" class="uml-label">thread_id can point to a specific thread</text>
+
+            <g class="uml-card accent-blue" transform="translate(40 60)">
+              <rect class="uml-surface" width="280" height="146" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="244" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Persisted Account</text>
+              <text x="22" y="62" class="uml-title">ConnectedGmailAccount</text>
+              <line x1="20" y1="76" x2="260" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">name: str</tspan>
+                <tspan x="22" dy="14">email_address: str</tspan>
+                <tspan x="22" dy="14">gmail_user_index: str</tspan>
+                <tspan x="22" dy="14">token_path: str</tspan>
+                <tspan x="22" dy="14">connected_at: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-blue" transform="translate(380 40)">
+              <rect class="uml-surface" width="340" height="214" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="304" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Raw Gmail Message</text>
+              <text x="22" y="62" class="uml-title">EmailMessage</text>
+              <line x1="20" y1="76" x2="320" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">id: str</tspan>
+                <tspan x="22" dy="14">thread_id: str</tspan>
+                <tspan x="22" dy="14">subject: str</tspan>
+                <tspan x="22" dy="14">from_address: str</tspan>
+                <tspan x="22" dy="14">to_address: str</tspan>
+                <tspan x="22" dy="14">date: str</tspan>
+                <tspan x="22" dy="14">snippet: str</tspan>
+                <tspan x="22" dy="14">body_text: str</tspan>
+                <tspan x="22" dy="14">label_ids: list[str]</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-green" transform="translate(900 300)">
+              <rect class="uml-surface" width="520" height="930" rx="22"></rect>
+              <rect class="uml-accent" x="18" y="16" width="484" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Main Thread Record</text>
+              <text x="22" y="62" class="uml-title">EmailThread</text>
+              <line x1="20" y1="76" x2="500" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">thread_id: str</tspan>
+                <tspan x="22" dy="14">source_thread_ids: list[str]</tspan>
+                <tspan x="22" dy="14">grouping_reason: str</tspan>
+                <tspan x="22" dy="14">merge_signals: list[str]</tspan>
+                <tspan x="22" dy="14">merge_confidence: MergeConfidence | None</tspan>
+                <tspan x="22" dy="14">subject: str</tspan>
+                <tspan x="22" dy="14">participants: list[str]</tspan>
+                <tspan x="22" dy="14">message_count: int</tspan>
+                <tspan x="22" dy="14">latest_message_date: str</tspan>
+                <tspan x="22" dy="14">messages: list[ThreadMessage]</tspan>
+                <tspan x="22" dy="14">combined_thread_text: str</tspan>
+                <tspan x="22" dy="14">security_status: SecurityStatus</tspan>
+                <tspan x="22" dy="14">sensitivity_markers: list[str]</tspan>
+                <tspan x="22" dy="14">sensitivity_reason: str | None</tspan>
+                <tspan x="22" dy="14">latest_message_from_me: bool</tspan>
+                <tspan x="22" dy="14">latest_message_from_external: bool</tspan>
+                <tspan x="22" dy="14">latest_message_has_question: bool</tspan>
+                <tspan x="22" dy="14">latest_message_has_action_request: bool</tspan>
+                <tspan x="22" dy="14">waiting_on_us: bool</tspan>
+                <tspan x="22" dy="14">resolved_or_closed: bool</tspan>
+                <tspan x="22" dy="14">predicted_category: TriageCategory | None</tspan>
+                <tspan x="22" dy="14">predicted_urgency: UrgencyLevel | None</tspan>
+                <tspan x="22" dy="14">predicted_summary: str | None</tspan>
+                <tspan x="22" dy="14">predicted_status: str | None</tspan>
+                <tspan x="22" dy="14">predicted_needs_action_today: bool | None</tspan>
+                <tspan x="22" dy="14">predicted_next_action: str | None</tspan>
+                <tspan x="22" dy="14">should_draft_reply: bool | None</tspan>
+                <tspan x="22" dy="14">draft_needs_date: bool</tspan>
+                <tspan x="22" dy="14">draft_date_reason: str | None</tspan>
+                <tspan x="22" dy="14">draft_needs_attachment: bool</tspan>
+                <tspan x="22" dy="14">draft_attachment_reason: str | None</tspan>
+                <tspan x="22" dy="14">predicted_reply_subject: str | None</tspan>
+                <tspan x="22" dy="14">predicted_reply_body: str | None</tspan>
+                <tspan x="22" dy="14">crm_contact_name: str | None</tspan>
+                <tspan x="22" dy="14">crm_company: str | None</tspan>
+                <tspan x="22" dy="14">crm_opportunity_type: str | None</tspan>
+                <tspan x="22" dy="14">crm_urgency: UrgencyLevel | None</tspan>
+                <tspan x="22" dy="14">thread_signature: str</tspan>
+                <tspan x="22" dy="14">relevance_bucket: RelevanceBucket | None</tspan>
+                <tspan x="22" dy="14">ai_decision: AIDecision | None</tspan>
+                <tspan x="22" dy="14">ai_decision_reason: str | None</tspan>
+                <tspan x="22" dy="14">change_status: ChangeStatus | None</tspan>
+                <tspan x="22" dy="14">analysis_status: AnalysisStatus | None</tspan>
+                <tspan x="22" dy="14">last_analysis_at: str | None</tspan>
+                <tspan x="22" dy="14">relevance_score: int | None</tspan>
+                <tspan x="22" dy="14">included_in_ai: bool</tspan>
+                <tspan x="22" dy="14">selection_reason: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-gold" transform="translate(40 340)">
+              <rect class="uml-surface" width="300" height="172" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Child Message</text>
+              <text x="22" y="62" class="uml-title">ThreadMessage</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">message_id: str</tspan>
+                <tspan x="22" dy="14">sender: str</tspan>
+                <tspan x="22" dy="14">subject: str</tspan>
+                <tspan x="22" dy="14">date: str</tspan>
+                <tspan x="22" dy="14">snippet: str</tspan>
+                <tspan x="22" dy="14">cleaned_body: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-green" transform="translate(1040 300)">
+              <rect class="uml-surface" width="300" height="184" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Draft Metadata</text>
+              <text x="22" y="62" class="uml-title">ThreadReplyDraftRecord</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">thread_id: str</tspan>
+                <tspan x="22" dy="14">should_draft_reply: bool</tspan>
+                <tspan x="22" dy="14">needs_date: bool</tspan>
+                <tspan x="22" dy="14">date_reason: str | None</tspan>
+                <tspan x="22" dy="14">needs_attachment: bool</tspan>
+                <tspan x="22" dy="14">attachment_reason: str | None</tspan>
+                <tspan x="22" dy="14">reply_subject: str | None</tspan>
+                <tspan x="22" dy="14">reply_body: str | None</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-blue" transform="translate(1120 40)">
+              <rect class="uml-surface" width="520" height="246" rx="22"></rect>
+              <rect class="uml-accent" x="18" y="16" width="484" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Backend Output Wrapper</text>
+              <text x="22" y="62" class="uml-title">FinalRunOutput</text>
+              <line x1="20" y1="76" x2="500" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">generated_at: datetime</tspan>
+                <tspan x="22" dy="14">thread_count: int</tspan>
+                <tspan x="22" dy="14">message_count: int</tspan>
+                <tspan x="22" dy="14">ai_thread_count: int</tspan>
+                <tspan x="22" dy="14">fresh_ai_thread_count: int</tspan>
+                <tspan x="22" dy="14">cached_ai_thread_count: int</tspan>
+                <tspan x="22" dy="14">filtered_thread_count: int</tspan>
+                <tspan x="22" dy="14">new_thread_count: int</tspan>
+                <tspan x="22" dy="14">changed_thread_count: int</tspan>
+                <tspan x="22" dy="14">threads: list[EmailThread]</tspan>
+                <tspan x="22" dy="14">summary: SummaryOutput</tspan>
+                <tspan x="22" dy="14">errors: list[PipelineError]</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-gold" transform="translate(760 60)">
+              <rect class="uml-surface" width="300" height="144" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Global Summary</text>
+              <text x="22" y="62" class="uml-title">SummaryOutput</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">top_priorities: list[str]</tspan>
+                <tspan x="22" dy="14">executive_summary: str</tspan>
+                <tspan x="22" dy="14">next_actions: list[str]</tspan>
+                <tspan x="22" dy="14">action_items: list[SummaryActionItem]</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-gold" transform="translate(1400 300)">
+              <rect class="uml-surface" width="220" height="106" rx="18"></rect>
+              <rect class="uml-accent" x="18" y="16" width="184" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Linked Action</text>
+              <text x="22" y="62" class="uml-title">SummaryActionItem</text>
+              <line x1="20" y1="76" x2="200" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">thread_id: str | None</tspan>
+                <tspan x="22" dy="14">label: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-pink" transform="translate(40 980)">
+              <rect class="uml-surface" width="300" height="222" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Manual Review Entry</text>
+              <text x="22" y="62" class="uml-title">ReviewRecord</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">ai_result_correct: str | None</tspan>
+                <tspan x="22" dy="14">merge_correct: str | None</tspan>
+                <tspan x="22" dy="14">correct_category: str | None</tspan>
+                <tspan x="22" dy="14">correct_urgency: str | None</tspan>
+                <tspan x="22" dy="14">summary_useful: str | None</tspan>
+                <tspan x="22" dy="14">next_action_useful: str | None</tspan>
+                <tspan x="22" dy="14">reply_draft_useful: str | None</tspan>
+                <tspan x="22" dy="14">crm_useful: str | None</tspan>
+                <tspan x="22" dy="14">should_have_been_filtered: str | None</tspan>
+                <tspan x="22" dy="14">notes: str</tspan>
+                <tspan x="22" dy="14">improvement_tags: list[str]</tspan>
+                <tspan x="22" dy="14">updated_at: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-pink" transform="translate(40 1240)">
+              <rect class="uml-surface" width="300" height="134" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Seen-State Entry</text>
+              <text x="22" y="62" class="uml-title">SeenThreadStateEntry</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">thread_id: str</tspan>
+                <tspan x="22" dy="14">scope: str</tspan>
+                <tspan x="22" dy="14">seen_version: str</tspan>
+                <tspan x="22" dy="14">subject: str</tspan>
+                <tspan x="22" dy="14">marked_seen_at: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-green" transform="translate(1040 520)">
+              <rect class="uml-surface" width="300" height="162" rx="20"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Wizard Input</text>
+              <text x="22" y="62" class="uml-title">DraftGenerationRequest</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">thread_id: str</tspan>
+                <tspan x="22" dy="14">selected_date: str | None</tspan>
+                <tspan x="22" dy="14">skipped_date: bool</tspan>
+                <tspan x="22" dy="14">attachment_names: list[str]</tspan>
+                <tspan x="22" dy="14">skipped_attachments: bool</tspan>
+                <tspan x="22" dy="14">user_instructions: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-green" transform="translate(1040 740)">
+              <rect class="uml-surface" width="300" height="106" rx="18"></rect>
+              <rect class="uml-accent" x="18" y="16" width="264" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Generated Result</text>
+              <text x="22" y="62" class="uml-title">GeneratedReplyDraft</text>
+              <line x1="20" y1="76" x2="280" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">subject: str</tspan>
+                <tspan x="22" dy="14">body: str</tspan>
+              </text>
+            </g>
+
+            <g class="uml-card accent-pink" transform="translate(1380 760)">
+              <rect class="uml-surface" width="240" height="120" rx="18"></rect>
+              <rect class="uml-accent" x="18" y="16" width="204" height="4" rx="2"></rect>
+              <text x="22" y="38" class="uml-kind">Fallback Record</text>
+              <text x="22" y="62" class="uml-title">PipelineError</text>
+              <line x1="20" y1="76" x2="220" y2="76" class="uml-divider"></line>
+              <text x="22" y="98" class="uml-attr">
+                <tspan x="22" dy="0">step: triage | summary | crm | reply_draft</tspan>
+                <tspan x="22" dy="14">message: str</tspan>
+                <tspan x="22" dy="14">used_fallback: bool</tspan>
+              </text>
+            </g>
+
+            <text x="840" y="1506" class="uml-note">Shared V2 data classes and persisted state objects. The center of
+              gravity is EmailThread, with raw Gmail input on the left and run / review / draft outputs around
+              it.</text>
+          </svg>
+        </div>
       </section>
 
       <section id="ui">

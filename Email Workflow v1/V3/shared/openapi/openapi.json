@@ -1,0 +1,1436 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Inter-Email V3 API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Healthcheck",
+        "operationId": "healthcheck_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Healthcheck Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Run Sync",
+        "operationId": "run_sync_api_v1_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/threads": {
+      "get": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "List Threads",
+        "operationId": "list_threads_api_v1_threads_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/threads/{thread_id}": {
+      "get": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "Get Thread",
+        "operationId": "get_thread_api_v1_threads__thread_id__get",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/queue/summary": {
+      "get": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "Get Queue Dashboard",
+        "operationId": "get_queue_dashboard_api_v1_queue_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueDashboardResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/threads/{thread_id}/review": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Save Review",
+        "operationId": "save_review_api_v1_threads__thread_id__review_post",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Save Review Api V1 Threads  Thread Id  Review Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/threads/{thread_id}/seen": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Mark Seen",
+        "operationId": "mark_seen_api_v1_threads__thread_id__seen_post",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeenStateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Mark Seen Api V1 Threads  Thread Id  Seen Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/threads/{thread_id}/draft": {
+      "get": {
+        "tags": [
+          "drafts"
+        ],
+        "summary": "Get Latest Draft",
+        "operationId": "get_latest_draft_api_v1_threads__thread_id__draft_get",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DraftGenerateResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Latest Draft Api V1 Threads  Thread Id  Draft Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "drafts"
+        ],
+        "summary": "Generate Draft",
+        "operationId": "generate_draft_api_v1_threads__thread_id__draft_post",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftGenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftGenerateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gmail/connection": {
+      "get": {
+        "tags": [
+          "gmail"
+        ],
+        "summary": "Get Gmail Connection Status",
+        "operationId": "get_gmail_connection_status_api_v1_gmail_connection_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GmailConnectionStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gmail/connect/start": {
+      "get": {
+        "tags": [
+          "gmail"
+        ],
+        "summary": "Start Gmail Connect",
+        "operationId": "start_gmail_connect_api_v1_gmail_connect_start_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gmail/connect/callback": {
+      "get": {
+        "tags": [
+          "gmail"
+        ],
+        "summary": "Finish Gmail Connect",
+        "operationId": "finish_gmail_connect_api_v1_gmail_connect_callback_get",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "State"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Settings Summary",
+        "operationId": "get_settings_summary_api_v1_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DraftGenerateRequest": {
+        "properties": {
+          "selected_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Date"
+          },
+          "attachment_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attachment Names"
+          },
+          "user_instructions": {
+            "type": "string",
+            "title": "User Instructions",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "DraftGenerateRequest"
+      },
+      "DraftGenerateResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "used_fallback": {
+            "type": "boolean",
+            "title": "Used Fallback"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "body",
+          "provider_name",
+          "model_name",
+          "used_fallback"
+        ],
+        "title": "DraftGenerateResponse"
+      },
+      "DraftResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "used_fallback": {
+            "type": "boolean",
+            "title": "Used Fallback"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "body",
+          "provider_name",
+          "model_name",
+          "used_fallback"
+        ],
+        "title": "DraftResponse"
+      },
+      "GmailConnectionStatusResponse": {
+        "properties": {
+          "credentials_configured": {
+            "type": "boolean",
+            "title": "Credentials Configured"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "email_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Address"
+          },
+          "credentials_path": {
+            "type": "string",
+            "title": "Credentials Path"
+          },
+          "token_path": {
+            "type": "string",
+            "title": "Token Path"
+          },
+          "connect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connect Url"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credentials_configured",
+          "connected",
+          "credentials_path",
+          "token_path"
+        ],
+        "title": "GmailConnectionStatusResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "QueueDashboardResponse": {
+        "properties": {
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadResponse"
+            },
+            "type": "array",
+            "title": "Threads"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/QueueSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "title": "QueueDashboardResponse"
+      },
+      "QueueSummaryResponse": {
+        "properties": {
+          "top_priorities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Top Priorities"
+          },
+          "executive_summary": {
+            "type": "string",
+            "title": "Executive Summary",
+            "default": ""
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Next Actions"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name",
+            "default": "heuristic"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "default": "deterministic-fallback"
+          },
+          "used_fallback": {
+            "type": "boolean",
+            "title": "Used Fallback",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "QueueSummaryResponse"
+      },
+      "ReviewDecisionResponse": {
+        "properties": {
+          "queue_belongs": {
+            "type": "string",
+            "title": "Queue Belongs"
+          },
+          "merge_correct": {
+            "type": "string",
+            "title": "Merge Correct"
+          },
+          "summary_useful": {
+            "type": "string",
+            "title": "Summary Useful"
+          },
+          "next_action_useful": {
+            "type": "string",
+            "title": "Next Action Useful"
+          },
+          "draft_useful": {
+            "type": "string",
+            "title": "Draft Useful"
+          },
+          "crm_useful": {
+            "type": "string",
+            "title": "Crm Useful"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          },
+          "improvement_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Improvement Tags"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queue_belongs",
+          "merge_correct",
+          "summary_useful",
+          "next_action_useful",
+          "draft_useful",
+          "crm_useful",
+          "notes"
+        ],
+        "title": "ReviewDecisionResponse"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "queue_belongs": {
+            "type": "string",
+            "title": "Queue Belongs",
+            "default": "not_sure"
+          },
+          "merge_correct": {
+            "type": "string",
+            "title": "Merge Correct",
+            "default": "not_sure"
+          },
+          "summary_useful": {
+            "type": "string",
+            "title": "Summary Useful",
+            "default": "partially"
+          },
+          "next_action_useful": {
+            "type": "string",
+            "title": "Next Action Useful",
+            "default": "partially"
+          },
+          "draft_useful": {
+            "type": "string",
+            "title": "Draft Useful",
+            "default": "partially"
+          },
+          "crm_useful": {
+            "type": "string",
+            "title": "Crm Useful",
+            "default": "not_applicable"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes",
+            "default": ""
+          },
+          "improvement_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Improvement Tags"
+          }
+        },
+        "type": "object",
+        "title": "ReviewRequest"
+      },
+      "SeenStateRequest": {
+        "properties": {
+          "seen": {
+            "type": "boolean",
+            "title": "Seen",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "SeenStateRequest"
+      },
+      "SeenStateResponse": {
+        "properties": {
+          "seen": {
+            "type": "boolean",
+            "title": "Seen"
+          },
+          "seen_version": {
+            "type": "string",
+            "title": "Seen Version"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seen",
+          "seen_version"
+        ],
+        "title": "SeenStateResponse"
+      },
+      "SettingsSummaryResponse": {
+        "properties": {
+          "environment": {
+            "type": "string",
+            "title": "Environment"
+          },
+          "database_url": {
+            "type": "string",
+            "title": "Database Url"
+          },
+          "ai_default_provider": {
+            "type": "string",
+            "title": "Ai Default Provider"
+          },
+          "thread_analysis_provider": {
+            "type": "string",
+            "title": "Thread Analysis Provider"
+          },
+          "queue_summary_provider": {
+            "type": "string",
+            "title": "Queue Summary Provider"
+          },
+          "draft_provider": {
+            "type": "string",
+            "title": "Draft Provider"
+          },
+          "crm_provider": {
+            "type": "string",
+            "title": "Crm Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "environment",
+          "database_url",
+          "ai_default_provider",
+          "thread_analysis_provider",
+          "queue_summary_provider",
+          "draft_provider",
+          "crm_provider"
+        ],
+        "title": "SettingsSummaryResponse"
+      },
+      "SyncRequest": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "anywhere"
+          },
+          "max_results": {
+            "type": "integer",
+            "title": "Max Results",
+            "default": 50
+          }
+        },
+        "type": "object",
+        "title": "SyncRequest"
+      },
+      "SyncResponse": {
+        "properties": {
+          "run_id": {
+            "type": "integer",
+            "title": "Run Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "fetched_message_count": {
+            "type": "integer",
+            "title": "Fetched Message Count"
+          },
+          "thread_count": {
+            "type": "integer",
+            "title": "Thread Count"
+          },
+          "ai_thread_count": {
+            "type": "integer",
+            "title": "Ai Thread Count"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "queue_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueueSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadResponse"
+            },
+            "type": "array",
+            "title": "Threads"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "status",
+          "source",
+          "fetched_message_count",
+          "thread_count",
+          "ai_thread_count",
+          "threads"
+        ],
+        "title": "SyncResponse"
+      },
+      "ThreadAnalysisResponse": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "urgency": {
+            "type": "string",
+            "title": "Urgency"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "current_status": {
+            "type": "string",
+            "title": "Current Status"
+          },
+          "next_action": {
+            "type": "string",
+            "title": "Next Action"
+          },
+          "needs_action_today": {
+            "type": "boolean",
+            "title": "Needs Action Today"
+          },
+          "should_draft_reply": {
+            "type": "boolean",
+            "title": "Should Draft Reply"
+          },
+          "draft_needs_date": {
+            "type": "boolean",
+            "title": "Draft Needs Date"
+          },
+          "draft_date_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Date Reason"
+          },
+          "draft_needs_attachment": {
+            "type": "boolean",
+            "title": "Draft Needs Attachment"
+          },
+          "draft_attachment_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Attachment Reason"
+          },
+          "crm_contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crm Contact Name"
+          },
+          "crm_company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crm Company"
+          },
+          "crm_opportunity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crm Opportunity Type"
+          },
+          "crm_urgency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crm Urgency"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "used_fallback": {
+            "type": "boolean",
+            "title": "Used Fallback"
+          },
+          "analyzed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyzed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "urgency",
+          "summary",
+          "current_status",
+          "next_action",
+          "needs_action_today",
+          "should_draft_reply",
+          "draft_needs_date",
+          "draft_needs_attachment",
+          "provider_name",
+          "model_name",
+          "used_fallback"
+        ],
+        "title": "ThreadAnalysisResponse"
+      },
+      "ThreadListResponse": {
+        "properties": {
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadResponse"
+            },
+            "type": "array",
+            "title": "Threads"
+          }
+        },
+        "type": "object",
+        "title": "ThreadListResponse"
+      },
+      "ThreadMessageResponse": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recipients"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "default": ""
+          },
+          "cleaned_body": {
+            "type": "string",
+            "title": "Cleaned Body",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "sender",
+          "subject"
+        ],
+        "title": "ThreadMessageResponse"
+      },
+      "ThreadResponse": {
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "title": "Thread Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "participants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Participants"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "latest_message_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Message Date"
+          },
+          "security_status": {
+            "type": "string",
+            "title": "Security Status"
+          },
+          "sensitivity_markers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sensitivity Markers"
+          },
+          "waiting_on_us": {
+            "type": "boolean",
+            "title": "Waiting On Us"
+          },
+          "resolved_or_closed": {
+            "type": "boolean",
+            "title": "Resolved Or Closed"
+          },
+          "relevance_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Score"
+          },
+          "relevance_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Bucket"
+          },
+          "included_in_ai": {
+            "type": "boolean",
+            "title": "Included In Ai"
+          },
+          "ai_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Decision"
+          },
+          "ai_decision_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Decision Reason"
+          },
+          "analysis_status": {
+            "type": "string",
+            "title": "Analysis Status"
+          },
+          "signature": {
+            "type": "string",
+            "title": "Signature"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadMessageResponse"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadAnalysisResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seen_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeenStateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDecisionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread_id",
+          "subject",
+          "message_count",
+          "security_status",
+          "waiting_on_us",
+          "resolved_or_closed",
+          "included_in_ai",
+          "analysis_status",
+          "signature"
+        ],
+        "title": "ThreadResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
