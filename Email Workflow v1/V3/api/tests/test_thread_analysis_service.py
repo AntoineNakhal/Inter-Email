@@ -12,11 +12,14 @@ from backend.domain.thread import (
 
 
 class _ForbiddenProviderRouter:
-    def provider_for_task(self, task: str):  # pragma: no cover - should never be called
-        raise AssertionError(f"Provider should not be called for task {task}")
+    class _Provider:
+        name = "heuristic"
 
-    def fallback_provider(self):  # pragma: no cover - should never be called
-        raise AssertionError("Fallback provider should not be called")
+    def provider_for_task(self, _task: str):
+        return self._Provider()
+
+    def fallback_provider(self):
+        return self._Provider()
 
 
 class _ForbiddenRepository:
@@ -61,6 +64,7 @@ def test_analyze_threads_reuses_cached_analysis_without_provider_call() -> None:
             summary="Cached summary",
             current_status="Waiting on us",
             next_action="Reply to the customer.",
+            provider_name="heuristic",
             analyzed_at=datetime(2026, 4, 20, 12, 5, tzinfo=timezone.utc),
         ),
     )

@@ -58,6 +58,7 @@ class GmailReadonlyClient:
 
         messages: list[InboundEmailMessage] = []
         seen_thread_ids: set[str] = set()
+        seen_message_ids: set[str] = set()
         for message_ref in message_refs[:limit]:
             thread_id = message_ref.get("threadId")
             if thread_id:
@@ -70,7 +71,11 @@ class GmailReadonlyClient:
                     .execute()
                 )
                 for raw_message in raw_thread.get("messages", []):
-                    messages.append(self._normalize_message(raw_message))
+                    self._append_unique_message(
+                        messages,
+                        seen_message_ids,
+                        raw_message,
+                    )
                 seen_thread_ids.add(thread_id)
                 continue
 
@@ -80,7 +85,11 @@ class GmailReadonlyClient:
                 .get(userId="me", id=message_ref["id"], format="full")
                 .execute()
             )
-            messages.append(self._normalize_message(raw_message))
+            self._append_unique_message(
+                messages,
+                seen_message_ids,
+                raw_message,
+            )
 
         return messages
 
@@ -250,6 +259,19 @@ class GmailReadonlyClient:
             body_text=self._extract_text(payload),
             label_ids=message.get("labelIds", []),
         )
+
+    def _append_unique_message(
+        self,
+        messages: list[InboundEmailMessage],
+        seen_message_ids: set[str],
+        raw_message: dict[str, Any],
+    ) -> None:
+        normalized = self._normalize_message(raw_message)
+        message_id = str(normalized.external_message_id or "").strip()
+        if not message_id or message_id in seen_message_ids:
+            return
+        seen_message_ids.add(message_id)
+        messages.append(normalized)
 
     def _extract_text(self, payload: dict[str, Any]) -> str:
         body = payload.get("body", {})

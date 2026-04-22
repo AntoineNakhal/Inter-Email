@@ -117,22 +117,31 @@ class ThreadRepository:
         model.signature = next_signature
         model.last_synced_at = datetime.now(timezone.utc)
 
-        existing_messages = {
-            message.external_message_id: message
-            for message in model.messages
-        }
+        incoming_message_ids = _dedupe_message_ids(
+            [message.external_message_id for message in thread.messages]
+        )
+        existing_messages = self._load_existing_messages(incoming_message_ids)
         seen_message_ids: set[str] = set()
-        total_messages = len(thread.messages)
-        for index, message in enumerate(thread.messages, start=1):
-            if message.external_message_id in seen_message_ids:
+        displaced_threads: dict[int, EmailThreadModel] = {}
+        total_messages = len(incoming_message_ids)
+        saved_message_count = 0
+        for message in thread.messages:
+            message_id = str(message.external_message_id or "").strip()
+            if not message_id or message_id in seen_message_ids:
                 continue
 
-            seen_message_ids.add(message.external_message_id)
-            message_model = existing_messages.pop(message.external_message_id, None)
+            saved_message_count += 1
+            seen_message_ids.add(message_id)
+            message_model = existing_messages.pop(message_id, None)
             if message_model is None:
                 message_model = ThreadMessageModel(
-                    external_message_id=message.external_message_id,
+                    external_message_id=message_id,
                 )
+                model.messages.append(message_model)
+            elif message_model.thread is not model:
+                previous_thread = message_model.thread
+                if previous_thread is not None:
+                    displaced_threads[id(previous_thread)] = previous_thread
                 model.messages.append(message_model)
 
             message_model.sender = message.sender
@@ -149,11 +158,17 @@ class ThreadRepository:
                 ensure_ascii=False,
             )
             if message_progress_callback is not None:
-                message_progress_callback(index, total_messages)
+                message_progress_callback(saved_message_count, total_messages)
 
         for stale_message in list(model.messages):
             if stale_message.external_message_id not in seen_message_ids:
                 model.messages.remove(stale_message)
+
+        for displaced_thread in displaced_threads.values():
+            if displaced_thread is model:
+                continue
+            if not displaced_thread.messages:
+                self.session.delete(displaced_thread)
 
         self.session.flush()
         return self._to_domain(model)
@@ -236,6 +251,22 @@ class ThreadRepository:
             raise ValueError(f"Thread `{external_thread_id}` was not found.")
         return model
 
+    def _load_existing_messages(
+        self,
+        external_message_ids: list[str],
+    ) -> dict[str, ThreadMessageModel]:
+        if not external_message_ids:
+            return {}
+        models = self.session.scalars(
+            select(ThreadMessageModel).where(
+                ThreadMessageModel.external_message_id.in_(external_message_ids)
+            )
+        ).all()
+        return {
+            model.external_message_id: model
+            for model in models
+        }
+
     def _to_domain(self, model: EmailThreadModel) -> EmailThread:
         latest_draft = model.drafts[0] if model.drafts else None
         return EmailThread(
@@ -291,6 +322,18 @@ def _load_json_list(payload: str | None) -> list[str]:
     except json.JSONDecodeError:
         return []
     return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _dedupe_message_ids(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
 
 
 def _to_analysis(model: ThreadAnalysisModel | None) -> ThreadAnalysis | None:

@@ -10,7 +10,7 @@ export function AppShell() {
           <p className="sidebar-copy">
             Product-grade queue, review, and draft workflow.</p>
         </div>
-
+        
         <nav className="nav">
           <NavLink to="/inbox">Inbox</NavLink>
           <NavLink to="/review">Review</NavLink>

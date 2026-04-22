@@ -126,6 +126,20 @@ export type SettingsSummary = {
   queue_summary_provider: string;
   draft_provider: string;
   crm_provider: string;
+  ai_mode: string;
+  local_ai_force_all_threads: boolean;
+  local_ai_model: string;
+  local_ai_agent_prompt: string;
+  ollama_base_url: string;
+  ollama_model_thread_analysis: string;
+  runtime_settings_updated_at: string | null;
+};
+
+export type RuntimeSettingsUpdate = {
+  ai_mode: string;
+  local_ai_force_all_threads: boolean;
+  local_ai_model: string;
+  local_ai_agent_prompt: string;
 };
 
 export type GmailConnectionStatus = {

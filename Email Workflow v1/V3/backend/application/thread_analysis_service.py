@@ -121,13 +121,19 @@ class ThreadAnalysisService:
                 progress_callback(index, total_threads, saved_thread)
         return analyzed_threads
 
-    @staticmethod
-    def _should_reuse_existing_analysis(thread: EmailThread) -> bool:
+    def _should_reuse_existing_analysis(self, thread: EmailThread) -> bool:
         if thread.analysis is None:
             return False
         if thread.analysis_status != AnalysisStatus.COMPLETE:
             return False
         if not thread.last_analyzed_at:
+            return False
+        expected_provider = (
+            self.provider_router.provider_for_task("thread_analysis").name
+            if thread.included_in_ai
+            else self.provider_router.fallback_provider().name
+        )
+        if thread.analysis.provider_name != expected_provider:
             return False
         return True
 

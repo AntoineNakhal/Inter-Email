@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from backend.application.queue_service import QueueService
 from backend.application.sync_progress_store import SyncProgressStore
 from backend.application.thread_analysis_service import ThreadAnalysisService
+from backend.domain.runtime_settings import RuntimeSettings
 from backend.domain.sync import SyncRunSummary, SyncStage, SyncStatus
+from backend.domain.thread import AnalysisStatus, RelevanceBucket, SecurityStatus
 from backend.persistence.repositories.sync_repository import SyncRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.gmail.client import GmailReadonlyClient
@@ -27,6 +29,7 @@ class GmailSyncService:
     def __init__(
         self,
         session: Session,
+        runtime_settings: RuntimeSettings,
         gmail_client: GmailReadonlyClient,
         thread_repository: ThreadRepository,
         sync_repository: SyncRepository,
@@ -35,6 +38,7 @@ class GmailSyncService:
         progress_store: SyncProgressStore,
     ) -> None:
         self.session = session
+        self.runtime_settings = runtime_settings
         self.gmail_client = gmail_client
         self.thread_repository = thread_repository
         self.sync_repository = sync_repository
@@ -111,6 +115,7 @@ class GmailSyncService:
             )
             grouping_started_at = perf_counter()
             grouped_threads = group_messages_by_thread(messages)
+            grouped_threads = self._apply_runtime_ai_strategy(grouped_threads)
             logger.info(
                 "Sync run %s grouped %s threads in %.2fs",
                 run_id,
@@ -130,7 +135,11 @@ class GmailSyncService:
                 run_id,
                 stage=SyncStage.ANALYZING,
                 progress_percent=52,
-                status_message=f"Analyzing {len(saved_threads)} threads for next actions.",
+                status_message=(
+                    f"Analyzing {len(saved_threads)} threads with your local AI agent."
+                    if self.runtime_settings.local_ai_enabled
+                    else f"Analyzing {len(saved_threads)} threads for next actions."
+                ),
                 fetched_message_count=len(messages),
                 thread_count=len(saved_threads),
                 ai_thread_count=ai_thread_count,
@@ -366,6 +375,26 @@ class GmailSyncService:
             perf_counter() - persistence_started_at,
         )
         return saved_threads
+
+    def _apply_runtime_ai_strategy(self, grouped_threads: list) -> list:
+        if not (
+            self.runtime_settings.local_ai_enabled
+            and self.runtime_settings.local_ai_force_all_threads
+        ):
+            return grouped_threads
+
+        for thread in grouped_threads:
+            if thread.security_status == SecurityStatus.CLASSIFIED:
+                continue
+            thread.included_in_ai = True
+            thread.relevance_bucket = thread.relevance_bucket or RelevanceBucket.IMPORTANT
+            thread.ai_decision = "local_ai_all_threads"
+            thread.ai_decision_reason = (
+                "Local AI mode is active, so every fetched email thread is analyzed."
+            )
+            if thread.analysis_status == AnalysisStatus.SKIPPED:
+                thread.analysis_status = AnalysisStatus.PENDING
+        return grouped_threads
 
     @staticmethod
     def _persistence_progress_percent(

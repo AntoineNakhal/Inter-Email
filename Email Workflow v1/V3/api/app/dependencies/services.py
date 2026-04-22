@@ -17,11 +17,15 @@ from backend.application.gmail_connection_service import (
 from backend.application.gmail_sync_service import GmailSyncService
 from backend.application.queue_service import QueueService
 from backend.application.review_service import ReviewService
+from backend.application.runtime_settings_service import RuntimeSettingsService
 from backend.application.sync_progress_store import SyncProgressStore
 from backend.application.thread_analysis_service import ThreadAnalysisService
 from backend.core.config import AppSettings, get_settings
 from backend.persistence.repositories.draft_repository import DraftRepository
 from backend.persistence.repositories.review_repository import ReviewRepository
+from backend.persistence.repositories.runtime_settings_repository import (
+    RuntimeSettingsRepository,
+)
 from backend.persistence.repositories.sync_repository import SyncRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.ai.registry import build_provider_registry
@@ -33,6 +37,7 @@ from backend.providers.gmail.client import GmailReadonlyClient
 class ServiceBundle:
     settings: AppSettings
     session: Session
+    runtime_settings_service: RuntimeSettingsService
     gmail_connection_service: GmailConnectionService
     queue_service: QueueService
     review_service: ReviewService
@@ -46,8 +51,12 @@ SYNC_PROGRESS_STORE = SyncProgressStore()
 
 def build_service_bundle(session: Session) -> ServiceBundle:
     settings = get_settings()
-    registry = build_provider_registry(settings)
-    provider_router = AIProviderRouter(settings, registry)
+    runtime_settings_service = RuntimeSettingsService(
+        RuntimeSettingsRepository(session)
+    )
+    runtime_settings = runtime_settings_service.get()
+    registry = build_provider_registry(settings, runtime_settings)
+    provider_router = AIProviderRouter(settings, registry, runtime_settings)
     gmail_client = GmailReadonlyClient(settings)
     thread_repository = ThreadRepository(session)
     review_repository = ReviewRepository(session)
@@ -67,6 +76,7 @@ def build_service_bundle(session: Session) -> ServiceBundle:
     )
     sync_service = GmailSyncService(
         session=session,
+        runtime_settings=runtime_settings,
         gmail_client=gmail_client,
         thread_repository=thread_repository,
         sync_repository=SyncRepository(session),
@@ -77,6 +87,7 @@ def build_service_bundle(session: Session) -> ServiceBundle:
     return ServiceBundle(
         settings=settings,
         session=session,
+        runtime_settings_service=runtime_settings_service,
         gmail_connection_service=gmail_connection_service,
         queue_service=queue_service,
         review_service=review_service,

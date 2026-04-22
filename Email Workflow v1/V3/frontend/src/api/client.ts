@@ -3,6 +3,7 @@ import type {
   EmailThread,
   GmailConnectionStatus,
   QueueDashboardResponse,
+  RuntimeSettingsUpdate,
   SettingsSummary,
   SyncRunStatus,
   ThreadListResponse,
@@ -72,6 +73,11 @@ export const apiClient = {
       body: JSON.stringify(payload),
     }),
   getSettings: () => request<SettingsSummary>("/settings"),
+  updateSettings: (payload: RuntimeSettingsUpdate) =>
+    request<SettingsSummary>("/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   getGmailConnectionStatus: () =>
     request<GmailConnectionStatus>("/gmail/connection"),
 };

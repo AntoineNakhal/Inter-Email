@@ -48,6 +48,16 @@ export function useSettings() {
   });
 }
 
+export function useUpdateSettingsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: apiClient.updateSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+}
+
 export function useGmailConnectionStatus() {
   return useQuery({
     queryKey: ["gmail-connection-status"],

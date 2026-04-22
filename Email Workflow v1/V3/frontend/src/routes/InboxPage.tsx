@@ -160,6 +160,7 @@ export function InboxPage() {
   const syncMutation = useSyncMutation();
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [lastHandledRunId, setLastHandledRunId] = useState<number | null>(null);
+  const [isSyncSettling, setIsSyncSettling] = useState(false);
   const [displayedProgress, setDisplayedProgress] = useState(0);
   const [stageStartedAt, setStageStartedAt] = useState<number | null>(null);
   const [activeStageKey, setActiveStageKey] = useState<string | null>(null);
@@ -178,6 +179,7 @@ export function InboxPage() {
 
   useEffect(() => {
     if (syncMutation.data?.run_id) {
+      setIsSyncSettling(false);
       setActiveRunId(syncMutation.data.run_id);
     }
   }, [syncMutation.data?.run_id]);
@@ -206,8 +208,17 @@ export function InboxPage() {
   }, [activeStageKey, syncStatus]);
 
   useEffect(() => {
-    if (!syncStatus || syncStatus.status !== "running") {
+    if (!syncStatus) {
       setDisplayedProgress(0);
+      return;
+    }
+
+    if (syncStatus.status !== "running") {
+      setDisplayedProgress((current) =>
+        syncStatus.status === "completed"
+          ? Math.max(current, 100)
+          : Math.max(current, syncStatus.progress_percent || 100),
+      );
       return;
     }
 
@@ -275,17 +286,41 @@ export function InboxPage() {
     }
 
     setLastHandledRunId(syncStatus.run_id);
-    setDisplayedProgress(0);
-    setStageStartedAt(null);
-    setActiveStageKey(null);
-    setActiveRunId(null);
-    syncMutation.reset();
+    setIsSyncSettling(true);
+    setDisplayedProgress((current) =>
+      syncStatus.status === "completed"
+        ? Math.max(current, 100)
+        : Math.max(current, syncStatus.progress_percent || 100),
+    );
 
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["threads"] }),
-      queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
-      queryClient.removeQueries({ queryKey: ["sync-run", syncStatus.run_id] }),
-    ]);
+    let cancelled = false;
+
+    void (async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+      ]);
+
+      if (syncStatus.status === "completed") {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      queryClient.removeQueries({ queryKey: ["sync-run", syncStatus.run_id] });
+      setStageStartedAt(null);
+      setActiveStageKey(null);
+      setActiveRunId(null);
+      setDisplayedProgress(0);
+      setIsSyncSettling(false);
+      syncMutation.reset();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeRunId, lastHandledRunId, queryClient, syncMutation, syncStatus]);
 
   const queueThreads = data?.threads ?? [];
@@ -329,8 +364,20 @@ export function InboxPage() {
     (thread) => workflowBucket(thread) === "closed",
   ).length;
 
+  const showSyncProgress =
+    activeRunId !== null &&
+    syncStatus !== null &&
+    (syncStatus.status === "running" ||
+      syncStatus.status === "completed" ||
+      syncStatus.status === "failed" ||
+      isSyncSettling);
   const isSyncing = activeRunId !== null && syncStatus?.status === "running";
-  const shouldHideInboxContent = isSyncing;
+  const isRefreshLocked = isSyncing || isSyncSettling;
+  const hasExistingInboxContent =
+    queueThreads.length > 0 ||
+    Boolean(data?.summary.executive_summary?.trim()) ||
+    priorityBriefs.length > 0;
+  const shouldHideInboxContent = showSyncProgress && !hasExistingInboxContent;
 
   return (
     <section className="page stack stack--page">
@@ -349,13 +396,13 @@ export function InboxPage() {
           onClick={() =>
             syncMutation.mutate({ source: "anywhere", maxResults: 50 })
           }
-          disabled={syncMutation.isPending || isSyncing}
+          disabled={syncMutation.isPending || isRefreshLocked}
         >
-          {isSyncing ? "Refreshing inbox..." : "Refresh Gmail"}
+          {isRefreshLocked ? "Refreshing inbox..." : "Refresh Gmail"}
         </button>
       </div>
 
-      {isSyncing && syncStatus ? (
+      {showSyncProgress && syncStatus ? (
         <section className="panel sync-progress">
           <div className="sync-progress__header">
             <div>
@@ -376,10 +423,18 @@ export function InboxPage() {
             <span>{syncStatus.fetched_message_count} messages fetched</span>
             <span>{syncStatus.thread_count} threads grouped</span>
             <span>{syncStatus.ai_thread_count} AI-reviewed</span>
-            <span>Last update: in progress</span>
+            <span>
+              {syncStatus.status === "running"
+                ? "Last update: in progress"
+                : syncStatus.status === "failed"
+                  ? "Last update: failed"
+                  : "Last update: applying refresh"}
+            </span>
           </div>
           <p className="summary-text">
-            Your inbox will appear once the refresh is fully complete.
+            {shouldHideInboxContent
+              ? "Your inbox will appear once the refresh is fully complete."
+              : "Your current inbox stays visible until the new refresh is fully complete."}
           </p>
         </section>
       ) : null}
