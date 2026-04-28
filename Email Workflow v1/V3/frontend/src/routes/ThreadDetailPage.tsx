@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEnvelope, faSquare } from "@fortawesome/free-regular-svg-icons";
@@ -40,6 +41,92 @@ function workflowTone(thread: {
 
 function gmailThreadUrl(threadId: string) {
   return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
+}
+
+function MessageTimelineItem({
+  message,
+  index,
+}: {
+  message: {
+    message_id: string;
+    sender: string;
+    recipients: string[];
+    subject: string;
+    sent_at: string | null;
+    snippet: string;
+    cleaned_body: string;
+  };
+  index: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const excerpt = formatMessageExcerpt(message.cleaned_body, message.snippet);
+  const shouldClamp = excerpt.length > 360;
+
+  return (
+    <article className="message-card message-card--thread">
+      <div className="message-card__header">
+        <div className="message-card__identity">
+          <strong>{formatInlineText(message.sender) || "Unknown sender"}</strong>
+          <span className="message-card__timestamp">
+            Message {index + 1} | {formatDate(message.sent_at)}
+          </span>
+        </div>
+        <span className="pill tone-outline">Email</span>
+      </div>
+
+      <div className="message-card__meta">
+        <div className="message-card__meta-row">
+          <p className="thread-detail__label">Subject</p>
+          <p className="message-card__subject">
+            {formatInlineText(message.subject) || "No subject"}
+          </p>
+        </div>
+
+        {message.recipients.length ? (
+          <div className="message-card__meta-row">
+            <p className="thread-detail__label">Recipients</p>
+            <p className="thread-detail__body message-card__recipients">
+              {message.recipients
+                .map((recipient) => formatInlineText(recipient))
+                .join(", ")}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      {excerpt ? (
+        <div className="message-card__excerpt-block">
+          <p className="thread-detail__label">Useful excerpt</p>
+          <button
+            type="button"
+            className={`message-card__excerpt-button ${
+              shouldClamp ? "message-card__excerpt-button--interactive" : ""
+            }`}
+            onClick={() => {
+              if (shouldClamp) {
+                setExpanded((current) => !current);
+              }
+            }}
+            aria-expanded={shouldClamp ? expanded : undefined}
+            disabled={!shouldClamp}
+          >
+            <p
+              className={`message-card__excerpt ${
+                shouldClamp && !expanded ? "message-card__excerpt--clamped" : ""
+              }`}
+            >
+            {excerpt}
+            </p>
+            {shouldClamp ? (
+              <span className="message-card__toggle">
+                {expanded ? "Show less" : "Show more"}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
 }
 
 export function ThreadDetailPage() {
@@ -150,14 +237,19 @@ export function ThreadDetailPage() {
         </div>
 
         <div className="thread-detail__summary-card thread-detail__summary-card--accent">
-          <p className="thread-detail__label">Next action</p>
-          <div className="thread-detail__next-action">            
-            <p className="thread-detail__body thread-detail__body--strong">
-            {thread.analysis?.next_action ??
-              "Open the conversation and decide the next owner."}
-          </p>
-              <DraftComposer thread={thread} recommended={Boolean(thread.analysis?.should_draft_reply)} />
+          <div className="thread-detail__next-action">
+            <div className="thread-detail__next-action-copy">
+              <p className="thread-detail__label">Next action</p>
+              <p className="thread-detail__body thread-detail__body--strong">
+                {thread.analysis?.next_action ??
+                  "Open the conversation and decide the next owner."}
+              </p>
             </div>
+            <DraftComposer
+              thread={thread}
+              recommended={Boolean(thread.analysis?.should_draft_reply)}
+            />
+          </div>
         </div>
 
         <div className="thread-detail__facts">
@@ -207,44 +299,11 @@ export function ThreadDetailPage() {
 
         <div className="thread-detail__message-list">
           {thread.messages.map((message, index) => (
-            <article key={message.message_id} className="message-card message-card--thread">
-              <div className="message-card__header">
-                <div className="message-card__identity">
-                  <strong>{formatInlineText(message.sender) || "Unknown sender"}</strong>
-                  <span className="message-card__timestamp">
-                    Message {index + 1} | {formatDate(message.sent_at)}
-                  </span>
-                </div>
-                <span className="pill tone-outline">Email</span>
-              </div>
-
-              <div className="message-card__meta-block">
-                <p className="thread-detail__label">Subject</p>
-                <p className="message-card__subject">
-                  {formatInlineText(message.subject) || "No subject"}
-                </p>
-              </div>
-
-              {message.recipients.length ? (
-                <div className="message-card__meta-block">
-                  <p className="thread-detail__label">Recipients</p>
-                  <p className="thread-detail__body">
-                    {message.recipients
-                      .map((recipient) => formatInlineText(recipient))
-                      .join(", ")}
-                  </p>
-                </div>
-              ) : null}
-
-              {formatMessageExcerpt(message.cleaned_body, message.snippet) ? (
-                <div className="message-card__content-block">
-                  <p className="thread-detail__label">Useful excerpt</p>
-                  <p className="message-card__excerpt">
-                    {formatMessageExcerpt(message.cleaned_body, message.snippet)}
-                  </p>
-                </div>
-              ) : null}
-            </article>
+            <MessageTimelineItem
+              key={message.message_id}
+              message={message}
+              index={index}
+            />
           ))}
         </div>
       </section>
