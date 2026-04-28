@@ -15,12 +15,12 @@ import {
 import { useDraftMutation } from "../../hooks/useApi";
 import type { EmailThread } from "../../types/api";
 
-type Props = { thread: EmailThread; recommended?: boolean };
+type Props = { thread: EmailThread; recommended?: boolean; iconOnly?: boolean };
 
 const STAGES = ["date", "attachments", "instructions"] as const;
 type Stage = (typeof STAGES)[number];
 
-export function DraftComposer({ thread, recommended = false }: Props) {
+export function DraftComposer({ thread, recommended = false, iconOnly = false }: Props) {
   const mutation = useDraftMutation(thread.thread_id);
   const [isOpen, setIsOpen] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
@@ -130,14 +130,26 @@ export function DraftComposer({ thread, recommended = false }: Props) {
 
   return (
     <>
-      <button
-        className={`button ${recommended ? "" : "button--ghost"} draft-trigger`}
-        type="button"
-        onClick={open}
-      >
-        <FontAwesomeIcon icon={faBolt} />
-        {recommended ? "Draft Reply" : "Make Draft"}
-      </button>
+      {iconOnly ? (
+        <button
+          className={`td-action-btn${recommended ? " td-action-btn--draft-recommended" : ""}`}
+          type="button"
+          onClick={open}
+          aria-label="Make draft"
+          title={recommended ? "Draft Reply (recommended)" : "Make Draft"}
+        >
+          <FontAwesomeIcon icon={faBolt} />
+        </button>
+      ) : (
+        <button
+          className={`button ${recommended ? "" : "button--ghost"} draft-trigger`}
+          type="button"
+          onClick={open}
+        >
+          <FontAwesomeIcon icon={faBolt} />
+          {recommended ? "Draft Reply" : "Make Draft"}
+        </button>
+      )}
 
       {isOpen && (
         <div className="draft-modal-overlay" onClick={close}>

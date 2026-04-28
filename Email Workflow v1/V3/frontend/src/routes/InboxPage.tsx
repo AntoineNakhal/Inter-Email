@@ -267,128 +267,6 @@ function priorityWorkflowTone(thread: EmailThread): string {
   return "tone-neutral";
 }
 
-function PriorityQueueModalThread({
-  thread,
-  index,
-  total,
-  onClose,
-  onPrevious,
-  onNext,
-}: {
-  thread: EmailThread;
-  index: number;
-  total: number;
-  onClose: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  const seenMutation = useSeenMutation(thread.thread_id);
-  const pinMutation = usePinMutation(thread.thread_id);
-  const toneClass = priorityWorkflowTone(thread);
-
-  return (
-    <div className="priority-modal__body">
-      <div className="draft-modal__header priority-modal__header">
-        <div>
-          <p className="eyebrow">Priority Queue</p>
-          <h3>Important thread {index + 1} of {total}</h3>
-        </div>
-        <button className="draft-modal__close" onClick={onClose} aria-label="Close">
-          <FontAwesomeIcon icon={faXmark} />
-        </button>
-      </div>
-
-      <div className="priority-modal__content">
-        <div className="priority-modal__topline">
-          <div className="priority-modal__copy">
-            <div className="priority-modal__title-row">
-              <div className="priority-modal__title-wrap">
-                <p className="eyebrow">Thread</p>
-                <h1 className="priority-modal__title">{thread.subject || "Untitled thread"}</h1>
-              </div>
-              <div className="thread-detail__hero-actions priority-modal__actions">
-                <Link to={`/threads/${thread.thread_id}`} className="priority-modal__detail-link">
-                  Open detail
-                  <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
-                </Link>
-                {thread.analysis?.should_draft_reply ? (
-                  <DraftComposer thread={thread} recommended />
-                ) : null}
-                <button
-                  className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.seen
-                    ? "thread-detail__hero-action--seen"
-                    : "thread-detail__hero-action--unseen"
-                    }`}
-                  onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
-                  aria-label={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
-                  title={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
-                >
-                  <FontAwesomeIcon icon={thread.seen_state?.seen ? faSquareCheck : faSquare} />
-                </button>
-                <button
-                  className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.pinned
-                    ? "thread-detail__hero-action--pinned"
-                    : "thread-detail__hero-action--unseen"
-                    }`}
-                  onClick={() => pinMutation.mutate(!(thread.seen_state?.pinned ?? false))}
-                  aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
-                  title={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
-                >
-                  <FontAwesomeIcon icon={faThumbtack} />
-                </button>
-              </div>
-            </div>
-            <div className="thread-detail__hero-meta">
-              <span className={`pill ${toneClass}`}>{priorityWorkflowLabel(thread)}</span>
-              {thread.analysis?.urgency && thread.analysis.urgency !== "unknown" ? (
-                <span className="pill tone-outline">{thread.analysis.urgency}</span>
-              ) : null}
-            </div>
-
-            <div className="priority-modal__text-block">
-              <p className="thread-detail__label">Next action</p>
-              <p className="thread-detail__body thread-detail__body--strong">
-                {thread.analysis?.next_action ?? "Open the thread and decide the next step."}
-              </p>
-            </div>
-
-            {thread.analysis?.summary ? (
-              <div className="priority-modal__text-block">
-                <p className="thread-detail__label">Summary</p>
-                <p className="thread-detail__body">{thread.analysis.summary}</p>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="priority-modal__footer">
-        <div className="priority-modal__footer-actions">
-          <button
-            className="priority-modal__nav-button"
-            type="button"
-            onClick={onPrevious}
-            disabled={index === 0}
-            aria-label="Previous thread"
-            title="Previous thread"
-          >
-            <FontAwesomeIcon icon={faArrowLeft} />
-          </button>
-          <button
-            className="priority-modal__nav-button"
-            type="button"
-            onClick={onNext}
-            aria-label="Next thread"
-            title="Next thread"
-          >
-            <FontAwesomeIcon icon={faArrowRight} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function PriorityQueueModal({
   threads,
   currentIndex,
@@ -403,31 +281,100 @@ function PriorityQueueModal({
   onNext: () => void;
 }) {
   const activeThread = threads[currentIndex] ?? null;
+  const seenMutation = useSeenMutation(activeThread?.thread_id ?? "");
+  const pinMutation = usePinMutation(activeThread?.thread_id ?? "");
+  const toneClass = activeThread ? priorityWorkflowTone(activeThread) : "tone-neutral";
 
   return (
-    <div className="draft-modal-overlay priority-modal-overlay" onClick={onClose}>
-      <div className="draft-modal priority-modal" onClick={(event) => event.stopPropagation()}>
-        {activeThread ? (
-          <PriorityQueueModalThread
-            thread={activeThread}
-            index={currentIndex}
-            total={threads.length}
-            onClose={onClose}
-            onPrevious={onPrevious}
-            onNext={onNext}
-          />
-        ) : (
-          <div className="priority-modal__empty">
-            <p className="eyebrow">Priority Queue</p>
-            <h3>No more important thread to check</h3>
-            <p className="summary-text">
-              You have reached the end of the current priority queue.
-            </p>
-            <button className="button" type="button" onClick={onClose}>
-              Close
+    <div className="pq-overlay" onClick={onClose}>
+      <div className="pq-modal" onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="pq-header">
+          <span className="pq-header__eyebrow">
+            Priority Queue{threads.length > 0 ? ` · ${currentIndex + 1} of ${threads.length}` : ""}
+          </span>
+          <div className="pq-header__actions">
+            {activeThread && (
+              <>
+                <DraftComposer thread={activeThread} recommended={Boolean(activeThread.analysis?.should_draft_reply)} iconOnly />
+                <button
+                  className={`td-action-btn ${activeThread.seen_state?.seen ? "td-action-btn--active" : ""}`}
+                  onClick={() => seenMutation.mutate(!(activeThread.seen_state?.seen ?? false))}
+                  title={activeThread.seen_state?.seen ? "Undo done" : "Mark as done"}
+                >
+                  <FontAwesomeIcon icon={activeThread.seen_state?.seen ? faSquareCheck : faSquare} />
+                </button>
+                <button
+                  className={`td-action-btn ${activeThread.seen_state?.pinned ? "td-action-btn--pinned" : ""}`}
+                  onClick={() => pinMutation.mutate(!(activeThread.seen_state?.pinned ?? false))}
+                  title={activeThread.seen_state?.pinned ? "Unpin" : "Pin"}
+                >
+                  <FontAwesomeIcon icon={faThumbtack} />
+                </button>
+              </>
+            )}
+            <button className="td-action-btn" onClick={onClose} aria-label="Close">
+              <FontAwesomeIcon icon={faXmark} />
             </button>
           </div>
-        )}
+        </div>
+
+        <div className="pq-divider" />
+
+        {/* Scrollable content */}
+        <div className="pq-content">
+          {activeThread ? (
+            <>
+              <div className="pq-meta">
+                <span className={`pill ${toneClass}`}>{priorityWorkflowLabel(activeThread)}</span>
+                {activeThread.analysis?.urgency && activeThread.analysis.urgency !== "unknown" && (
+                  <span className="pill tone-outline">{activeThread.analysis.urgency}</span>
+                )}
+              </div>
+              <h2 className="pq-subject">{activeThread.subject || "Untitled thread"}</h2>
+
+              <div className="pq-block pq-block--accent">
+                <p className="pq-label">Next action</p>
+                <p className="pq-value pq-value--strong">
+                  {activeThread.analysis?.next_action ?? "Open the thread and decide the next step."}
+                </p>
+              </div>
+
+              {activeThread.analysis?.summary && (
+                <div className="pq-block">
+                  <p className="pq-label">Summary</p>
+                  <p className="pq-value">{activeThread.analysis.summary}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="pq-empty">
+              <p className="pq-value">You've reached the end of the priority queue.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="pq-divider" />
+
+        {/* Footer */}
+        <div className="pq-footer">
+          <div className="pq-nav">
+            <button className="pq-nav__btn" type="button" onClick={onPrevious} disabled={currentIndex === 0} title="Previous">
+              <FontAwesomeIcon icon={faArrowLeft} />
+            </button>
+            <button className="pq-nav__btn" type="button" onClick={onNext} title="Next">
+              <FontAwesomeIcon icon={faArrowRight} />
+            </button>
+          </div>
+          {activeThread && (
+            <Link to={`/threads/${activeThread.thread_id}`} className="pq-open-link" onClick={onClose}>
+              Open thread
+              <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
+            </Link>
+          )}
+        </div>
+
       </div>
     </div>
   );
@@ -467,104 +414,41 @@ function SkeletonLine({
 
 function ThreadCardSkeleton() {
   return (
-    <article aria-hidden="true" className="thread-card thread-card--skeleton">
-      <div className="thread-card__topline">
-        <div className="thread-card__badges">
-          <SkeletonLine className="skeleton-pill" width="96px" />
-          <SkeletonLine className="skeleton-pill" width="128px" />
-          <SkeletonLine className="skeleton-pill" width="92px" />
+    <div aria-hidden="true" className="thread-row thread-row--skeleton">
+      <div className="thread-row__link" style={{ pointerEvents: "none" }}>
+        <div className="thread-row__top">
+          <SkeletonLine className="skeleton-pill" width="72px" />
+          <SkeletonLine className="skeleton-line--title" width="42%" />
+          <SkeletonLine className="skeleton-pill" width="52px" />
         </div>
-        <SkeletonLine className="skeleton-pill" width="74px" />
+        <SkeletonLine width="62%" />
       </div>
-
-      <div className="stack stack--tight">
-        <SkeletonLine className="skeleton-line--title" width="68%" />
-        <SkeletonLine width="54%" />
-      </div>
-
-      <div className="thread-card__content">
-        <section className="thread-card__section">
-          <SkeletonLine className="skeleton-line--label" width="82px" />
-          <SkeletonLine width="100%" />
-          <SkeletonLine width="92%" />
-          <SkeletonLine width="64%" />
-        </section>
-
-        <section className="thread-card__section thread-card__section--action">
-          <SkeletonLine className="skeleton-line--label" width="96px" />
-          <SkeletonLine width="100%" />
-          <SkeletonLine width="88%" />
-          <SkeletonLine width="58%" />
-        </section>
-      </div>
-
-      <div className="thread-card__footer">
-        <SkeletonLine width="44%" />
-        <SkeletonLine className="skeleton-button" width="116px" />
-      </div>
-    </article>
+    </div>
   );
 }
 
 function QueueSkeleton({ refreshing = false }: { refreshing?: boolean }) {
   return (
     <div className="inbox-skeleton stack" aria-hidden="true">
-      <div className="inbox-overview">
-        <section className="panel panel--summary panel--summary-rich">
-          <p className="eyebrow">
-            {refreshing ? "Refreshing Inbox" : "Loading Inbox"}
-          </p>
-          <div className="stack stack--tight">
-            <SkeletonLine className="skeleton-line--heading" width="52%" />
-            <SkeletonLine width="100%" />
-            <SkeletonLine width="94%" />
-            <SkeletonLine width="68%" />
-          </div>
-        </section>
-
-        <section className="panel">
-          <p className="eyebrow">Next Actions</p>
-          <div className="action-list">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="action-item action-item--skeleton">
-                <div className="stack stack--tight action-item__stack">
-                  <SkeletonLine width="72%" />
-                  <SkeletonLine width="100%" />
-                  <SkeletonLine width="62%" />
-                </div>
-                <SkeletonLine className="skeleton-pill" width="74px" />
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-
-      <section className="panel panel--search inbox-controls">
-        <div className="inbox-controls__header">
-          <div className="stack stack--tight">
-            <SkeletonLine className="skeleton-line--label" width="124px" />
-            <SkeletonLine className="skeleton-line--heading" width="164px" />
-          </div>
-          <SkeletonLine className="skeleton-button" width="108px" />
+      <section className="thread-section">
+        <div className="thread-section__header thread-section__header--act-now">
+          <SkeletonLine className="skeleton-line--title" width="72px" />
+          <SkeletonLine className="skeleton-pill" width="20px" />
         </div>
-        <div className="inbox-controls__grid">
-          <SkeletonLine className="skeleton-input" width="100%" />
-          <SkeletonLine className="skeleton-input" width="100%" />
-          <SkeletonLine className="skeleton-input" width="100%" />
+        <div className="thread-list">
+          {Array.from({ length: refreshing ? 2 : 4 }).map((_, index) => (
+            <ThreadCardSkeleton key={index} />
+          ))}
         </div>
       </section>
 
       <section className="thread-section">
-        <div className="thread-section__header">
-          <div className="stack stack--tight">
-            <SkeletonLine className="skeleton-line--label" width="92px" />
-            <SkeletonLine className="skeleton-line--heading" width="132px" />
-          </div>
-          <SkeletonLine width="260px" />
+        <div className="thread-section__header thread-section__header--waiting">
+          <SkeletonLine className="skeleton-line--title" width="108px" />
+          <SkeletonLine className="skeleton-pill" width="20px" />
         </div>
         <div className="thread-list">
-          {Array.from({ length: 3 }).map((_, index) => (
+          {Array.from({ length: 2 }).map((_, index) => (
             <ThreadCardSkeleton key={index} />
           ))}
         </div>
@@ -682,6 +566,27 @@ export function InboxPage() {
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [isSyncSettling, setIsSyncSettling] = useState(false);
   const [displayedProgress, setDisplayedProgress] = useState(0);
+  const [animatedPercent, setAnimatedPercent] = useState(0);
+  const animFrameRef = useRef<number | null>(null);
+  const animTargetRef = useRef(0);
+
+  useEffect(() => {
+    animTargetRef.current = displayedProgress;
+    if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
+    const tick = () => {
+      setAnimatedPercent((cur) => {
+        const target = animTargetRef.current;
+        if (cur >= target) return target;
+        const step = Math.max(1, Math.ceil((target - cur) / 8));
+        const next = Math.min(cur + step, target);
+        animFrameRef.current = requestAnimationFrame(tick);
+        return next;
+      });
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+    return () => { if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current); };
+  }, [displayedProgress]);
+
   const [stageStartedAt, setStageStartedAt] = useState<number | null>(null);
   const [activeStageKey, setActiveStageKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -997,41 +902,44 @@ export function InboxPage() {
 
   return (
     <section className="page page--inbox stack stack--page">
-      <div className="hero inbox-hero">
-        <div className="inbox-hero__left">
-          <p className="eyebrow">Daily Queue</p>
-          <h1>Inbox</h1>
-          {data?.summary.executive_summary?.trim() ? (
-            <p className="inbox-hero__summary">
-              {data.summary.executive_summary}
-            </p>
+      <div className="inbox-header">
+        <div className="inbox-header__left">
+          <p className="inbox-header__eyebrow">
+            Daily Queue · {new Date().toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })}
+          </p>
+          <h1 className="inbox-header__title">Inbox</h1>
+          {queueThreads.length > 0 && (
+            <div className="inbox-header__stats">
+              {actNowCount > 0 && <span className="inbox-header__stat inbox-header__stat--urgent">{actNowCount} act now</span>}
+              {waitingCount > 0 && <span className="inbox-header__stat inbox-header__stat--watch">{waitingCount} waiting</span>}
+              {pinnedCount > 0 && <span className="inbox-header__stat inbox-header__stat--pinned">{pinnedCount} pinned</span>}
+              <span className="inbox-header__stat">{queueThreads.length} total</span>
+            </div>
+          )}
+          {isLoading && !data ? (
+            <div className="inbox-header__summary-skeleton">
+              <SkeletonLine width="72%" />
+              <SkeletonLine width="52%" />
+            </div>
+          ) : data?.summary.executive_summary?.trim() ? (
+            <p className="inbox-header__summary">{data.summary.executive_summary}</p>
           ) : null}
         </div>
 
-        <div className="hero__actions inbox-hero__actions">
-          <label className="hero__field" htmlFor="sync-lookback-days">
-            <span className="eyebrow">Fetch from</span>
-            <span className="select-field">
-              <select
-                id="sync-lookback-days"
-                value={syncLookbackDays}
-                onChange={(event) =>
-                  setSyncLookbackDays(Number(event.target.value))
-                }
-                disabled={syncMutation.isPending || isRefreshLocked}
-              >
-                {SYNC_LOOKBACK_OPTIONS.map((option) => (
-                  <option key={option.days} value={option.days}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
-            </span>
-          </label>
+        <div className="inbox-header__actions">
+          <select
+            id="sync-lookback-days"
+            value={syncLookbackDays}
+            onChange={(event) => setSyncLookbackDays(Number(event.target.value))}
+            disabled={syncMutation.isPending || isRefreshLocked}
+          >
+            {SYNC_LOOKBACK_OPTIONS.map((option) => (
+              <option key={option.days} value={option.days}>{option.label}</option>
+            ))}
+          </select>
           <button
             type="button"
-            className={`button ${isSyncing ? "button--danger" : ""}`}
+            className={`inbox-header__btn ${isSyncing ? "inbox-header__btn--danger" : ""}`}
             onClick={() => {
               if (isSyncing && activeRunId !== null && !isCancelling) {
                 cancelSyncMutation.mutate(activeRunId);
@@ -1056,7 +964,7 @@ export function InboxPage() {
           </button>
           <button
             type="button"
-            className="button button--ghost priority-queue-button"
+            className="inbox-header__btn inbox-header__btn--ghost"
             onClick={openPriorityModal}
             disabled={!priorityThreads.length}
           >
@@ -1064,64 +972,26 @@ export function InboxPage() {
           </button>
         </div>
       </div>
-
       {showSyncProgress && syncStatus ? (
-        <section className="panel sync-progress">
-          <div className="sync-progress__header">
-            <div>
-              <p className="eyebrow">Workflow Progress</p>
-              <h3>{stageLabel(syncStatus.stage)}</h3>
-              <p className="summary-text">
-                {syncStatus.status_message || "Refreshing your inbox."}
-              </p>
-            </div>
-            <div className="sync-progress__percent">
-              {displayedProgress}%
-            </div>
+        <div className="sync-bar">
+          <div className="sync-bar__top">
+            <span className="sync-bar__label">{syncStatus.status_message || stageLabel(syncStatus.stage)}</span>
+            <span className="sync-bar__percent">{animatedPercent}%</span>
           </div>
-          <div aria-hidden="true" className="progress-bar">
-            <span style={{ width: `${displayedProgress}%` }} />
+          <div className="sync-bar__track" aria-hidden="true">
+            <span className="sync-bar__fill" style={{ width: `${displayedProgress}%` }} />
           </div>
-          <div className="sync-progress__stats">
-            <span>{syncStatus.fetched_message_count} messages fetched</span>
-            <span>{syncStatus.thread_count} threads grouped</span>
+          <div className="sync-bar__stats">
+            <span>{syncStatus.fetched_message_count} messages</span>
+            <span>{syncStatus.thread_count} threads</span>
             <span>{syncStatus.ai_thread_count} AI-reviewed</span>
-            <span>
-              {syncStatus.status === "running"
-                ? syncStatus.cancellation_requested
-                  ? "Last update: cancellation requested"
-                  : "Last update: in progress"
-                : syncStatus.status === "cancelled"
-                  ? "Last update: cancelled"
-                  : syncStatus.status === "failed"
-                    ? "Last update: failed"
-                    : "Last update: applying refresh"}
-            </span>
           </div>
-          <p className="summary-text">
-            {showRefreshSkeleton
-              ? "Your inbox will appear once the refresh is fully complete."
-              : "Your current inbox stays visible until the new refresh is fully complete."}
-          </p>
-        </section>
+        </div>
       ) : null}
 
-      {showInitialSkeleton ? <QueueSkeleton /> : null}
-      {showRefreshSkeleton ? <QueueSkeleton refreshing /> : null}
-      {showEmptyState ? <EmptyInboxState syncing={isSyncing} /> : null}
+      <div className="inbox-header__divider" />
 
-      {isPriorityModalOpen ? (
-        <PriorityQueueModal
-          threads={priorityThreads}
-          currentIndex={priorityModalIndex}
-          onClose={() => setIsPriorityModalOpen(false)}
-          onPrevious={retreatPriorityModal}
-          onNext={advancePriorityModal}
-        />
-      ) : null}
-
-      {shouldRenderInboxContent ? (
-        <div className="inbox-toolbar">
+      <div className="inbox-toolbar">
           <input
             type="text"
             className="inbox-toolbar__search"
@@ -1159,21 +1029,36 @@ export function InboxPage() {
               </select>
               <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
             </label>
-            {hasActiveFilters ? (
-              <button
-                className="button button--ghost inbox-toolbar__clear"
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setPriorityFilter("all");
-                  setCategoryFilter("all");
-                }}
-              >
-                Clear
-              </button>
-            ) : null}
+            <button
+              className={`inbox-toolbar__clear${hasActiveFilters ? "" : " inbox-toolbar__clear--inactive"}`}
+              type="button"
+              tabIndex={hasActiveFilters ? 0 : -1}
+              onClick={() => {
+                if (!hasActiveFilters) return;
+                setSearch("");
+                setPriorityFilter("all");
+                setCategoryFilter("all");
+              }}
+            >
+              Clear
+            </button>
           </div>
         </div>
+      <div className="inbox-header__divider" />
+
+
+      {showInitialSkeleton ? <QueueSkeleton /> : null}
+      {showRefreshSkeleton ? <QueueSkeleton refreshing /> : null}
+      {showEmptyState ? <EmptyInboxState syncing={isSyncing} /> : null}
+
+      {isPriorityModalOpen ? (
+        <PriorityQueueModal
+          threads={priorityThreads}
+          currentIndex={priorityModalIndex}
+          onClose={() => setIsPriorityModalOpen(false)}
+          onPrevious={retreatPriorityModal}
+          onNext={advancePriorityModal}
+        />
       ) : null}
 
       {error instanceof Error ? <p>{error.message}</p> : null}

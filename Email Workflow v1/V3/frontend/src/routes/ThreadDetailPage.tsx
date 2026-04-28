@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEnvelope, faSquare } from "@fortawesome/free-regular-svg-icons";
-import { faSquareCheck, faThumbtack } from "@fortawesome/free-solid-svg-icons";
+import { faBolt, faArrowLeft, faCopy, faSquareCheck, faThumbtack } from "@fortawesome/free-solid-svg-icons";
 
 import { DraftComposer } from "../features/drafts/DraftComposer";
 import { usePinMutation, useSeenMutation, useThread } from "../hooks/useApi";
@@ -14,15 +14,9 @@ function workflowLabel(thread: {
   waiting_on_us: boolean;
   resolved_or_closed: boolean;
 }) {
-  if (thread.analysis?.needs_action_today) {
-    return "Act today";
-  }
-  if (thread.waiting_on_us) {
-    return "Waiting on us";
-  }
-  if (thread.resolved_or_closed) {
-    return "Closed";
-  }
+  if (thread.analysis?.needs_action_today) return "Act today";
+  if (thread.waiting_on_us) return "Waiting on us";
+  if (thread.resolved_or_closed) return "Closed";
   return "Monitor";
 }
 
@@ -30,12 +24,8 @@ function workflowTone(thread: {
   analysis: { needs_action_today: boolean } | null;
   waiting_on_us: boolean;
 }) {
-  if (thread.analysis?.needs_action_today) {
-    return "tone-urgent";
-  }
-  if (thread.waiting_on_us) {
-    return "tone-watch";
-  }
+  if (thread.analysis?.needs_action_today) return "tone-urgent";
+  if (thread.waiting_on_us) return "tone-watch";
   return "tone-neutral";
 }
 
@@ -63,69 +53,71 @@ function MessageTimelineItem({
   const shouldClamp = excerpt.length > 360;
 
   return (
-    <article className="message-card message-card--thread">
-      <div className="message-card__header">
-        <div className="message-card__identity">
+    <article className="td-message">
+      <div className="td-message__header">
+        <div className="td-message__sender">
           <strong>{formatInlineText(message.sender) || "Unknown sender"}</strong>
-          <span className="message-card__timestamp">
-            Message {index + 1} | {formatDate(message.sent_at)}
-          </span>
+          <span className="td-message__time">{formatDate(message.sent_at)}</span>
         </div>
-        <span className="pill tone-outline">Email</span>
+        <span className="td-message__index">#{index + 1}</span>
       </div>
 
-      <div className="message-card__meta">
-        <div className="message-card__meta-row">
-          <p className="thread-detail__label">Subject</p>
-          <p className="message-card__subject">
-            {formatInlineText(message.subject) || "No subject"}
-          </p>
-        </div>
-
-        {message.recipients.length ? (
-          <div className="message-card__meta-row">
-            <p className="thread-detail__label">Recipients</p>
-            <p className="thread-detail__body message-card__recipients">
-              {message.recipients
-                .map((recipient) => formatInlineText(recipient))
-                .join(", ")}
-            </p>
-          </div>
-        ) : null}
-      </div>
+      {message.recipients.length ? (
+        <p className="td-message__recipients">
+          To: {message.recipients.map((r) => formatInlineText(r)).join(", ")}
+        </p>
+      ) : null}
 
       {excerpt ? (
-        <div className="message-card__excerpt-block">
-          <p className="thread-detail__label">Useful excerpt</p>
-          <button
-            type="button"
-            className={`message-card__excerpt-button ${
-              shouldClamp ? "message-card__excerpt-button--interactive" : ""
-            }`}
-            onClick={() => {
-              if (shouldClamp) {
-                setExpanded((current) => !current);
-              }
-            }}
-            aria-expanded={shouldClamp ? expanded : undefined}
-            disabled={!shouldClamp}
-          >
-            <p
-              className={`message-card__excerpt ${
-                shouldClamp && !expanded ? "message-card__excerpt--clamped" : ""
-              }`}
-            >
+        <div
+          className={`td-message__body${shouldClamp ? " td-message__body--clickable" : ""}`}
+          onClick={() => { if (shouldClamp) setExpanded((v) => !v); }}
+          role={shouldClamp ? "button" : undefined}
+          tabIndex={shouldClamp ? 0 : undefined}
+          onKeyDown={(e) => { if (shouldClamp && (e.key === "Enter" || e.key === " ")) setExpanded((v) => !v); }}
+        >
+          <p className={`td-message__excerpt${shouldClamp && !expanded ? " td-message__excerpt--clamped" : ""}`}>
             {excerpt}
-            </p>
-            {shouldClamp ? (
-              <span className="message-card__toggle">
-                {expanded ? "Show less" : "Show more"}
-              </span>
-            ) : null}
-          </button>
+          </p>
+          {shouldClamp ? (
+            <span className="td-message__toggle">
+              {expanded ? "Show less" : "Show more"}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </article>
+  );
+}
+
+function DraftBlock({ draft }: { draft: { subject: string; body: string } }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    const text = draft.body;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <div className="td-analysis__draft">
+      <p className="td-analysis__label">Generated draft</p>
+      <p className="td-analysis__draft-subject">{draft.subject}</p>
+      <div className="td-analysis__draft-body-wrap">
+        <pre className="td-analysis__draft-body">{draft.body}</pre>
+        <button
+          className={`td-analysis__draft-copy${copied ? " td-analysis__draft-copy--copied" : ""}`}
+          type="button"
+          onClick={copy}
+          title="Copy draft"
+          aria-label="Copy draft to clipboard"
+        >
+          <FontAwesomeIcon icon={faCopy} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -135,178 +127,155 @@ export function ThreadDetailPage() {
   const seenMutation = useSeenMutation(threadId ?? "");
   const pinMutation = usePinMutation(threadId ?? "");
 
-  if (isLoading) {
-    return <section className="page">Loading thread...</section>;
-  }
+  useEffect(() => {
+    document.body.classList.add("body--thread-detail");
+    return () => document.body.classList.remove("body--thread-detail");
+  }, []);
 
-  if (error instanceof Error) {
-    return <section className="page">{error.message}</section>;
-  }
-
-  if (!thread) {
-    return <section className="page">Thread not found.</section>;
-  }
+  if (isLoading) return <section className="page td-page"><p className="td-loading">Loading thread…</p></section>;
+  if (error instanceof Error) return <section className="page td-page"><p>{error.message}</p></section>;
+  if (!thread) return <section className="page td-page"><p>Thread not found.</p></section>;
 
   const toneClass = workflowTone(thread);
 
   return (
-    <section className="page stack stack--page thread-detail">
-      <div className="hero hero--compact thread-detail__hero">
-        <div className="thread-detail__hero-content">
-          <div>
-            <p className="eyebrow">Thread Detail</p>
-            <h1>{formatInlineText(thread.subject) || "Untitled thread"}</h1>
-          </div>
+    <section className="page page--thread td-page">
 
-          <div className="thread-detail__hero-meta">
-            <span className={`pill ${toneClass}`}>{workflowLabel(thread)}</span>
-            <span className="pill tone-outline">
-              {thread.analysis?.category ?? "Needs review"}
-            </span>
-            <span className="pill tone-outline">
-              {thread.message_count} messages
-            </span>
-            <span className="pill tone-outline">
-              {formatDate(thread.latest_message_date)}
-            </span>
+      {/* Flat header */}
+      <div className="td-header">
+        <div className="td-header__top">
+          <Link to="/" className="td-back">
+            <FontAwesomeIcon icon={faArrowLeft} />
+            Inbox
+          </Link>
+          <div className="td-header__actions">
+            <DraftComposer thread={thread} recommended={Boolean(thread.analysis?.should_draft_reply)} iconOnly />
+            <a
+              className="td-action-btn"
+              href={gmailThreadUrl(thread.thread_id)}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label="Open in Gmail"
+              title="Open in Gmail"
+            >
+              <FontAwesomeIcon icon={faEnvelope} />
+            </a>
+            <button
+              className={`td-action-btn ${thread.seen_state?.seen ? "td-action-btn--active" : ""}`}
+              onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
+              aria-label={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
+              title={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
+            >
+              <FontAwesomeIcon icon={thread.seen_state?.seen ? faSquareCheck : faSquare} />
+            </button>
+            <button
+              className={`td-action-btn ${thread.seen_state?.pinned ? "td-action-btn--pinned" : ""}`}
+              onClick={() => pinMutation.mutate(!(thread.seen_state?.pinned ?? false))}
+              aria-label={thread.seen_state?.pinned ? "Unpin" : "Pin"}
+              title={thread.seen_state?.pinned ? "Unpin" : "Pin"}
+            >
+              <FontAwesomeIcon icon={faThumbtack} />
+            </button>
           </div>
-
-          <p className="hero-copy thread-detail__hero-copy">
-            {thread.participants.map((participant) => formatInlineText(participant)).join(", ") ||
-              "No participants"}
-          </p>
         </div>
 
-        <div className="thread-detail__hero-actions">
-          <a
-            className="button button--ghost thread-detail__hero-action thread-detail__hero-action--icon thread-detail__hero-action--unseen"
-            href={gmailThreadUrl(thread.thread_id)}
-            target="_blank"
-            rel="noreferrer noopener"
-            aria-label="Open this thread in Gmail"
-            title="Open in Gmail"
-          >
-            <FontAwesomeIcon icon={faEnvelope} />
-          </a>
-          <button
-            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.seen
-                ? "thread-detail__hero-action--seen"
-                : "thread-detail__hero-action--unseen"
-              }`}
-            onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
-            aria-label={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
-            title={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
-          >
-            <FontAwesomeIcon icon={thread.seen_state?.seen ? faSquareCheck : faSquare} />
-          </button>
-          <button
-            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.pinned
-                ? "thread-detail__hero-action--pinned"
-                : "thread-detail__hero-action--unseen"
-              }`}
-            onClick={() => pinMutation.mutate(!(thread.seen_state?.pinned ?? false))}
-            aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
-            title={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
-          >
-            <FontAwesomeIcon icon={faThumbtack} />
-          </button>
+        <h1 className="td-header__subject">
+          {formatInlineText(thread.subject) || "Untitled thread"}
+        </h1>
+
+        <div className="td-header__meta">
+          <span className={`pill ${toneClass}`}>{workflowLabel(thread)}</span>
+          {thread.analysis?.urgency && thread.analysis.urgency !== "unknown" && (
+            <span className="pill tone-outline">{thread.analysis.urgency}</span>
+          )}
+          <span className="pill tone-outline">{thread.analysis?.category ?? "Needs review"}</span>
+          <span className="pill tone-outline">{thread.message_count} messages</span>
+          <span className="pill tone-outline">{formatDate(thread.latest_message_date)}</span>
         </div>
+
+        <p className="td-header__participants">
+          {thread.participants.map((p) => formatInlineText(p)).join(", ") || "No participants"}
+        </p>
       </div>
 
-      {/*
-        Stacked vertically (instead of side-by-side) so the analysis card
-        and the draft workflow no longer have to share a row — uneven
-        content lengths used to make the layout look broken.
-      */}
-      <section className="panel stack thread-detail__analysis">
-        <div className="thread-detail__section-head">
-          <div>
-            <p className="eyebrow">Analysis</p>
-            <h3>{thread.analysis?.summary ?? "No analysis yet"}</h3>
-          </div>
-          <span className={`pill ${toneClass}`}>
-            {thread.analysis?.urgency ?? "unknown"}
-          </span>
-        </div>
+      <div className="td-header__divider" />
 
-        <div className="thread-detail__summary-card">
-          <p className="thread-detail__label">Current status</p>
-          <p className="thread-detail__body">
-            {thread.analysis?.current_status ?? "Run sync to analyze this thread."}
-          </p>
-        </div>
+      {/* Two-column body */}
+      <div className="td-body">
 
-        <div className="thread-detail__summary-card thread-detail__summary-card--accent">
-          <div className="thread-detail__next-action">
-            <div className="thread-detail__next-action-copy">
-              <p className="thread-detail__label">Next action</p>
-              <p className="thread-detail__body thread-detail__body--strong">
-                {thread.analysis?.next_action ??
-                  "Open the conversation and decide the next owner."}
-              </p>
-            </div>
-            <DraftComposer
-              thread={thread}
-              recommended={Boolean(thread.analysis?.should_draft_reply)}
-            />
-          </div>
-        </div>
+        {/* Left: Analysis */}
+        <aside className="td-analysis">
 
-        <div className="thread-detail__facts">
-          <div className="thread-detail__fact">
-            <p className="thread-detail__label">Workflow</p>
-            <p className="thread-detail__body">{workflowLabel(thread)}</p>
-          </div>
-          <div className="thread-detail__fact thread-detail__fact--verifier">
-            <div className="thread-detail__fact-topline">
-              <p className="thread-detail__label">Verifier score</p>
-              {thread.analysis?.verification_summary || thread.analysis?.review_reason ? (
-                <details className="thread-detail__fact-details">
-                  <summary
-                    className="thread-detail__fact-button"
-                    aria-label="Why this verifier score?"
-                  >
-                    Why?
-                  </summary>
-                  <div className="thread-detail__fact-popover">
-                    <p className="thread-detail__body">
-                      {thread.analysis.verification_summary || "No verifier notes yet."}
-                    </p>
-                    <p className="thread-detail__body thread-detail__body--muted">
-                      {thread.analysis.needs_human_review
-                        ? thread.analysis.review_reason ??
-                        "The verifier recommends a manual review."
-                        : "The verifier is comfortable with the current analysis output."}
-                    </p>
-                  </div>
-                </details>
-              ) : null}
-            </div>
-            <p className="thread-detail__body">
-              {thread.analysis ? `${thread.analysis.accuracy_percent}%` : "Not verified"}
+          {thread.analysis?.summary ? (
+            <p className="td-analysis__summary">{thread.analysis.summary}</p>
+          ) : (
+            <p className="td-analysis__summary td-analysis__summary--empty">No analysis yet. Run a sync to analyze this thread.</p>
+          )}
+
+          <div className="td-analysis__divider" />
+
+          <div className="td-analysis__block">
+            <p className="td-analysis__label">Current status</p>
+            <p className="td-analysis__value">
+              {thread.analysis?.current_status ?? "—"}
             </p>
           </div>
-        </div>
-      </section>
 
-      <section className="panel stack thread-detail__messages">
-        <div className="thread-detail__section-head">
-          <div>
-            <p className="eyebrow">Messages</p>
-            <h3>Conversation timeline</h3>
+          <div className="td-analysis__block td-analysis__block--accent">
+            <p className="td-analysis__label">Next action</p>
+            <p className="td-analysis__value td-analysis__value--strong">
+              {thread.analysis?.next_action ?? "Open the conversation and decide the next step."}
+            </p>
+          </div>
+
+          <div className="td-analysis__divider" />
+
+          <div className="td-analysis__facts">
+            <div className="td-analysis__fact">
+              <p className="td-analysis__label">Workflow</p>
+              <p className="td-analysis__value">{workflowLabel(thread)}</p>
+            </div>
+            <div className="td-analysis__fact">
+              <p className="td-analysis__label">Verifier</p>
+              <p className="td-analysis__value">
+                {thread.analysis ? `${thread.analysis.accuracy_percent}%` : "—"}
+              </p>
+            </div>
+            <div className="td-analysis__fact">
+              <p className="td-analysis__label">Participants</p>
+              <p className="td-analysis__value">{thread.participants.length}</p>
+            </div>
+          </div>
+
+          {thread.latest_draft && (
+            <>
+              <div className="td-analysis__divider" />
+              <DraftBlock draft={thread.latest_draft} />
+            </>
+          )}
+
+          {thread.analysis?.needs_human_review && (
+            <div className="td-analysis__review-flag">
+              <p className="td-analysis__label">Needs review</p>
+              <p className="td-analysis__value td-analysis__value--muted">
+                {thread.analysis.review_reason ?? "The verifier flagged this for manual review."}
+              </p>
+            </div>
+          )}
+
+        </aside>
+
+        {/* Right: Messages */}
+        <div className="td-messages">
+          <p className="td-messages__label">Conversation · {thread.message_count} message{thread.message_count !== 1 ? "s" : ""}</p>
+          <div className="td-messages__list">
+            {thread.messages.map((message, index) => (
+              <MessageTimelineItem key={message.message_id} message={message} index={index} />
+            ))}
           </div>
         </div>
 
-        <div className="thread-detail__message-list">
-          {thread.messages.map((message, index) => (
-            <MessageTimelineItem
-              key={message.message_id}
-              message={message}
-              index={index}
-            />
-          ))}
-        </div>
-      </section>
+      </div>
     </section>
   );
 }

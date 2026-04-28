@@ -81,43 +81,27 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Inter-Op</p>
-          <h2>Inter-Email</h2>
-          <p className="sidebar-copy">
-            Product-grade queue, review, and draft workflow.
-          </p>
+        <div className="sidebar__brand">
+          <p className="sidebar__brand-sub">Inter-Op</p>
+          <h2 className="sidebar__brand-title">Inter-Email</h2>
         </div>
 
         <nav className="nav" style={{ position: "relative" }}>
-          {/*
-            Animated active-state indicator. Slides between nav items on
-            route change. Sits behind the links (zIndex 0); links render
-            on top with transparent background (zIndex 1) — we override
-            the existing .nav a.active CSS rule (which sets its own
-            background + border) to make this slider the SINGLE visual
-            indicator instead of having two competing highlights.
-          */}
           <span
             aria-hidden="true"
             style={{
               position: "absolute",
-              left: indicator.left,
+              left: 0,
               top: indicator.top,
-              width: indicator.width,
+              width: "2px",
               height: indicator.height,
-              background: "var(--surface-strong, rgba(255, 255, 255, 0.10))",
-              border: "1px solid var(--border, rgba(255, 255, 255, 0.18))",
-              borderRadius: "16px",
-              boxShadow: "var(--shadow, 0 4px 14px rgba(0, 0, 0, 0.12))",
-              // First measurement is no-transition so we land instantly;
-              // subsequent moves use a smooth Material-style ease.
+              background: "var(--accent)",
+              borderRadius: "999px",
               transition: indicator.animate
-                ? "left 280ms cubic-bezier(0.4, 0, 0.2, 1), top 280ms cubic-bezier(0.4, 0, 0.2, 1), width 280ms cubic-bezier(0.4, 0, 0.2, 1), height 280ms cubic-bezier(0.4, 0, 0.2, 1)"
+                ? "top 260ms cubic-bezier(0.4, 0, 0.2, 1), height 260ms cubic-bezier(0.4, 0, 0.2, 1)"
                 : "none",
               opacity: indicator.ready ? 1 : 0,
               pointerEvents: "none",
-              zIndex: 0,
             }}
           />
 
@@ -125,22 +109,14 @@ export function AppShell() {
             <NavLink
               key={item.to}
               to={item.to}
-              ref={(element) => {
-                navLinkRefs.current[index] = element;
-              }}
-              // NavLink supports a function-style `style` prop that
-              // receives `{ isActive }` from React Router — we use it
-              // to (a) override the existing .nav a.active background
-              // / border / shadow so our slider is the only visual
-              // indicator, and (b) bold the label of the active route.
+              ref={(element) => { navLinkRefs.current[index] = element; }}
               style={({ isActive }) => ({
                 position: "relative",
-                zIndex: 1,
                 background: "transparent",
-                borderColor: "transparent",
+                border: "none",
                 boxShadow: "none",
-                fontWeight: isActive ? 700 : 500,
-                transition: "font-weight 200ms ease",
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? "var(--text)" : "var(--muted)",
               })}
             >
               {item.label}

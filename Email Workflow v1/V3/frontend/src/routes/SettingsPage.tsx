@@ -422,343 +422,168 @@ export function SettingsPage() {
       : "Add your Gmail OAuth credentials to enable the connection.";
 
   return (
-    <section className="page stack">
-      <div className="hero hero--compact settings-hero">
-        <div>
-          <p className="eyebrow">Settings</p>
-          <h1>Workspace settings</h1>
-          <p className="summary-text">
-            Connect Gmail, choose your AI mode, and the rest saves automatically.
-          </p>
+    <section className="page stack sp-page">
+      <div className="sp-header">
+        <div className="sp-header__left">
+          <p className="sp-header__eyebrow">Settings</p>
+          <h1 className="sp-header__title">Workspace</h1>
+          <p className="sp-header__sub">Connect Gmail, choose your AI mode, and changes save automatically.</p>
         </div>
-
-        <div className="settings-status">
+        <div className="sp-header__status">
           <span className={`pill ${saveStatus.pillClass}`}>{saveStatus.title}</span>
-          <p className="settings-status__detail">{saveStatus.detail}</p>
+          <p className="sp-status__detail">{saveStatus.detail}</p>
         </div>
       </div>
-
-      {/*
-        Loading + transient error chatter intentionally removed. The
-        page renders nothing until `data` is ready (the actual settings
-        grid is gated on `data && formState`), so the user sees the
-        finished UI instead of "Loading settings..." then "Checking
-        Gmail..." flashing in succession. Real errors still surface via
-        the save-error banner below and the saveStatus pill in the hero.
-      */}
+      <div className="sp-divider" />
 
       {gmailResult === "connected" ? (
-        <div className="panel panel--summary settings-banner">
-          <p className="eyebrow">Gmail</p>
-          <p className="summary-text">Gmail connection updated successfully.</p>
-        </div>
+        <div className="sp-banner sp-banner--ok">Gmail connection updated successfully.</div>
       ) : null}
-
       {gmailResult === "error" ? (
-        <div className="panel settings-banner settings-banner--alert">
-          <p className="eyebrow">Gmail</p>
-          <p>{gmailMessage ?? "The Gmail connection flow failed."}</p>
-        </div>
+        <div className="sp-banner sp-banner--err">{gmailMessage ?? "The Gmail connection flow failed."}</div>
       ) : null}
-
       {saveState === "error" ? (
-        <div className="panel settings-banner settings-banner--alert">
-          <div className="settings-panel__header">
-            <div>
-              <p className="eyebrow">Settings</p>
-              <h3>Could not save</h3>
-            </div>
-            {formState ? (
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => submitSettings(formState)}
-              >
-                Retry save
-              </button>
-            ) : null}
-          </div>
-          <p>{saveError}</p>
+        <div className="sp-banner sp-banner--err">
+          {saveError}
+          {formState ? (
+            <button className="sp-banner__retry" type="button" onClick={() => submitSettings(formState)}>Retry</button>
+          ) : null}
         </div>
       ) : null}
 
       {data && formState ? (
-        <div className="settings-grid settings-grid--settings">
-          <section className="panel settings-panel">
-            <div className="settings-panel__header">
+        <div className="sp-body">
+
+          <div className="sp-section">
+            <div className="sp-section__head">
               <div>
-                <p className="eyebrow">Gmail</p>
-                <h3>
-                  {gmailStatus?.connected
-                    ? gmailStatus.email_address ?? "Connected"
-                    : "Not connected"}
-                </h3>
+                <p className="sp-label">Gmail</p>
+                <p className="sp-section__title">
+                  {gmailStatus?.connected ? gmailStatus.email_address ?? "Connected" : "Not connected"}
+                </p>
               </div>
-              <span
-                className={`pill ${
-                  gmailStatus?.connected ? "tone-positive" : "tone-watch"
-                }`}
-              >
+              <span className={`pill ${gmailStatus?.connected ? "tone-positive" : "tone-watch"}`}>
                 {gmailStatus?.connected ? "Connected" : "Needs connection"}
               </span>
             </div>
-
-            <p className="summary-text">{gmailSummary}</p>
-
+            <p className="sp-hint">{gmailSummary}</p>
             {gmailStatus?.connect_url && gmailStatus.credentials_configured ? (
-              <a className="button settings-button-row" href={gmailStatus.connect_url}>
-                {gmailStatus.connected ? "Reconnect Gmail" : "Connect Gmail"}
-              </a>
+              <div>
+                <a className="sp-connect-btn" href={gmailStatus.connect_url}>
+                  {gmailStatus.connected ? "Reconnect Gmail" : "Connect Gmail"}
+                </a>
+              </div>
             ) : null}
-
-            {(!gmailStatus?.connected && gmailStatus?.error_message) ||
-            !gmailStatus?.credentials_configured ? (
-              <details className="settings-tech settings-tech--inline">
+            {((!gmailStatus?.connected && gmailStatus?.error_message) || !gmailStatus?.credentials_configured) ? (
+              <details className="sp-details">
                 <summary>Connection details</summary>
-                <div className="stack stack--tight">
+                <div className="sp-details__body">
                   {gmailStatus?.error_message ? <p>{gmailStatus.error_message}</p> : null}
-                  <p className="settings-path">
-                    Credentials: {gmailStatus?.credentials_path ?? "unknown"}
-                  </p>
-                  <p className="settings-path">
-                    Token: {gmailStatus?.token_path ?? "unknown"}
-                  </p>
+                  <p className="sp-path">Credentials: {gmailStatus?.credentials_path ?? "unknown"}</p>
+                  <p className="sp-path">Token: {gmailStatus?.token_path ?? "unknown"}</p>
                 </div>
               </details>
             ) : null}
-          </section>
+          </div>
 
-          <section className="panel settings-panel">
-            <div className="settings-panel__header">
+          <div className="sp-divider" />
+
+          <div className="sp-section">
+            <div className="sp-section__head">
               <div>
-                <p className="eyebrow">AI mode</p>
-                <h3>{activeModeLabel}</h3>
+                <p className="sp-label">AI mode</p>
+                <p className="sp-section__title">{activeModeLabel}</p>
               </div>
-              {/*
-                Removed the redundant default-provider pill (it duplicated
-                what the toggle below already conveys) and prevented it
-                from making the header look noisy.
-              */}
             </div>
-
-            <div
-              className="settings-toggle"
-              role="tablist"
-              aria-label="AI mode"
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                gap: "8px",
-                width: "100%",
-                position: "relative",
-              }}
-            >
-              {/*
-                Animated active-state indicator. Slides between buttons
-                on mode change. We position it absolutely behind the
-                buttons (zIndex 0) and let the buttons render on top
-                with transparent backgrounds (zIndex 1). The active
-                button's text gets a contrasted color so it stays
-                readable on top of the white slider.
-              */}
+            <div className="sp-toggle" role="tablist" aria-label="AI mode">
               <span
                 aria-hidden="true"
+                className="sp-toggle__indicator"
                 style={{
-                  position: "absolute",
                   left: aiModeIndicator.left,
                   top: aiModeIndicator.top,
                   width: aiModeIndicator.width,
                   height: aiModeIndicator.height,
-                  background: "rgba(255, 255, 255, 0.95)",
-                  borderRadius: "10px",
-                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.18)",
-                  // Transition is disabled on the very first measurement
-                  // so the indicator lands at its initial position
-                  // without a visible slide. From then on it glides.
-                  transition: aiModeIndicator.animate
-                    ? "left 280ms cubic-bezier(0.4, 0, 0.2, 1), top 280ms cubic-bezier(0.4, 0, 0.2, 1), width 280ms cubic-bezier(0.4, 0, 0.2, 1), height 280ms cubic-bezier(0.4, 0, 0.2, 1)"
-                    : "none",
                   opacity: aiModeIndicator.ready ? 1 : 0,
-                  pointerEvents: "none",
-                  zIndex: 0,
+                  transition: aiModeIndicator.animate
+                    ? "left 260ms cubic-bezier(0.4,0,0.2,1), top 260ms cubic-bezier(0.4,0,0.2,1), width 260ms cubic-bezier(0.4,0,0.2,1), height 260ms cubic-bezier(0.4,0,0.2,1)"
+                    : "none",
                 }}
               />
-
-              {(
-                [
-                  { mode: "openai" as const, label: "OpenAI" },
-                  { mode: "claude" as const, label: "Claude" },
-                  { mode: "local" as const, label: "Local AI" },
-                ]
-              ).map((option, index) => {
+              {([
+                { mode: "openai" as const, label: "OpenAI" },
+                { mode: "claude" as const, label: "Claude" },
+                { mode: "local" as const, label: "Local AI" },
+              ]).map((option, index) => {
                 const isActive = formState.ai_mode === option.mode;
                 return (
                   <button
                     key={option.mode}
-                    ref={(element) => {
-                      aiModeButtonRefs.current[index] = element;
-                    }}
-                    className="settings-toggle__button"
-                    style={{
-                      flex: 1,
-                      position: "relative",
-                      zIndex: 1,
-                      background: "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "10px 14px",
-                      borderRadius: "10px",
-                      color: isActive ? "#0b1020" : "inherit",
-                      fontWeight: isActive ? 700 : 500,
-                      transition: "color 200ms ease, font-weight 200ms ease",
-                    }}
+                    ref={(el) => { aiModeButtonRefs.current[index] = el; }}
+                    className="sp-toggle__btn"
+                    style={{ fontWeight: isActive ? 600 : 400, color: isActive ? "var(--text)" : "var(--muted)" }}
                     type="button"
-                    onClick={() =>
-                      setFormState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              ai_mode: option.mode,
-                              // local mode is the only one that flips the
-                              // local-AI fan-out flag on; the other two
-                              // explicitly clear it.
-                              local_ai_force_all_threads: option.mode === "local",
-                            }
-                          : current,
-                      )
-                    }
+                    onClick={() => setFormState((c) => c ? { ...c, ai_mode: option.mode, local_ai_force_all_threads: option.mode === "local" } : c)}
                   >
                     {option.label}
                   </button>
                 );
               })}
             </div>
+            <p className="sp-hint">All tasks (analysis, drafts, queue summary, CRM) route through your selected provider.</p>
+            {localModeNeedsModel ? <p className="sp-alert">Add a local model name before switching to Local AI.</p> : null}
+          </div>
 
-            <p className="summary-text">
-              {/*
-                Neutral, mode-agnostic copy so the card height stays
-                constant when switching modes. The active provider is
-                already visible from the toggle's selected button — no
-                need to repeat it in prose.
-              */}
-              All workflow tasks (analysis, verification, drafts, queue summary, CRM) route through your selected provider.
-            </p>
-
-            {localModeNeedsModel ? (
-              <p className="settings-alert">
-                Add a local model name before switching fully to Local AI.
-              </p>
-            ) : null}
-          </section>
-
-          {/*
-            The Local agent setup panel only makes sense when Local AI is the
-            active mode. For OpenAI / Claude users it's just noise. Auto-save
-            still triggers via the form-state effect, so hiding the form here
-            doesn't break the save path — only the manual "Retry save"
-            fallback is hidden, which is acceptable since the auto-save loop
-            will re-fire on the next state change anyway.
-          */}
           {formState.ai_mode === "local" ? (
-            <form
-              className="panel settings-form settings-panel settings-panel--wide"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submitSettings(formState);
-              }}
-            >
-              <div className="settings-panel__header">
-                <div>
-                  <p className="eyebrow">Local agent</p>
-                  <h3>{showingLocalSetup ? "Local AI setup" : "Prepare local AI"}</h3>
+            <>
+              <div className="sp-divider" />
+              <div className="sp-section">
+                <div className="sp-section__head">
+                  <div>
+                    <p className="sp-label">Local agent</p>
+                    <p className="sp-section__title">Ollama setup</p>
+                  </div>
+                  <span className="pill tone-positive">Active</span>
                 </div>
-                <span className="pill tone-positive">Active</span>
+                <label className="sp-field">
+                  <span className="sp-field__label">Model name</span>
+                  <input
+                    type="text"
+                    value={formState.local_ai_model}
+                    onChange={(e) => setFormState((c) => c ? { ...c, local_ai_model: e.target.value } : c)}
+                    placeholder={localFallbackModel || "llama3.1:8b"}
+                    aria-invalid={localModeNeedsModel}
+                  />
+                </label>
+                <label className="sp-field">
+                  <span className="sp-field__label">Agent instructions</span>
+                  <textarea
+                    rows={5}
+                    value={formState.local_ai_agent_prompt}
+                    onChange={(e) => setFormState((c) => c ? { ...c, local_ai_agent_prompt: e.target.value } : c)}
+                    placeholder="You are my email workflow agent. Be concise, identify urgency, and always return a concrete next action."
+                  />
+                </label>
+                <p className="sp-hint">Local mode uses your Ollama agents for all tasks.</p>
               </div>
-
-              <label className="settings-form__field">
-                <span>Model name</span>
-                <input
-                  aria-invalid={localModeNeedsModel}
-                  type="text"
-                  value={formState.local_ai_model}
-                  onChange={(event) =>
-                    setFormState((current) =>
-                      current
-                        ? {
-                            ...current,
-                            local_ai_model: event.target.value,
-                          }
-                        : current,
-                    )
-                  }
-                  placeholder={localFallbackModel || "llama3.1:8b"}
-                />
-              </label>
-
-              <label className="settings-form__field">
-                <span>Agent instructions</span>
-                <textarea
-                  rows={6}
-                  value={formState.local_ai_agent_prompt}
-                  onChange={(event) =>
-                    setFormState((current) =>
-                      current
-                        ? {
-                            ...current,
-                            local_ai_agent_prompt: event.target.value,
-                          }
-                        : current,
-                    )
-                  }
-                  placeholder="You are my email workflow agent. Be concise, identify urgency, and always return a concrete next action."
-                />
-              </label>
-
-              <div className="settings-support">
-                <p className="summary-text">
-                  Local mode uses your Ollama agents for thread analysis, verification, queueing, drafts, and CRM extraction.
-                </p>
-
-                {saveState === "error" ? (
-                  <button className="button button--ghost" type="submit">
-                    Retry save
-                  </button>
-                ) : null}
-              </div>
-            </form>
+            </>
           ) : null}
 
-          <details className="panel settings-tech settings-panel settings-panel--wide">
-            <summary>Technical details</summary>
-            <div className="settings-tech__grid">
+          <div className="sp-divider" />
+
+          <details className="sp-tech">
+            <summary className="sp-tech__summary">Technical details</summary>
+            <div className="sp-tech__grid">
+              <div><p className="sp-label">Environment</p><p className="sp-tech__val">{data.environment}</p></div>
+              <div><p className="sp-label">Database</p><p className="sp-path">{data.database_url}</p></div>
               <div>
-                <p className="settings-tech__label">Environment</p>
-                <p>{data.environment}</p>
+                <p className="sp-label">Effective routing</p>
+                <p className="sp-tech__val">{(() => { const r = effectiveRouting(data, formState.ai_mode); return `Analysis ${r.thread_analysis} · queue ${r.queue} · drafts ${r.draft} · CRM ${r.crm}`; })()}</p>
               </div>
-              <div>
-                <p className="settings-tech__label">Database</p>
-                <p className="settings-path">{data.database_url}</p>
-              </div>
-              <div>
-                <p className="settings-tech__label">Effective routing</p>
-                {/*
-                  Reflects what the AIProviderRouter will actually do once
-                  the current settings save — NOT just the env-var
-                  defaults, because mode "local" / "claude" override them.
-                */}
-                <p>
-                  {(() => {
-                    const routing = effectiveRouting(data, formState.ai_mode);
-                    return `Analysis ${routing.thread_analysis}, queue ${routing.queue}, drafts ${routing.draft}, CRM ${routing.crm}`;
-                  })()}
-                </p>
-              </div>
-              <div>
-                <p className="settings-tech__label">Ollama base URL</p>
-                <p className="settings-path">{data.ollama_base_url}</p>
-              </div>
+              <div><p className="sp-label">Ollama URL</p><p className="sp-path">{data.ollama_base_url}</p></div>
             </div>
           </details>
+
         </div>
       ) : null}
     </section>
