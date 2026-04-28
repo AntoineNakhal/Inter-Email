@@ -102,11 +102,10 @@ export function ThreadDetailPage() {
             <FontAwesomeIcon icon={faEnvelope} />
           </a>
           <button
-            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${
-              thread.seen_state?.seen
+            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.seen
                 ? "thread-detail__hero-action--seen"
                 : "thread-detail__hero-action--unseen"
-            }`}
+              }`}
             onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
             aria-label={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
             title={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
@@ -114,11 +113,10 @@ export function ThreadDetailPage() {
             <FontAwesomeIcon icon={thread.seen_state?.seen ? faSquareCheck : faSquare} />
           </button>
           <button
-            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${
-              thread.seen_state?.pinned
+            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.pinned
                 ? "thread-detail__hero-action--pinned"
                 : "thread-detail__hero-action--unseen"
-            }`}
+              }`}
             onClick={() => pinMutation.mutate(!(thread.seen_state?.pinned ?? false))}
             aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
             title={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
@@ -134,69 +132,69 @@ export function ThreadDetailPage() {
         content lengths used to make the layout look broken.
       */}
       <section className="panel stack thread-detail__analysis">
-          <div className="thread-detail__section-head">
-            <div>
-              <p className="eyebrow">Analysis</p>
-              <h3>{thread.analysis?.summary ?? "No analysis yet"}</h3>
-            </div>
-            <span className={`pill ${toneClass}`}>
-              {thread.analysis?.urgency ?? "unknown"}
-            </span>
+        <div className="thread-detail__section-head">
+          <div>
+            <p className="eyebrow">Analysis</p>
+            <h3>{thread.analysis?.summary ?? "No analysis yet"}</h3>
           </div>
+          <span className={`pill ${toneClass}`}>
+            {thread.analysis?.urgency ?? "unknown"}
+          </span>
+        </div>
 
-          <div className="thread-detail__summary-card">
-            <p className="thread-detail__label">Current status</p>
-            <p className="thread-detail__body">
-              {thread.analysis?.current_status ?? "Run sync to analyze this thread."}
-            </p>
-          </div>
+        <div className="thread-detail__summary-card">
+          <p className="thread-detail__label">Current status</p>
+          <p className="thread-detail__body">
+            {thread.analysis?.current_status ?? "Run sync to analyze this thread."}
+          </p>
+        </div>
 
-          <div className="thread-detail__summary-card thread-detail__summary-card--accent">
-            <p className="thread-detail__label">Next action</p>
+        <div className="thread-detail__summary-card thread-detail__summary-card--accent">
+          <p className="thread-detail__label">Next action</p>
+          <div className="thread-detail__next-action">            
             <p className="thread-detail__body thread-detail__body--strong">
-              {thread.analysis?.next_action ??
-                "Open the conversation and decide the next owner."}
-            </p>
-            <div style={{ marginTop: "0.75rem", display: "flex", justifyContent: "flex-end" }}>
+            {thread.analysis?.next_action ??
+              "Open the conversation and decide the next owner."}
+          </p>
               <DraftComposer thread={thread} recommended={Boolean(thread.analysis?.should_draft_reply)} />
             </div>
-          </div>
+        </div>
 
-          <div className="thread-detail__facts">
-            <div className="thread-detail__fact">
-              <p className="thread-detail__label">Workflow</p>
-              <p className="thread-detail__body">{workflowLabel(thread)}</p>
-            </div>
-            <div className="thread-detail__fact thread-detail__fact--verifier">
-              <div className="thread-detail__fact-topline">
-                <p className="thread-detail__label">Verifier score</p>
-                {thread.analysis?.verification_summary || thread.analysis?.review_reason ? (
-                  <details className="thread-detail__fact-details">
-                    <summary
-                      className="thread-detail__fact-button"
-                      aria-label="Why this verifier score?"
-                    >
-                      Why?
-                    </summary>
-                    <div className="thread-detail__fact-popover">
-                      <p className="thread-detail__body">
-                        {thread.analysis.verification_summary || "No verifier notes yet."}
-                      </p>
-                      <p className="thread-detail__body thread-detail__body--muted">
-                        {thread.analysis.needs_human_review
-                          ? thread.analysis.review_reason ??
-                            "The verifier recommends a manual review."
-                          : "The verifier is comfortable with the current analysis output."}
-                      </p>
-                    </div>
-                  </details>
-                ) : null}
-              </div>
-              <p className="thread-detail__body">
-                {thread.analysis ? `${thread.analysis.accuracy_percent}%` : "Not verified"}
-              </p>
-            </div>
+        <div className="thread-detail__facts">
+          <div className="thread-detail__fact">
+            <p className="thread-detail__label">Workflow</p>
+            <p className="thread-detail__body">{workflowLabel(thread)}</p>
           </div>
+          <div className="thread-detail__fact thread-detail__fact--verifier">
+            <div className="thread-detail__fact-topline">
+              <p className="thread-detail__label">Verifier score</p>
+              {thread.analysis?.verification_summary || thread.analysis?.review_reason ? (
+                <details className="thread-detail__fact-details">
+                  <summary
+                    className="thread-detail__fact-button"
+                    aria-label="Why this verifier score?"
+                  >
+                    Why?
+                  </summary>
+                  <div className="thread-detail__fact-popover">
+                    <p className="thread-detail__body">
+                      {thread.analysis.verification_summary || "No verifier notes yet."}
+                    </p>
+                    <p className="thread-detail__body thread-detail__body--muted">
+                      {thread.analysis.needs_human_review
+                        ? thread.analysis.review_reason ??
+                        "The verifier recommends a manual review."
+                        : "The verifier is comfortable with the current analysis output."}
+                    </p>
+                  </div>
+                </details>
+              ) : null}
+            </div>
+            <p className="thread-detail__body">
+              {thread.analysis ? `${thread.analysis.accuracy_percent}%` : "Not verified"}
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="panel stack thread-detail__messages">

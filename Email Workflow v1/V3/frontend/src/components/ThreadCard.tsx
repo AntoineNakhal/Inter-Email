@@ -52,25 +52,24 @@ export function ThreadCard({ thread }: { thread: EmailThread }) {
               {urgency}
             </span>
           ) : null}
+          <button
+            className={`thread-card__pin-btn ${thread.seen_state?.pinned ? "thread-card__pin-btn--active" : ""}`}
+            title={thread.seen_state?.pinned ? "Unpin" : "Pin"}
+            aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              pinMutation.mutate(!(thread.seen_state?.pinned ?? false));
+            }}
+          >
+            <FontAwesomeIcon icon={faThumbtack} className="thread-card__pin-icon" />
+          </button>
         </div>
         <p className="thread-row__action">
           <span className="thread-row__action-arrow">→</span>
           {nextAction}
         </p>
       </Link>
-
-      <button
-        className={`thread-card__pin-btn ${thread.seen_state?.pinned ? "thread-card__pin-btn--active" : ""}`}
-        title={thread.seen_state?.pinned ? "Unpin" : "Pin"}
-        aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          pinMutation.mutate(!(thread.seen_state?.pinned ?? false));
-        }}
-      >
-        <FontAwesomeIcon icon={faThumbtack} className="thread-card__pin-icon" />
-      </button>
     </div>
   );
 }
