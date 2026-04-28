@@ -113,7 +113,21 @@ class ThreadAnalysisModel(Base, TimestampMixin):
     model_name: Mapped[str] = mapped_column(String(128), default="deterministic-fallback")
     prompt_version: Mapped[str] = mapped_column(String(64), default="v1")
     used_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+    accuracy_percent: Mapped[int] = mapped_column(Integer, default=0)
+    verification_summary: Mapped[str] = mapped_column(Text, default="")
+    needs_human_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_reason: Mapped[str | None] = mapped_column(Text)
+    verifier_provider_name: Mapped[str] = mapped_column(
+        String(64),
+        default="heuristic",
+    )
+    verifier_model_name: Mapped[str] = mapped_column(
+        String(128),
+        default="deterministic-fallback",
+    )
+    verifier_used_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     thread: Mapped["EmailThreadModel"] = relationship(back_populates="analysis")
 
@@ -130,5 +144,6 @@ class ThreadStateModel(Base, TimestampMixin):
     seen: Mapped[bool] = mapped_column(Boolean, default=False)
     seen_version: Mapped[str] = mapped_column(String(128), default="")
     seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
 
     thread: Mapped["EmailThreadModel"] = relationship(back_populates="state")

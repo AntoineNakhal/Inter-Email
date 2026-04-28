@@ -19,8 +19,9 @@ class CRMService:
         thread: EmailThread,
         *,
         prefer_primary: bool = True,
+        user_email: str | None = None,
     ) -> CRMExtractionResult:
-        request = CRMExtractionRequest(thread=thread)
+        request = CRMExtractionRequest(thread=thread, user_email=user_email)
         provider = (
             self.provider_router.provider_for_task("crm_extraction")
             if prefer_primary

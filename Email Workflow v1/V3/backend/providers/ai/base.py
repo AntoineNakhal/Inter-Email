@@ -11,6 +11,8 @@ from backend.domain.analysis import (
     QueueSummaryRequest,
     QueueSummaryResult,
     ThreadAnalysisRequest,
+    ThreadVerificationRequest,
+    ThreadVerificationResult,
 )
 from backend.domain.thread import DraftDocument, ThreadAnalysis
 
@@ -30,6 +32,13 @@ class AIProvider(ABC):
 
     @abstractmethod
     def summarize_queue(self, request: QueueSummaryRequest) -> QueueSummaryResult:
+        raise NotImplementedError
+
+    @abstractmethod
+    def verify_thread_analysis(
+        self,
+        request: ThreadVerificationRequest,
+    ) -> ThreadVerificationResult:
         raise NotImplementedError
 
     @abstractmethod

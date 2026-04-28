@@ -14,6 +14,7 @@ from backend.domain.thread import EmailThread
 class SyncStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
+    CANCELLED = "cancelled"
     FAILED = "failed"
 
 
@@ -24,6 +25,7 @@ class SyncStage(str, Enum):
     ANALYZING = "analyzing"
     SUMMARIZING = "summarizing"
     COMPLETED = "completed"
+    CANCELLED = "cancelled"
     FAILED = "failed"
 
 
@@ -37,6 +39,7 @@ class SyncRunSummary(BaseModel):
     fetched_message_count: int
     thread_count: int
     ai_thread_count: int
+    cancellation_requested: bool = False
     completed_at: datetime | None = None
     queue_summary: QueueSummaryResult | None = None
     error_message: str | None = None

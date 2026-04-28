@@ -22,7 +22,7 @@ def test_settings_endpoint_updates_runtime_ai_mode() -> None:
 
     update_payload = {
         "ai_mode": "local",
-        "local_ai_force_all_threads": True,
+        "local_ai_force_all_threads": False,
         "local_ai_model": "llama3.1:8b",
         "local_ai_agent_prompt": "You are my local email workflow agent.",
     }

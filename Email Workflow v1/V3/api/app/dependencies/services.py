@@ -61,18 +61,28 @@ def build_service_bundle(session: Session) -> ServiceBundle:
     thread_repository = ThreadRepository(session)
     review_repository = ReviewRepository(session)
     draft_repository = DraftRepository(session)
-    queue_service = QueueService(provider_router, thread_repository)
+    queue_service = QueueService(provider_router, thread_repository, runtime_settings)
     crm_service = CRMService(provider_router)
     analysis_service = ThreadAnalysisService(
         provider_router,
         thread_repository,
         crm_service,
     )
-    draft_service = DraftService(provider_router, thread_repository, draft_repository)
+    draft_service = DraftService(
+        provider_router,
+        thread_repository,
+        draft_repository,
+        runtime_settings,
+    )
     review_service = ReviewService(review_repository, thread_repository)
     gmail_connection_service = GmailConnectionService(
         gmail_client=gmail_client,
         state_store=GMAIL_CONNECTION_STATE_STORE,
+        runtime_settings_service=runtime_settings_service,
+        thread_repository=thread_repository,
+        sync_repository=SyncRepository(session),
+        progress_store=SYNC_PROGRESS_STORE,
+        session=session,
     )
     sync_service = GmailSyncService(
         session=session,

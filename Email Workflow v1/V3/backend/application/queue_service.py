@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.domain.analysis import QueueSummaryRequest, QueueSummaryResult
+from backend.domain.runtime_settings import RuntimeSettings
 from backend.domain.thread import EmailThread, UrgencyLevel
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.ai.base import AIProviderError
@@ -16,9 +17,11 @@ class QueueService:
         self,
         provider_router: AIProviderRouter,
         thread_repository: ThreadRepository,
+        runtime_settings: RuntimeSettings,
     ) -> None:
         self.provider_router = provider_router
         self.thread_repository = thread_repository
+        self.runtime_settings = runtime_settings
 
     def list_threads(self) -> list[EmailThread]:
         threads = self.thread_repository.list_threads()
@@ -28,7 +31,13 @@ class QueueService:
         return self.thread_repository.get_thread(external_thread_id)
 
     def summarize_threads(self, threads: list[EmailThread]) -> QueueSummaryResult:
-        request = QueueSummaryRequest(threads=threads)
+        # Priority snapshot should only analyze unseen threads.
+        unseen_threads = [
+            thread for thread in threads if not (thread.seen_state and thread.seen_state.seen)
+        ]
+        # The summary is written from the connected mailbox owner's POV.
+        user_email = self.runtime_settings.gmail_mailbox_email.strip() or None
+        request = QueueSummaryRequest(threads=unseen_threads, user_email=user_email)
         provider = self.provider_router.provider_for_task("queue_summary")
         try:
             return provider.summarize_queue(request)

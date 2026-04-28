@@ -27,13 +27,22 @@ export type ThreadAnalysis = {
   provider_name: string;
   model_name: string;
   used_fallback: boolean;
+  accuracy_percent: number;
+  verification_summary: string;
+  needs_human_review: boolean;
+  review_reason: string | null;
+  verifier_provider_name: string;
+  verifier_model_name: string;
+  verifier_used_fallback: boolean;
   analyzed_at: string | null;
+  verified_at: string | null;
 };
 
 export type SeenState = {
   seen: boolean;
   seen_version: string;
   seen_at: string | null;
+  pinned: boolean;
 };
 
 export type ReviewDecision = {
@@ -109,6 +118,7 @@ export type SyncRunStatus = {
   fetched_message_count: number;
   thread_count: number;
   ai_thread_count: number;
+  cancellation_requested: boolean;
   completed_at: string | null;
   queue_summary: QueueSummary | null;
   error_message: string | null;

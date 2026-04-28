@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from backend.core.config import AppSettings
+from backend.core.email_text import clean_email_body, clean_email_snippet
 from backend.domain.gmail import GmailConnectionStatus
 from backend.domain.thread import InboundEmailMessage
 
@@ -19,10 +20,11 @@ class GmailReadonlyClient:
     """Handles Gmail OAuth and basic recent-thread fetches."""
 
     PAGE_SIZE = 500
+    # -in:draft excluded globally — we never want draft messages.
     QUERY_BY_SOURCE = {
-        "anywhere": "in:anywhere",
-        "sent": "in:sent",
-        "received": "-in:sent",
+        "anywhere": "in:anywhere -in:draft",
+        "sent": "in:sent -in:draft",
+        "received": "-in:sent -in:draft",
     }
 
     def __init__(self, settings: AppSettings) -> None:
@@ -32,13 +34,27 @@ class GmailReadonlyClient:
         self,
         max_results: int | None = None,
         source: str | None = None,
+        lookback_days: int = 7,
+        known_message_ids: set[str] | None = None,
     ) -> list[InboundEmailMessage]:
+        """Fetch Gmail messages, skipping threads with no new activity.
+
+        ``known_message_ids`` should be the set of message IDs already stored
+        in the local DB. Any thread whose every message ref is already known
+        is skipped entirely — no ``threads.get`` call is made for it.
+        Draft messages (DRAFT label) are filtered out at the message level.
+        """
         service = self._build_service()
-        query = self.build_query(source or self.settings.gmail_thread_source)
+        query = self.build_query(
+            source or self.settings.gmail_thread_source,
+            lookback_days=lookback_days,
+        )
+        limit = max_results or self.settings.gmail_max_results
+        known = known_message_ids or set()
+
+        # Step 1: Collect message refs (cheap list call, no body fetched yet).
         message_refs: list[dict[str, Any]] = []
         next_page_token: str | None = None
-        limit = max_results or self.settings.gmail_max_results
-
         while True:
             response = (
                 service.users()
@@ -56,40 +72,31 @@ class GmailReadonlyClient:
             if not next_page_token or len(message_refs) >= limit:
                 break
 
-        messages: list[InboundEmailMessage] = []
-        seen_thread_ids: set[str] = set()
-        seen_message_ids: set[str] = set()
-        for message_ref in message_refs[:limit]:
-            thread_id = message_ref.get("threadId")
-            if thread_id:
-                if thread_id in seen_thread_ids:
-                    continue
-                raw_thread = (
-                    service.users()
-                    .threads()
-                    .get(userId="me", id=thread_id, format="full")
-                    .execute()
-                )
-                for raw_message in raw_thread.get("messages", []):
-                    self._append_unique_message(
-                        messages,
-                        seen_message_ids,
-                        raw_message,
-                    )
-                seen_thread_ids.add(thread_id)
-                continue
+        # Step 2: Group message refs by thread_id so we can detect new activity
+        # before paying for a threads.get call.
+        thread_message_ids: dict[str, list[str]] = {}
+        for ref in message_refs[:limit]:
+            thread_id = ref.get("threadId") or ref.get("id")
+            message_id = ref.get("id")
+            if thread_id and message_id:
+                thread_message_ids.setdefault(thread_id, []).append(message_id)
 
-            raw_message = (
+        # Step 3: Fetch full thread details — skip threads with no new messages.
+        messages: list[InboundEmailMessage] = []
+        seen_message_ids: set[str] = set()
+        for thread_id, ref_message_ids in thread_message_ids.items():
+            if known and all(mid in known for mid in ref_message_ids):
+                # Every message in this thread's refs is already in the DB.
+                # The thread has not changed — no fetch needed.
+                continue
+            raw_thread = (
                 service.users()
-                .messages()
-                .get(userId="me", id=message_ref["id"], format="full")
+                .threads()
+                .get(userId="me", id=thread_id, format="full")
                 .execute()
             )
-            self._append_unique_message(
-                messages,
-                seen_message_ids,
-                raw_message,
-            )
+            for raw_message in raw_thread.get("messages", []):
+                self._append_unique_message(messages, seen_message_ids, raw_message)
 
         return messages
 
@@ -233,16 +240,25 @@ class GmailReadonlyClient:
         return flow
 
     @classmethod
-    def build_query(cls, source: str, now: datetime | None = None) -> str:
+    def build_query(
+        cls,
+        source: str,
+        now: datetime | None = None,
+        lookback_days: int = 7,
+    ) -> str:
         normalized = (source or "anywhere").strip().lower()
         base_query = cls.QUERY_BY_SOURCE.get(normalized, cls.QUERY_BY_SOURCE["anywhere"])
-        window_start = cls.rolling_window_start(now)
+        window_start = cls.rolling_window_start(now, lookback_days=lookback_days)
         return f"{base_query} after:{window_start.strftime('%Y/%m/%d')}"
 
     @staticmethod
-    def rolling_window_start(now: datetime | None = None) -> datetime:
+    def rolling_window_start(
+        now: datetime | None = None,
+        lookback_days: int = 7,
+    ) -> datetime:
         local_now = (now or datetime.now().astimezone()).astimezone()
-        start = local_now - timedelta(days=7)
+        safe_lookback_days = max(1, lookback_days)
+        start = local_now - timedelta(days=safe_lookback_days)
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
     def _normalize_message(self, message: dict[str, Any]) -> InboundEmailMessage:
@@ -255,8 +271,8 @@ class GmailReadonlyClient:
             from_address=headers.get("From", ""),
             to_address=headers.get("To", ""),
             date_header=headers.get("Date", ""),
-            snippet=message.get("snippet", ""),
-            body_text=self._extract_text(payload),
+            snippet=clean_email_snippet(message.get("snippet", "")),
+            body_text=clean_email_body(self._extract_text(payload)),
             label_ids=message.get("labelIds", []),
         )
 
@@ -269,6 +285,9 @@ class GmailReadonlyClient:
         normalized = self._normalize_message(raw_message)
         message_id = str(normalized.external_message_id or "").strip()
         if not message_id or message_id in seen_message_ids:
+            return
+        # Defense-in-depth: skip draft messages even if the query filter missed them.
+        if "DRAFT" in (normalized.label_ids or []):
             return
         seen_message_ids.add(message_id)
         messages.append(normalized)

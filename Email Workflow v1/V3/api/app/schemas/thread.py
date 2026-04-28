@@ -39,13 +39,22 @@ class ThreadAnalysisResponse(BaseModel):
     provider_name: str
     model_name: str
     used_fallback: bool
+    accuracy_percent: int
+    verification_summary: str
+    needs_human_review: bool
+    review_reason: str | None = None
+    verifier_provider_name: str
+    verifier_model_name: str
+    verifier_used_fallback: bool
     analyzed_at: datetime | None = None
+    verified_at: datetime | None = None
 
 
 class SeenStateResponse(BaseModel):
     seen: bool
     seen_version: str
     seen_at: datetime | None = None
+    pinned: bool = False
 
 
 class ReviewDecisionResponse(BaseModel):
@@ -149,7 +158,15 @@ class ThreadResponse(BaseModel):
                     provider_name=thread.analysis.provider_name,
                     model_name=thread.analysis.model_name,
                     used_fallback=thread.analysis.used_fallback,
+                    accuracy_percent=thread.analysis.accuracy_percent,
+                    verification_summary=thread.analysis.verification_summary,
+                    needs_human_review=thread.analysis.needs_human_review,
+                    review_reason=thread.analysis.review_reason,
+                    verifier_provider_name=thread.analysis.verifier_provider_name,
+                    verifier_model_name=thread.analysis.verifier_model_name,
+                    verifier_used_fallback=thread.analysis.verifier_used_fallback,
                     analyzed_at=thread.analysis.analyzed_at,
+                    verified_at=thread.analysis.verified_at,
                 )
                 if thread.analysis
                 else None
@@ -159,6 +176,7 @@ class ThreadResponse(BaseModel):
                     seen=thread.seen_state.seen,
                     seen_version=thread.seen_state.seen_version,
                     seen_at=thread.seen_state.seen_at,
+                    pinned=thread.seen_state.pinned,
                 )
                 if thread.seen_state
                 else None

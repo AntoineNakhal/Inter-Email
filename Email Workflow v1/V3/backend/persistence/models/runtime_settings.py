@@ -16,3 +16,4 @@ class RuntimeSettingsModel(Base, TimestampMixin):
     local_ai_force_all_threads: Mapped[bool] = mapped_column(Boolean, default=False)
     local_ai_model: Mapped[str] = mapped_column(String(255), default="")
     local_ai_agent_prompt: Mapped[str] = mapped_column(Text, default="")
+    gmail_mailbox_email: Mapped[str] = mapped_column(String(255), default="")

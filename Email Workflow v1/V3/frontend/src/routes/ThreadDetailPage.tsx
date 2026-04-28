@@ -1,7 +1,10 @@
 import { useParams } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faEnvelope, faSquare } from "@fortawesome/free-regular-svg-icons";
+import { faSquareCheck, faThumbtack } from "@fortawesome/free-solid-svg-icons";
 
 import { DraftComposer } from "../features/drafts/DraftComposer";
-import { useSeenMutation, useThread } from "../hooks/useApi";
+import { usePinMutation, useSeenMutation, useThread } from "../hooks/useApi";
 import { formatDate } from "../lib/format";
 import { formatInlineText, formatMessageExcerpt } from "../lib/messageFormat";
 
@@ -35,10 +38,15 @@ function workflowTone(thread: {
   return "tone-neutral";
 }
 
+function gmailThreadUrl(threadId: string) {
+  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
+}
+
 export function ThreadDetailPage() {
   const { threadId } = useParams();
   const { data: thread, isLoading, error } = useThread(threadId);
   const seenMutation = useSeenMutation(threadId ?? "");
+  const pinMutation = usePinMutation(threadId ?? "");
 
   if (isLoading) {
     return <section className="page">Loading thread...</section>;
@@ -82,16 +90,50 @@ export function ThreadDetailPage() {
           </p>
         </div>
 
-        <button
-          className="button button--ghost"
-          onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
-        >
-          {thread.seen_state?.seen ? "Mark Unseen" : "Mark Seen"}
-        </button>
+        <div className="thread-detail__hero-actions">
+          <a
+            className="button button--ghost thread-detail__hero-action thread-detail__hero-action--icon thread-detail__hero-action--unseen"
+            href={gmailThreadUrl(thread.thread_id)}
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="Open this thread in Gmail"
+            title="Open in Gmail"
+          >
+            <FontAwesomeIcon icon={faEnvelope} />
+          </a>
+          <button
+            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${
+              thread.seen_state?.seen
+                ? "thread-detail__hero-action--seen"
+                : "thread-detail__hero-action--unseen"
+            }`}
+            onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
+            aria-label={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
+            title={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
+          >
+            <FontAwesomeIcon icon={thread.seen_state?.seen ? faSquareCheck : faSquare} />
+          </button>
+          <button
+            className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${
+              thread.seen_state?.pinned
+                ? "thread-detail__hero-action--pinned"
+                : "thread-detail__hero-action--unseen"
+            }`}
+            onClick={() => pinMutation.mutate(!(thread.seen_state?.pinned ?? false))}
+            aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
+            title={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
+          >
+            <FontAwesomeIcon icon={faThumbtack} />
+          </button>
+        </div>
       </div>
 
-      <div className="detail-grid thread-detail__grid">
-        <section className="panel stack thread-detail__analysis">
+      {/*
+        Stacked vertically (instead of side-by-side) so the analysis card
+        and the draft workflow no longer have to share a row — uneven
+        content lengths used to make the layout look broken.
+      */}
+      <section className="panel stack thread-detail__analysis">
           <div className="thread-detail__section-head">
             <div>
               <p className="eyebrow">Analysis</p>
@@ -115,6 +157,9 @@ export function ThreadDetailPage() {
               {thread.analysis?.next_action ??
                 "Open the conversation and decide the next owner."}
             </p>
+            <div style={{ marginTop: "0.75rem", display: "flex", justifyContent: "flex-end" }}>
+              <DraftComposer thread={thread} recommended={Boolean(thread.analysis?.should_draft_reply)} />
+            </div>
           </div>
 
           <div className="thread-detail__facts">
@@ -122,29 +167,37 @@ export function ThreadDetailPage() {
               <p className="thread-detail__label">Workflow</p>
               <p className="thread-detail__body">{workflowLabel(thread)}</p>
             </div>
-            <div className="thread-detail__fact">
-              <p className="thread-detail__label">Draft suggested</p>
+            <div className="thread-detail__fact thread-detail__fact--verifier">
+              <div className="thread-detail__fact-topline">
+                <p className="thread-detail__label">Verifier score</p>
+                {thread.analysis?.verification_summary || thread.analysis?.review_reason ? (
+                  <details className="thread-detail__fact-details">
+                    <summary
+                      className="thread-detail__fact-button"
+                      aria-label="Why this verifier score?"
+                    >
+                      Why?
+                    </summary>
+                    <div className="thread-detail__fact-popover">
+                      <p className="thread-detail__body">
+                        {thread.analysis.verification_summary || "No verifier notes yet."}
+                      </p>
+                      <p className="thread-detail__body thread-detail__body--muted">
+                        {thread.analysis.needs_human_review
+                          ? thread.analysis.review_reason ??
+                            "The verifier recommends a manual review."
+                          : "The verifier is comfortable with the current analysis output."}
+                      </p>
+                    </div>
+                  </details>
+                ) : null}
+              </div>
               <p className="thread-detail__body">
-                {thread.analysis?.should_draft_reply ? "Yes" : "No"}
-              </p>
-            </div>
-            <div className="thread-detail__fact">
-              <p className="thread-detail__label">Date needed</p>
-              <p className="thread-detail__body">
-                {thread.analysis?.draft_needs_date ? "Yes" : "No"}
-              </p>
-            </div>
-            <div className="thread-detail__fact">
-              <p className="thread-detail__label">Attachment needed</p>
-              <p className="thread-detail__body">
-                {thread.analysis?.draft_needs_attachment ? "Yes" : "No"}
+                {thread.analysis ? `${thread.analysis.accuracy_percent}%` : "Not verified"}
               </p>
             </div>
           </div>
-        </section>
-
-        <DraftComposer thread={thread} />
-      </div>
+      </section>
 
       <section className="panel stack thread-detail__messages">
         <div className="thread-detail__section-head">

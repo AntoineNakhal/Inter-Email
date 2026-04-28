@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.core.config import AppSettings
 from backend.domain.runtime_settings import RuntimeSettings
+from backend.providers.ai.anthropic_provider import AnthropicProvider
 from backend.providers.ai.base import AIProvider
 from backend.providers.ai.heuristic_provider import HeuristicAIProvider
 from backend.providers.ai.ollama_provider import OllamaProvider
@@ -20,4 +21,6 @@ def build_provider_registry(
         "heuristic": HeuristicAIProvider(),
         "openai": OpenAIProvider(settings),
         "ollama": OllamaProvider(settings, runtime_settings),
+        # User-facing AI mode "claude" maps to this provider.
+        "anthropic": AnthropicProvider(settings),
     }

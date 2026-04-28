@@ -38,6 +38,12 @@ class SyncRepository:
         )
         return self._to_summary(model) if model else None
 
+    def delete_all(self) -> None:
+        models = self.session.scalars(select(SyncRunModel)).all()
+        for model in models:
+            self.session.delete(model)
+        self.session.flush()
+
     def complete_run(
         self,
         run: SyncRunModel,
@@ -66,17 +72,22 @@ class SyncRepository:
             stage=(
                 SyncStage.COMPLETED
                 if status == SyncStatus.COMPLETED
+                else SyncStage.CANCELLED
+                if status == SyncStatus.CANCELLED
                 else SyncStage.FAILED
             ),
             progress_percent=100,
             status_message=(
                 "Inbox refresh complete."
                 if status == SyncStatus.COMPLETED
+                else "Inbox refresh cancelled."
+                if status == SyncStatus.CANCELLED
                 else "Inbox refresh failed."
             ),
             fetched_message_count=fetched_message_count,
             thread_count=thread_count,
             ai_thread_count=ai_thread_count,
+            cancellation_requested=False,
             completed_at=run.completed_at,
             queue_summary=queue_summary,
             error_message=error_message,
@@ -98,6 +109,8 @@ class SyncRepository:
             stage=(
                 SyncStage.COMPLETED
                 if status == SyncStatus.COMPLETED
+                else SyncStage.CANCELLED
+                if status == SyncStatus.CANCELLED
                 else SyncStage.FAILED
                 if status == SyncStatus.FAILED
                 else SyncStage.QUEUED
@@ -106,6 +119,8 @@ class SyncRepository:
             status_message=(
                 "Inbox refresh complete."
                 if status == SyncStatus.COMPLETED
+                else "Inbox refresh cancelled."
+                if status == SyncStatus.CANCELLED
                 else "Inbox refresh failed."
                 if status == SyncStatus.FAILED
                 else "Inbox refresh queued."
@@ -113,6 +128,7 @@ class SyncRepository:
             fetched_message_count=model.fetched_message_count,
             thread_count=model.thread_count,
             ai_thread_count=model.ai_thread_count,
+            cancellation_requested=False,
             completed_at=model.completed_at,
             queue_summary=(
                 QueueSummaryResult.model_validate(queue_summary_payload)

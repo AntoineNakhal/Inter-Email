@@ -80,6 +80,24 @@ class AppSettings(BaseModel):
     )
     ollama_model_draft: str = Field("", alias="OLLAMA_MODEL_DRAFT")
     ollama_model_crm: str = Field("", alias="OLLAMA_MODEL_CRM")
+    # Anthropic / Claude. Matches the SDK env var convention.
+    anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+    anthropic_model_thread_analysis: str = Field(
+        "claude-haiku-4-5-20251001",
+        alias="ANTHROPIC_MODEL_THREAD_ANALYSIS",
+    )
+    anthropic_model_queue_summary: str = Field(
+        "claude-haiku-4-5-20251001",
+        alias="ANTHROPIC_MODEL_QUEUE_SUMMARY",
+    )
+    anthropic_model_draft: str = Field(
+        "claude-haiku-4-5-20251001",
+        alias="ANTHROPIC_MODEL_DRAFT",
+    )
+    anthropic_model_crm: str = Field(
+        "claude-haiku-4-5-20251001",
+        alias="ANTHROPIC_MODEL_CRM",
+    )
     app_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
 
     @field_validator("gmail_max_results", mode="before")
@@ -141,6 +159,7 @@ class AppSettings(BaseModel):
         normalized = str(task or "").strip().lower()
         mapping = {
             "thread_analysis": self.ai_thread_analysis_provider,
+            "thread_verification": self.ai_thread_analysis_provider,
             "queue_summary": self.ai_queue_summary_provider,
             "draft_reply": self.ai_draft_provider,
             "crm_extraction": self.ai_crm_provider,
@@ -153,6 +172,7 @@ class AppSettings(BaseModel):
         if provider == "openai":
             mapping = {
                 "thread_analysis": self.openai_model_thread_analysis,
+                "thread_verification": self.openai_model_thread_analysis,
                 "queue_summary": self.openai_model_queue_summary,
                 "draft_reply": self.openai_model_draft,
                 "crm_extraction": self.openai_model_crm,
@@ -161,11 +181,21 @@ class AppSettings(BaseModel):
         if provider == "ollama":
             mapping = {
                 "thread_analysis": self.ollama_model_thread_analysis,
+                "thread_verification": self.ollama_model_thread_analysis,
                 "queue_summary": self.ollama_model_queue_summary,
                 "draft_reply": self.ollama_model_draft,
                 "crm_extraction": self.ollama_model_crm,
             }
             return mapping.get(normalized, "")
+        if provider == "anthropic":
+            mapping = {
+                "thread_analysis": self.anthropic_model_thread_analysis,
+                "thread_verification": self.anthropic_model_thread_analysis,
+                "queue_summary": self.anthropic_model_queue_summary,
+                "draft_reply": self.anthropic_model_draft,
+                "crm_extraction": self.anthropic_model_crm,
+            }
+            return mapping.get(normalized, self.anthropic_model_thread_analysis)
         return "deterministic-fallback"
 
     def ensure_runtime_directories(self) -> None:
@@ -225,5 +255,22 @@ def get_settings() -> AppSettings:
         "OLLAMA_MODEL_QUEUE_SUMMARY": os.getenv("OLLAMA_MODEL_QUEUE_SUMMARY", ""),
         "OLLAMA_MODEL_DRAFT": os.getenv("OLLAMA_MODEL_DRAFT", ""),
         "OLLAMA_MODEL_CRM": os.getenv("OLLAMA_MODEL_CRM", ""),
+        "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
+        "ANTHROPIC_MODEL_THREAD_ANALYSIS": os.getenv(
+            "ANTHROPIC_MODEL_THREAD_ANALYSIS",
+            "claude-haiku-4-5-20251001",
+        ),
+        "ANTHROPIC_MODEL_QUEUE_SUMMARY": os.getenv(
+            "ANTHROPIC_MODEL_QUEUE_SUMMARY",
+            "claude-haiku-4-5-20251001",
+        ),
+        "ANTHROPIC_MODEL_DRAFT": os.getenv(
+            "ANTHROPIC_MODEL_DRAFT",
+            "claude-haiku-4-5-20251001",
+        ),
+        "ANTHROPIC_MODEL_CRM": os.getenv(
+            "ANTHROPIC_MODEL_CRM",
+            "claude-haiku-4-5-20251001",
+        ),
     }
     return AppSettings.model_validate(raw_values)

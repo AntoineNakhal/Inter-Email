@@ -23,3 +23,7 @@ class ReviewRequest(BaseModel):
 
 class SeenStateRequest(BaseModel):
     seen: bool = True
+
+
+class PinStateRequest(BaseModel):
+    pinned: bool = True

@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime, timezone
+from time import sleep
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.exc import OperationalError
 
 from backend.domain.thread import (
     AnalysisStatus,
@@ -33,8 +35,23 @@ class ThreadRepository:
 
     def __init__(self, session: Session) -> None:
         self.session = session
+        self._schema_checked = False
+
+    def get_known_message_ids(self) -> set[str]:
+        """Return the set of all message IDs currently stored in the DB.
+
+        Used by the sync service to skip Gmail threads that have not received
+        any new messages since the last sync — avoiding redundant threads.get
+        API calls and re-analysis of unchanged content.
+        """
+        self._ensure_schema()
+        rows = self.session.scalars(
+            select(ThreadMessageModel.external_message_id)
+        ).all()
+        return {str(mid) for mid in rows if mid}
 
     def list_threads(self) -> list[EmailThread]:
+        self._ensure_schema()
         query = (
             select(EmailThreadModel)
             .options(
@@ -50,6 +67,7 @@ class ThreadRepository:
         return [self._to_domain(model) for model in models]
 
     def get_thread(self, external_thread_id: str) -> EmailThread | None:
+        self._ensure_schema()
         query = (
             select(EmailThreadModel)
             .where(EmailThreadModel.external_thread_id == external_thread_id)
@@ -69,6 +87,7 @@ class ThreadRepository:
         thread: EmailThread,
         message_progress_callback: Callable[[int, int], None] | None = None,
     ) -> EmailThread:
+        self._ensure_schema()
         model = self.session.scalar(
             select(EmailThreadModel).where(
                 EmailThreadModel.external_thread_id == thread.external_thread_id
@@ -85,6 +104,19 @@ class ThreadRepository:
             and previous_signature == next_signature
             and model.analysis is not None
         )
+
+        # Auto-reset "done" state when the thread has new content.
+        # seen_version is set to the thread signature at the time the user
+        # clicked Done. If the signature has since changed (new message
+        # arrived), the action is no longer done — surface it again.
+        if (
+            model.state is not None
+            and model.state.seen
+            and model.state.seen_version != next_signature
+        ):
+            model.state.seen = False
+            model.state.seen_version = ""
+            model.state.seen_at = None
 
         model.subject = thread.subject
         model.participants_json = json.dumps(thread.participants, ensure_ascii=False)
@@ -177,6 +209,7 @@ class ThreadRepository:
         self,
         external_thread_ids: list[str],
     ) -> None:
+        self._ensure_schema()
         normalized_ids = [
             str(thread_id).strip()
             for thread_id in external_thread_ids
@@ -194,11 +227,37 @@ class ThreadRepository:
             self.session.delete(model)
         self.session.flush()
 
+    def clear_all(self) -> None:
+        self._ensure_schema()
+        models = self.session.scalars(select(EmailThreadModel)).all()
+        for model in models:
+            self.session.delete(model)
+        self.session.flush()
+
+    def restore_threads_snapshot(self, threads: list[EmailThread]) -> list[EmailThread]:
+        self._ensure_schema()
+        self.clear_all()
+        restored_threads: list[EmailThread] = []
+        for thread in threads:
+            restored_thread = self.upsert_thread(thread)
+            if thread.analysis is not None:
+                restored_thread = self.save_analysis(
+                    thread.external_thread_id,
+                    thread.analysis,
+                )
+            self._restore_thread_extras(thread)
+            restored_threads.append(
+                self.get_thread(thread.external_thread_id) or restored_thread
+            )
+        self.session.flush()
+        return restored_threads
+
     def save_analysis(
         self,
         external_thread_id: str,
         analysis: ThreadAnalysis,
     ) -> EmailThread:
+        self._ensure_schema()
         model = self._require_thread_model(external_thread_id)
         if model.analysis is None:
             model.analysis = ThreadAnalysisModel()
@@ -224,7 +283,15 @@ class ThreadRepository:
         model.analysis.model_name = analysis.model_name
         model.analysis.prompt_version = analysis.prompt_version
         model.analysis.used_fallback = analysis.used_fallback
+        model.analysis.accuracy_percent = analysis.accuracy_percent
+        model.analysis.verification_summary = analysis.verification_summary
+        model.analysis.needs_human_review = analysis.needs_human_review
+        model.analysis.review_reason = analysis.review_reason
+        model.analysis.verifier_provider_name = analysis.verifier_provider_name
+        model.analysis.verifier_model_name = analysis.verifier_model_name
+        model.analysis.verifier_used_fallback = analysis.verifier_used_fallback
         model.analysis.analyzed_at = analysis.analyzed_at
+        model.analysis.verified_at = analysis.verified_at
         model.analysis.thread = model
         model.analysis_status = AnalysisStatus.COMPLETE.value
         model.last_analyzed_at = analysis.analyzed_at
@@ -232,16 +299,47 @@ class ThreadRepository:
         return self.get_thread(external_thread_id) or self._to_domain(model)
 
     def mark_seen(self, external_thread_id: str, seen: bool, version: str) -> EmailThread:
+        self._ensure_schema()
+        last_error: OperationalError | None = None
+        for attempt in range(3):
+            model = self._require_thread_model(external_thread_id)
+            if model.state is None:
+                model.state = ThreadStateModel()
+            model.state.seen = seen
+            model.state.seen_version = version
+            model.state.seen_at = datetime.now(timezone.utc) if seen else None
+            # When marking done, clear the "act today" flag and unpin —
+            # the action has been handled. The next sync will re-evaluate
+            # if a new message arrives and the thread resurfaces.
+            if seen and model.analysis is not None:
+                model.analysis.needs_action_today = False
+            if seen and model.state is not None:
+                model.state.pinned = False
+            try:
+                self.session.flush()
+                return self.get_thread(external_thread_id) or self._to_domain(model)
+            except OperationalError as exc:
+                if not _is_sqlite_locked_error(exc) or attempt == 2:
+                    raise
+                last_error = exc
+                self.session.rollback()
+                sleep(0.15 * (attempt + 1))
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("mark_seen retry loop ended unexpectedly")
+
+    def mark_pinned(self, external_thread_id: str, pinned: bool) -> EmailThread:
+        self._ensure_schema()
         model = self._require_thread_model(external_thread_id)
         if model.state is None:
             model.state = ThreadStateModel()
-        model.state.seen = seen
-        model.state.seen_version = version
-        model.state.seen_at = datetime.now(timezone.utc) if seen else None
+        model.state.pinned = pinned
         self.session.flush()
         return self.get_thread(external_thread_id) or self._to_domain(model)
 
     def _require_thread_model(self, external_thread_id: str) -> EmailThreadModel:
+        self._ensure_schema()
         model = self.session.scalar(
             select(EmailThreadModel).where(
                 EmailThreadModel.external_thread_id == external_thread_id
@@ -255,6 +353,7 @@ class ThreadRepository:
         self,
         external_message_ids: list[str],
     ) -> dict[str, ThreadMessageModel]:
+        self._ensure_schema()
         if not external_message_ids:
             return {}
         models = self.session.scalars(
@@ -266,6 +365,98 @@ class ThreadRepository:
             model.external_message_id: model
             for model in models
         }
+
+    def _restore_thread_extras(self, thread: EmailThread) -> None:
+        model = self._require_thread_model(thread.external_thread_id)
+
+        if thread.seen_state is not None:
+            if model.state is None:
+                model.state = ThreadStateModel(thread=model)
+                self.session.add(model.state)
+            model.state.seen = thread.seen_state.seen
+            model.state.seen_version = thread.seen_state.seen_version
+            model.state.seen_at = thread.seen_state.seen_at
+            model.state.pinned = thread.seen_state.pinned
+
+        if thread.review is not None:
+            if model.review is None:
+                model.review = ReviewDecisionModel(thread=model)
+                self.session.add(model.review)
+            model.review.queue_belongs = thread.review.queue_belongs
+            model.review.merge_correct = thread.review.merge_correct
+            model.review.summary_useful = thread.review.summary_useful
+            model.review.next_action_useful = thread.review.next_action_useful
+            model.review.draft_useful = thread.review.draft_useful
+            model.review.crm_useful = thread.review.crm_useful
+            model.review.notes = thread.review.notes
+            model.review.improvement_tags_json = json.dumps(
+                thread.review.improvement_tags,
+                ensure_ascii=False,
+            )
+            model.review.reviewed_at = thread.review.updated_at
+
+        if thread.latest_draft is not None:
+            model.drafts.clear()
+            draft = DraftModel(
+                thread=model,
+                subject=thread.latest_draft.subject,
+                body=thread.latest_draft.body,
+                provider_name=thread.latest_draft.provider_name,
+                model_name=thread.latest_draft.model_name,
+                used_fallback=thread.latest_draft.used_fallback,
+            )
+            if thread.latest_draft.created_at is not None:
+                draft.created_at = thread.latest_draft.created_at
+            self.session.add(draft)
+
+    def _ensure_schema(self) -> None:
+        if self._schema_checked:
+            return
+
+        bind = self.session.get_bind()
+        if bind is None:
+            return
+
+        inspector = inspect(bind)
+        if inspector.has_table(ThreadAnalysisModel.__tablename__):
+            column_names = {
+                column["name"]
+                for column in inspector.get_columns(ThreadAnalysisModel.__tablename__)
+            }
+            additions = [
+                ("accuracy_percent", "ALTER TABLE thread_analyses ADD COLUMN accuracy_percent INTEGER DEFAULT 0"),
+                ("verification_summary", "ALTER TABLE thread_analyses ADD COLUMN verification_summary TEXT DEFAULT ''"),
+                ("needs_human_review", "ALTER TABLE thread_analyses ADD COLUMN needs_human_review BOOLEAN DEFAULT 0"),
+                ("review_reason", "ALTER TABLE thread_analyses ADD COLUMN review_reason TEXT"),
+                (
+                    "verifier_provider_name",
+                    "ALTER TABLE thread_analyses ADD COLUMN verifier_provider_name VARCHAR(64) DEFAULT 'heuristic'",
+                ),
+                (
+                    "verifier_model_name",
+                    "ALTER TABLE thread_analyses ADD COLUMN verifier_model_name VARCHAR(128) DEFAULT 'deterministic-fallback'",
+                ),
+                (
+                    "verifier_used_fallback",
+                    "ALTER TABLE thread_analyses ADD COLUMN verifier_used_fallback BOOLEAN DEFAULT 0",
+                ),
+                ("verified_at", "ALTER TABLE thread_analyses ADD COLUMN verified_at DATETIME"),
+            ]
+            for column_name, ddl in additions:
+                if column_name not in column_names:
+                    self.session.execute(text(ddl))
+
+        if inspector.has_table(ThreadStateModel.__tablename__):
+            state_column_names = {
+                column["name"]
+                for column in inspector.get_columns(ThreadStateModel.__tablename__)
+            }
+            if "pinned" not in state_column_names:
+                self.session.execute(
+                    text("ALTER TABLE thread_states ADD COLUMN pinned BOOLEAN DEFAULT 0")
+                )
+
+        self._schema_checked = True
 
     def _to_domain(self, model: EmailThreadModel) -> EmailThread:
         latest_draft = model.drafts[0] if model.drafts else None
@@ -336,6 +527,10 @@ def _dedupe_message_ids(values: list[str]) -> list[str]:
     return deduped
 
 
+def _is_sqlite_locked_error(exc: OperationalError) -> bool:
+    return "database is locked" in str(exc).lower()
+
+
 def _to_analysis(model: ThreadAnalysisModel | None) -> ThreadAnalysis | None:
     if model is None:
         return None
@@ -359,7 +554,15 @@ def _to_analysis(model: ThreadAnalysisModel | None) -> ThreadAnalysis | None:
         model_name=model.model_name,
         prompt_version=model.prompt_version,
         used_fallback=model.used_fallback,
+        accuracy_percent=model.accuracy_percent,
+        verification_summary=model.verification_summary,
+        needs_human_review=model.needs_human_review,
+        review_reason=model.review_reason,
+        verifier_provider_name=model.verifier_provider_name,
+        verifier_model_name=model.verifier_model_name,
+        verifier_used_fallback=model.verifier_used_fallback,
         analyzed_at=model.analyzed_at,
+        verified_at=model.verified_at,
     )
 
 
@@ -386,6 +589,7 @@ def _to_seen_state(model: ThreadStateModel | None) -> SeenState | None:
         seen=model.seen,
         seen_version=model.seen_version,
         seen_at=model.seen_at,
+        pinned=model.pinned,
     )
 
 

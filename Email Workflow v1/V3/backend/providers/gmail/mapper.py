@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from email.utils import getaddresses, parsedate_to_datetime
 
+from backend.core.email_text import clean_email_body, clean_email_snippet
 from backend.domain.thread import (
     EmailThread,
     InboundEmailMessage,
@@ -58,6 +59,28 @@ NEWSLETTER_HINTS = (
     "promotion",
 )
 THREAD_MERGE_WINDOW_DAYS = 14
+HR_HINTS = (
+    "interview",
+    "candidate",
+    "recruit",
+    "recruiter",
+    "resume",
+    "curriculum vitae",
+    "cv",
+    "hiring",
+    "human resources",
+    "hr ",
+    " hr",
+)
+GENERIC_LINK_SUBJECTS = {
+    "link",
+    "meeting link",
+    "google meet",
+    "join link",
+}
+INTERNAL_EMAIL_DOMAINS = {
+    "inter-op.ca",
+}
 SUBJECT_STOPWORDS = {
     "the",
     "and",
@@ -78,12 +101,21 @@ STANDALONE_NOTIFICATION_SUBJECT_MARKERS = (
     "monthly report",
     "monitoring alert",
 )
-MEETING_STATUS_PREFIX_RE = re.compile(
-    r"^(?:re|fw|fwd|invitation|accepted|declined|tentative|cancelled|canceled|updated)\s*:\s*",
+REPLY_PREFIX_RE = re.compile(
+    r"^(?:re|fw|fwd)\s*:\s*",
+    re.IGNORECASE,
+)
+CALENDAR_NOTIFICATION_PREFIX_RE = re.compile(
+    r"^(?:updated|accepted|declined|tentative|invitation|cancelled|canceled)(?: [^:]{0,120})?:\s*",
     re.IGNORECASE,
 )
 LEADING_SUBJECT_TAG_RE = re.compile(r"^(?:\[[^\]]+\]\s*)+")
 SUBJECT_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+UNKNOWN_SENDER_RE = re.compile(r"\bfrom an unknown sender\b", re.IGNORECASE)
+GOOGLE_MEET_LINK_RE = re.compile(
+    r"(?:https?://)?meet\.google\.com/([a-z]{3}-[a-z]{4}-[a-z]{3})",
+    re.IGNORECASE,
+)
 
 
 def group_messages_by_thread(messages: list[InboundEmailMessage]) -> list[EmailThread]:
@@ -120,20 +152,28 @@ def _build_thread_group(
     earliest = sorted_messages[0]
     subject = _clean_subject(latest.subject or earliest.subject or "(no subject)")
     normalized_subject = _normalize_subject(subject)
+    participants = _build_participants(sorted_messages)
+    combined_text = _group_combined_text(sorted_messages)
 
     return {
         "canonical_thread_id": thread_id,
         "source_thread_ids": [thread_id],
         "messages": sorted_messages,
-        "participants": _build_participants(sorted_messages),
+        "participants": participants,
         "participant_keys": {
-            _participant_key(item) for item in _build_participants(sorted_messages)
+            _participant_key(item) for item in participants
         },
         "subject": subject,
         "normalized_subject": normalized_subject,
         "meeting_subject_key": _meeting_subject_key(subject),
         "subject_tokens": _subject_token_set(normalized_subject),
         "subject_identifier_tokens": _subject_identifier_tokens(normalized_subject),
+        "combined_text": combined_text,
+        "meeting_link_keys": _meeting_link_keys(combined_text),
+        "external_participant_keys": _external_participant_keys(participants),
+        "internal_participant_keys": _internal_participant_keys(participants),
+        "hr_related": _is_hr_related(subject, normalized_subject, combined_text),
+        "generic_link_subject": _is_generic_link_subject(normalized_subject),
         "latest_date": _parse_date(latest.date_header)
         or datetime.min.replace(tzinfo=timezone.utc),
         "earliest_date": _parse_date(earliest.date_header)
@@ -176,6 +216,12 @@ def _merge_signals(
         return []
 
     signals: list[str] = ["participant_overlap"]
+    shared_external_participants = set(left["external_participant_keys"]) & set(
+        right["external_participant_keys"]
+    )
+    if shared_external_participants:
+        signals.append("shared_external_participant")
+
     left_normalized = str(left["normalized_subject"])
     right_normalized = str(right["normalized_subject"])
     left_meeting_key = str(left["meeting_subject_key"])
@@ -214,12 +260,41 @@ def _merge_signals(
     if date_gap <= 3:
         signals.append("recent_time_window")
 
+    shared_meeting_links = set(left["meeting_link_keys"]) & set(right["meeting_link_keys"])
+    if shared_meeting_links and (
+        left["hr_related"]
+        or right["hr_related"]
+        or left_meeting_key == right_meeting_key
+    ):
+        signals.append("shared_meeting_link")
+
+    if left["hr_related"] and right["hr_related"] and shared_external_participants:
+        signals.append("shared_hr_contact")
+
+    if (
+        (left["generic_link_subject"] or right["generic_link_subject"])
+        and (left["hr_related"] or right["hr_related"])
+        and shared_meeting_links
+    ):
+        signals.append("generic_hr_link_follow_up")
+    elif (
+        (left["generic_link_subject"] or right["generic_link_subject"])
+        and left["hr_related"]
+        and right["hr_related"]
+        and shared_external_participants
+        and date_gap <= 5
+    ):
+        signals.append("generic_hr_link_follow_up")
+
     anchor_signals = {
         "exact_subject_match",
         "meeting_subject_match",
         "shared_subject_identifier",
         "strong_subject_token_overlap",
         "high_subject_token_overlap",
+        "shared_meeting_link",
+        "shared_hr_contact",
+        "generic_hr_link_follow_up",
     }
     return _dedupe_strings(signals) if anchor_signals & set(signals) else []
 
@@ -247,6 +322,22 @@ def _append_thread_group(
     target["subject_tokens"] = set(target["subject_tokens"]) | set(source["subject_tokens"])
     target["subject_identifier_tokens"] = set(target["subject_identifier_tokens"]) | set(
         source["subject_identifier_tokens"]
+    )
+    target["combined_text"] = "\n\n".join(
+        item for item in [str(target["combined_text"]), str(source["combined_text"])] if item
+    )
+    target["meeting_link_keys"] = set(target["meeting_link_keys"]) | set(
+        source["meeting_link_keys"]
+    )
+    target["external_participant_keys"] = set(target["external_participant_keys"]) | set(
+        source["external_participant_keys"]
+    )
+    target["internal_participant_keys"] = set(target["internal_participant_keys"]) | set(
+        source["internal_participant_keys"]
+    )
+    target["hr_related"] = bool(target["hr_related"] or source["hr_related"])
+    target["generic_link_subject"] = bool(
+        target["generic_link_subject"] or source["generic_link_subject"]
     )
     target["latest_date"] = max(target["latest_date"], source["latest_date"])
     if source["earliest_date"] < target["earliest_date"]:
@@ -351,14 +442,16 @@ def _build_thread(group: dict[str, object]) -> EmailThread:
 
 def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
     recipients = [addr for _, addr in getaddresses([message.to_address]) if addr]
+    cleaned_snippet = clean_email_snippet(message.snippet)
+    cleaned_body = clean_email_body(message.body_text)
     return ThreadMessage(
         external_message_id=message.external_message_id,
         sender=message.from_address,
         recipients=recipients,
         subject=message.subject,
         sent_at=_parse_date(message.date_header),
-        snippet=message.snippet[:500],
-        cleaned_body=message.body_text[:4000],
+        snippet=cleaned_snippet[:500],
+        cleaned_body=cleaned_body[:4000],
         label_ids=message.label_ids,
     )
 
@@ -406,7 +499,9 @@ def _normalize_subject(value: str) -> str:
     previous = ""
     while previous != normalized:
         previous = normalized
-        normalized = MEETING_STATUS_PREFIX_RE.sub("", normalized)
+        normalized = REPLY_PREFIX_RE.sub("", normalized)
+        normalized = CALENDAR_NOTIFICATION_PREFIX_RE.sub("", normalized)
+    normalized = UNKNOWN_SENDER_RE.sub("", normalized)
     normalized = LEADING_SUBJECT_TAG_RE.sub("", normalized)
     normalized = re.sub(r"\s+@\s+.+$", "", normalized)
     normalized = re.sub(r"\([^)]*@[^)]*\)$", "", normalized)
@@ -465,6 +560,61 @@ def _looks_like_notification_subject(normalized_subject: str) -> bool:
     if any(marker in normalized_subject for marker in NEWSLETTER_HINTS):
         return True
     return False
+
+
+def _group_combined_text(messages: list[InboundEmailMessage]) -> str:
+    return "\n\n".join(
+        "\n".join(
+            part
+            for part in [
+                message.subject,
+                clean_email_snippet(message.snippet),
+                clean_email_body(message.body_text),
+            ]
+            if part
+        )
+        for message in messages
+    )
+
+
+def _meeting_link_keys(text: str) -> set[str]:
+    return {
+        match.group(1).lower()
+        for match in GOOGLE_MEET_LINK_RE.finditer(text)
+        if match.group(1)
+    }
+
+
+def _is_hr_related(subject: str, normalized_subject: str, combined_text: str) -> bool:
+    lowered = f"{subject}\n{normalized_subject}\n{combined_text}".lower()
+    return any(hint in lowered for hint in HR_HINTS)
+
+
+def _is_generic_link_subject(normalized_subject: str) -> bool:
+    return normalized_subject in GENERIC_LINK_SUBJECTS
+
+
+def _external_participant_keys(participants: list[str]) -> set[str]:
+    return {
+        key
+        for key in (_participant_key(item) for item in participants)
+        if key and not _is_internal_email(key)
+    }
+
+
+def _internal_participant_keys(participants: list[str]) -> set[str]:
+    return {
+        key
+        for key in (_participant_key(item) for item in participants)
+        if key and _is_internal_email(key)
+    }
+
+
+def _is_internal_email(value: str) -> bool:
+    if "@" not in value:
+        return False
+    domain = value.split("@", 1)[1].strip().lower()
+    return domain in INTERNAL_EMAIL_DOMAINS
 
 
 def _dedupe_strings(values: list[str]) -> list[str]:

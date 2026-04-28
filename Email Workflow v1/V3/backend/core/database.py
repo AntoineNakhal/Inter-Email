@@ -13,7 +13,7 @@ from backend.core.config import AppSettings, get_settings
 
 def _engine_kwargs(database_url: str) -> dict[str, object]:
     if database_url.startswith("sqlite"):
-        return {"connect_args": {"check_same_thread": False}}
+        return {"connect_args": {"check_same_thread": False, "timeout": 30}}
     return {}
 
 

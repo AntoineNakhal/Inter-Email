@@ -95,7 +95,15 @@ class ThreadAnalysis(BaseModel):
     model_name: str = "deterministic-fallback"
     prompt_version: str = "v1"
     used_fallback: bool = False
+    accuracy_percent: int = 0
+    verification_summary: str = ""
+    needs_human_review: bool = False
+    review_reason: str | None = None
+    verifier_provider_name: str = "heuristic"
+    verifier_model_name: str = "deterministic-fallback"
+    verifier_used_fallback: bool = False
     analyzed_at: datetime | None = None
+    verified_at: datetime | None = None
 
 
 class SeenState(BaseModel):
@@ -104,6 +112,7 @@ class SeenState(BaseModel):
     seen: bool = False
     seen_version: str = ""
     seen_at: datetime | None = None
+    pinned: bool = False
 
 
 class ReviewDecision(BaseModel):

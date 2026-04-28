@@ -27,3 +27,9 @@ class ReviewService:
             raise ValueError(f"Thread `{external_thread_id}` was not found.")
         version = thread.signature or thread.compute_signature()
         self.thread_repository.mark_seen(external_thread_id, seen, version)
+
+    def mark_pinned(self, external_thread_id: str, pinned: bool) -> None:
+        thread = self.thread_repository.get_thread(external_thread_id)
+        if thread is None:
+            raise ValueError(f"Thread `{external_thread_id}` was not found.")
+        self.thread_repository.mark_pinned(external_thread_id, pinned)

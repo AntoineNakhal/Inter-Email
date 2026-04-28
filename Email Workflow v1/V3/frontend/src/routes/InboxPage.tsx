@@ -1,15 +1,35 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  faArrowLeft,
+  faArrowUpRightFromSquare,
+  faArrowRight,
+  faChevronDown,
+  faSquareCheck,
+  faThumbtack,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
+import { faSquare } from "@fortawesome/free-regular-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
   startTransition,
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Link } from "react-router-dom";
 
 import { ThreadCard } from "../components/ThreadCard";
-import { useQueueDashboard, useSyncMutation, useSyncRunStatus } from "../hooks/useApi";
+import { DraftComposer } from "../features/drafts/DraftComposer";
+import {
+  useCancelSyncMutation,
+  usePinMutation,
+  useQueueDashboard,
+  useSeenMutation,
+  useSyncMutation,
+  useSyncRunStatus,
+} from "../hooks/useApi";
 import { formatDate } from "../lib/format";
 import type { EmailThread, SyncRunStatus } from "../types/api";
 
@@ -20,30 +40,45 @@ type InboxSection = {
   threads: EmailThread[];
 };
 
-type WorkflowBucket = "act-now" | "waiting" | "monitor" | "closed";
-type PriorityBrief = {
-  threadId: string;
-  subject: string;
-  summary: string;
-  urgency: string;
-  nextAction: string;
-};
+type WorkflowBucket = "act-now" | "waiting" | "monitor" | "low-priority" | "done";
+type PriorityFilterValue = "all" | "high" | "medium" | "low" | "unknown";
 
 type StageProgressRange = {
   floor: number;
   cap: number;
 };
 
-const STAGE_PROGRESS_RANGES: Record<string, StageProgressRange> = {
-  queued: { floor: 0, cap: 6 },
-  fetching: { floor: 8, cap: 20 },
-  persisting: { floor: 22, cap: 40 },
-  analyzing: { floor: 42, cap: 88 },
-  summarizing: { floor: 90, cap: 97 },
-  completed: { floor: 100, cap: 100 },
-  failed: { floor: 100, cap: 100 },
-};
+const UNCATEGORIZED_LABEL = "Needs review";
+const PRIORITY_OPTIONS: Array<{
+  value: PriorityFilterValue;
+  label: string;
+}> = [
+    { value: "all", label: "All priorities" },
+    { value: "high", label: "High" },
+    { value: "medium", label: "Medium" },
+    { value: "low", label: "Low" },
+    { value: "unknown", label: "Unknown" },
+  ];
+const CATEGORY_ORDER = [
+  "Urgent / Executive",
+  "Customer / Partner",
+  "Events / Logistics",
+  "Finance / Admin",
+  "FYI / Low Priority",
+  "Classified / Sensitive",
+  UNCATEGORIZED_LABEL,
+];
+const SYNC_LOOKBACK_OPTIONS = [
+  { days: 7, label: "Last week" },
+  { days: 14, label: "Last 2 weeks" },
+  { days: 30, label: "Last month" },
+  { days: 60, label: "Last 2 months" },
+  { days: 90, label: "Last 3 months" },
+];
 
+// SOURCE OF TRUTH: how long each stage typically takes. If you measure
+// new real-world timings, change ONLY this map — the % ranges below are
+// derived from it, so they can never drift out of sync.
 const STAGE_PROGRESS_DURATIONS_MS: Record<string, number> = {
   queued: 1200,
   fetching: 5200,
@@ -52,16 +87,70 @@ const STAGE_PROGRESS_DURATIONS_MS: Record<string, number> = {
   summarizing: 2600,
 };
 
+// The order in which stages run. Used to compute cumulative % ranges.
+const STAGE_ORDER: ReadonlyArray<string> = [
+  "queued",
+  "fetching",
+  "persisting",
+  "analyzing",
+  "summarizing",
+];
+
+/**
+ * Derive `{ floor, cap }` ranges for each stage from its duration share.
+ * Each stage's width is proportional to its duration / total duration, so
+ * the % bar tracks elapsed time. A small gap is inserted between stages
+ * (visual signal of stage transition) and before 100 (so completion is
+ * its own visible jump).
+ */
+function buildStageProgressRanges(
+  order: ReadonlyArray<string>,
+  durations: Record<string, number>,
+  options: { interStageGap?: number; completionGap?: number } = {},
+): Record<string, StageProgressRange> {
+  const interStageGap = options.interStageGap ?? 1;
+  const completionGap = options.completionGap ?? 3;
+  const totalDuration = order.reduce(
+    (sum, stage) => sum + (durations[stage] ?? 0),
+    0,
+  );
+  const usableBudget = Math.max(
+    0,
+    100 - completionGap - interStageGap * Math.max(0, order.length - 1),
+  );
+
+  const ranges: Record<string, StageProgressRange> = {};
+  let cursor = 0;
+  for (let i = 0; i < order.length; i += 1) {
+    const stage = order[i];
+    const share =
+      totalDuration > 0
+        ? (durations[stage] ?? 0) / totalDuration
+        : 1 / order.length;
+    const width = Math.round(share * usableBudget);
+    const floor = cursor;
+    const cap = Math.min(100 - completionGap, floor + width);
+    ranges[stage] = { floor, cap };
+    cursor = cap + interStageGap;
+  }
+
+  ranges.completed = { floor: 100, cap: 100 };
+  ranges.failed = { floor: 100, cap: 100 };
+  return ranges;
+}
+
+const STAGE_PROGRESS_RANGES: Record<string, StageProgressRange> =
+  buildStageProgressRanges(STAGE_ORDER, STAGE_PROGRESS_DURATIONS_MS);
+
+function isPinned(thread: EmailThread): boolean {
+  return Boolean(thread.seen_state?.pinned);
+}
+
 function workflowBucket(thread: EmailThread): WorkflowBucket {
-  if (thread.analysis?.needs_action_today) {
-    return "act-now";
-  }
-  if (thread.waiting_on_us) {
-    return "waiting";
-  }
-  if (thread.resolved_or_closed) {
-    return "closed";
-  }
+  if (isSeen(thread) || thread.resolved_or_closed) return "done";
+  if (thread.analysis?.needs_action_today) return "act-now";
+  if (thread.waiting_on_us) return "waiting";
+  if (thread.relevance_bucket === "noise" || thread.relevance_bucket === "maybe") return "low-priority";
   return "monitor";
 }
 
@@ -73,6 +162,7 @@ function stageLabel(stage: string): string {
     analyzing: "Analyzing actions",
     summarizing: "Building summary",
     completed: "Completed",
+    cancelled: "Cancelled",
     failed: "Failed",
   };
   return labels[stage] ?? stage;
@@ -83,7 +173,8 @@ function sectionedThreads(threads: EmailThread[]): InboxSection[] {
     "act-now": [] as EmailThread[],
     waiting: [] as EmailThread[],
     monitor: [] as EmailThread[],
-    closed: [] as EmailThread[],
+    "low-priority": [] as EmailThread[],
+    done: [] as EmailThread[],
   };
 
   for (const thread of threads) {
@@ -91,6 +182,12 @@ function sectionedThreads(threads: EmailThread[]): InboxSection[] {
   }
 
   return [
+    {
+      id: "pinned",
+      title: "Pinned",
+      description: "Threads you've flagged to keep front-of-mind. Also visible in their original section below.",
+      threads: threads.filter(isPinned),
+    },
     {
       id: "act-now",
       title: "Act Now",
@@ -110,40 +207,230 @@ function sectionedThreads(threads: EmailThread[]): InboxSection[] {
       threads: grouped.monitor,
     },
     {
-      id: "closed",
-      title: "Closed Or Low Priority",
-      description: "Resolved or low-priority items you likely do not need right now.",
-      threads: grouped.closed,
+      id: "low-priority",
+      title: "Low Priority",
+      description: "FYI threads and low-signal items. No action needed.",
+      threads: grouped["low-priority"],
+    },
+    {
+      id: "done",
+      title: "Done",
+      description: "Handled threads and resolved conversations. Resurface automatically on new replies.",
+      threads: grouped.done,
     },
   ];
 }
 
-function nextActionThreads(threads: EmailThread[]): EmailThread[] {
-  return threads
-    .filter(
-      (thread) =>
-        !thread.resolved_or_closed &&
-        Boolean(thread.analysis?.next_action?.trim()),
-    )
-    .slice(0, 5);
+function isSeen(thread: EmailThread): boolean {
+  // Seen-state is versioned by content signature on the backend, so we
+  // trust the API's resolved boolean here. If the thread changes later,
+  // the backend resets `seen` and it'll re-surface in the hero panels.
+  return Boolean(thread.seen_state?.seen);
 }
 
-function topPriorityBriefs(threads: EmailThread[]): PriorityBrief[] {
-  return threads
+function priorityRank(thread: EmailThread): number {
+  let score = 0;
+  if (thread.analysis?.needs_action_today) score += 100;
+  if (thread.seen_state?.pinned) score += 50;
+  if (thread.analysis?.urgency === "high") score += 30;
+  score += Math.min(thread.message_count, 12);
+  return score;
+}
+
+function topPriorityThreads(threads: EmailThread[]): EmailThread[] {
+  return [...threads]
     .filter(
       (thread) =>
         !thread.resolved_or_closed &&
-        Boolean(thread.analysis?.summary?.trim()) &&
-        Boolean(thread.analysis?.next_action?.trim()),
+        !isSeen(thread) &&
+        Boolean(thread.analysis?.next_action?.trim()) &&
+        (
+          Boolean(thread.analysis?.needs_action_today) ||
+          thread.analysis?.urgency === "high" ||
+          Boolean(thread.seen_state?.pinned)
+        ),
     )
-    .slice(0, 3)
-    .map((thread) => ({
-      threadId: thread.thread_id,
-      subject: thread.subject || "Untitled thread",
-      summary: thread.analysis?.summary ?? "",
-      urgency: thread.analysis?.urgency ?? "unknown",
-      nextAction: thread.analysis?.next_action ?? "",
-    }));
+    .sort((left, right) => priorityRank(right) - priorityRank(left))
+    .slice(0, 6);
+}
+
+function priorityWorkflowLabel(thread: EmailThread): string {
+  if (thread.analysis?.needs_action_today) return "Act today";
+  if (thread.waiting_on_us) return "Waiting on us";
+  if (thread.resolved_or_closed) return "Closed";
+  return "Monitor";
+}
+
+function priorityWorkflowTone(thread: EmailThread): string {
+  if (thread.analysis?.needs_action_today) return "tone-urgent";
+  if (thread.waiting_on_us) return "tone-watch";
+  return "tone-neutral";
+}
+
+function PriorityQueueModalThread({
+  thread,
+  index,
+  total,
+  onClose,
+  onPrevious,
+  onNext,
+}: {
+  thread: EmailThread;
+  index: number;
+  total: number;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const seenMutation = useSeenMutation(thread.thread_id);
+  const pinMutation = usePinMutation(thread.thread_id);
+  const toneClass = priorityWorkflowTone(thread);
+
+  return (
+    <div className="priority-modal__body">
+      <div className="draft-modal__header priority-modal__header">
+        <div>
+          <p className="eyebrow">Priority Queue</p>
+          <h3>Important thread {index + 1} of {total}</h3>
+        </div>
+        <button className="draft-modal__close" onClick={onClose} aria-label="Close">
+          <FontAwesomeIcon icon={faXmark} />
+        </button>
+      </div>
+
+      <div className="priority-modal__content">
+        <div className="priority-modal__topline">
+          <div className="priority-modal__copy">
+            <div className="priority-modal__title-row">
+              <div className="priority-modal__title-wrap">
+                <p className="eyebrow">Thread</p>
+                <h1 className="priority-modal__title">{thread.subject || "Untitled thread"}</h1>
+              </div>
+              <div className="thread-detail__hero-actions priority-modal__actions">
+                <Link to={`/threads/${thread.thread_id}`} className="priority-modal__detail-link">
+                  Open detail
+                  <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
+                </Link>
+                {thread.analysis?.should_draft_reply ? (
+                  <DraftComposer thread={thread} recommended />
+                ) : null}
+                <button
+                  className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.seen
+                    ? "thread-detail__hero-action--seen"
+                    : "thread-detail__hero-action--unseen"
+                    }`}
+                  onClick={() => seenMutation.mutate(!(thread.seen_state?.seen ?? false))}
+                  aria-label={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
+                  title={thread.seen_state?.seen ? "Undo done" : "Mark as done"}
+                >
+                  <FontAwesomeIcon icon={thread.seen_state?.seen ? faSquareCheck : faSquare} />
+                </button>
+                <button
+                  className={`button button--ghost thread-detail__hero-action thread-detail__hero-action--icon ${thread.seen_state?.pinned
+                    ? "thread-detail__hero-action--pinned"
+                    : "thread-detail__hero-action--unseen"
+                    }`}
+                  onClick={() => pinMutation.mutate(!(thread.seen_state?.pinned ?? false))}
+                  aria-label={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
+                  title={thread.seen_state?.pinned ? "Unpin thread" : "Pin thread"}
+                >
+                  <FontAwesomeIcon icon={faThumbtack} />
+                </button>
+              </div>
+            </div>
+            <div className="thread-detail__hero-meta">
+              <span className={`pill ${toneClass}`}>{priorityWorkflowLabel(thread)}</span>
+              {thread.analysis?.urgency && thread.analysis.urgency !== "unknown" ? (
+                <span className="pill tone-outline">{thread.analysis.urgency}</span>
+              ) : null}
+            </div>
+
+            <div className="priority-modal__text-block">
+              <p className="thread-detail__label">Next action</p>
+              <p className="thread-detail__body thread-detail__body--strong">
+                {thread.analysis?.next_action ?? "Open the thread and decide the next step."}
+              </p>
+            </div>
+
+            {thread.analysis?.summary ? (
+              <div className="priority-modal__text-block">
+                <p className="thread-detail__label">Summary</p>
+                <p className="thread-detail__body">{thread.analysis.summary}</p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="priority-modal__footer">
+        <div className="priority-modal__footer-actions">
+          <button
+            className="priority-modal__nav-button"
+            type="button"
+            onClick={onPrevious}
+            disabled={index === 0}
+            aria-label="Previous thread"
+            title="Previous thread"
+          >
+            <FontAwesomeIcon icon={faArrowLeft} />
+          </button>
+          <button
+            className="priority-modal__nav-button"
+            type="button"
+            onClick={onNext}
+            aria-label="Next thread"
+            title="Next thread"
+          >
+            <FontAwesomeIcon icon={faArrowRight} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PriorityQueueModal({
+  threads,
+  currentIndex,
+  onClose,
+  onPrevious,
+  onNext,
+}: {
+  threads: EmailThread[];
+  currentIndex: number;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const activeThread = threads[currentIndex] ?? null;
+
+  return (
+    <div className="draft-modal-overlay priority-modal-overlay" onClick={onClose}>
+      <div className="draft-modal priority-modal" onClick={(event) => event.stopPropagation()}>
+        {activeThread ? (
+          <PriorityQueueModalThread
+            thread={activeThread}
+            index={currentIndex}
+            total={threads.length}
+            onClose={onClose}
+            onPrevious={onPrevious}
+            onNext={onNext}
+          />
+        ) : (
+          <div className="priority-modal__empty">
+            <p className="eyebrow">Priority Queue</p>
+            <h3>No more important thread to check</h3>
+            <p className="summary-text">
+              You have reached the end of the current priority queue.
+            </p>
+            <button className="button" type="button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function fakeProgressTarget(status: SyncRunStatus | null): number {
@@ -154,17 +441,257 @@ function shouldUseTimeBasedSmoothing(stage: string): boolean {
   return stage === "queued" || stage === "fetching" || stage === "summarizing";
 }
 
+function normalizedUrgency(thread: EmailThread): string {
+  return thread.analysis?.urgency ?? "unknown";
+}
+
+function normalizedCategory(thread: EmailThread): string {
+  return thread.analysis?.category ?? UNCATEGORIZED_LABEL;
+}
+
+function SkeletonLine({
+  width = "100%",
+  className = "",
+}: {
+  width?: string;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`skeleton-line ${className}`.trim()}
+      style={{ width }}
+    />
+  );
+}
+
+function ThreadCardSkeleton() {
+  return (
+    <article aria-hidden="true" className="thread-card thread-card--skeleton">
+      <div className="thread-card__topline">
+        <div className="thread-card__badges">
+          <SkeletonLine className="skeleton-pill" width="96px" />
+          <SkeletonLine className="skeleton-pill" width="128px" />
+          <SkeletonLine className="skeleton-pill" width="92px" />
+        </div>
+        <SkeletonLine className="skeleton-pill" width="74px" />
+      </div>
+
+      <div className="stack stack--tight">
+        <SkeletonLine className="skeleton-line--title" width="68%" />
+        <SkeletonLine width="54%" />
+      </div>
+
+      <div className="thread-card__content">
+        <section className="thread-card__section">
+          <SkeletonLine className="skeleton-line--label" width="82px" />
+          <SkeletonLine width="100%" />
+          <SkeletonLine width="92%" />
+          <SkeletonLine width="64%" />
+        </section>
+
+        <section className="thread-card__section thread-card__section--action">
+          <SkeletonLine className="skeleton-line--label" width="96px" />
+          <SkeletonLine width="100%" />
+          <SkeletonLine width="88%" />
+          <SkeletonLine width="58%" />
+        </section>
+      </div>
+
+      <div className="thread-card__footer">
+        <SkeletonLine width="44%" />
+        <SkeletonLine className="skeleton-button" width="116px" />
+      </div>
+    </article>
+  );
+}
+
+function QueueSkeleton({ refreshing = false }: { refreshing?: boolean }) {
+  return (
+    <div className="inbox-skeleton stack" aria-hidden="true">
+      <div className="inbox-overview">
+        <section className="panel panel--summary panel--summary-rich">
+          <p className="eyebrow">
+            {refreshing ? "Refreshing Inbox" : "Loading Inbox"}
+          </p>
+          <div className="stack stack--tight">
+            <SkeletonLine className="skeleton-line--heading" width="52%" />
+            <SkeletonLine width="100%" />
+            <SkeletonLine width="94%" />
+            <SkeletonLine width="68%" />
+          </div>
+        </section>
+
+        <section className="panel">
+          <p className="eyebrow">Next Actions</p>
+          <div className="action-list">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="action-item action-item--skeleton">
+                <div className="stack stack--tight action-item__stack">
+                  <SkeletonLine width="72%" />
+                  <SkeletonLine width="100%" />
+                  <SkeletonLine width="62%" />
+                </div>
+                <SkeletonLine className="skeleton-pill" width="74px" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+
+      <section className="panel panel--search inbox-controls">
+        <div className="inbox-controls__header">
+          <div className="stack stack--tight">
+            <SkeletonLine className="skeleton-line--label" width="124px" />
+            <SkeletonLine className="skeleton-line--heading" width="164px" />
+          </div>
+          <SkeletonLine className="skeleton-button" width="108px" />
+        </div>
+        <div className="inbox-controls__grid">
+          <SkeletonLine className="skeleton-input" width="100%" />
+          <SkeletonLine className="skeleton-input" width="100%" />
+          <SkeletonLine className="skeleton-input" width="100%" />
+        </div>
+      </section>
+
+      <section className="thread-section">
+        <div className="thread-section__header">
+          <div className="stack stack--tight">
+            <SkeletonLine className="skeleton-line--label" width="92px" />
+            <SkeletonLine className="skeleton-line--heading" width="132px" />
+          </div>
+          <SkeletonLine width="260px" />
+        </div>
+        <div className="thread-list">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <ThreadCardSkeleton key={index} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// Per-section default open/closed state. "Act now" and "Waiting on us"
+// open by default because that's where the user lands. Everything else
+// stays collapsed — context, not action.
+const SECTION_DEFAULT_OPEN: Record<string, boolean> = {
+  "act-now": true,
+  waiting: true,
+  monitor: false,
+  "low-priority": false,
+  done: false,
+};
+
+type CollapsibleThreadSectionProps = {
+  section: InboxSection;
+  defaultOpen: boolean;
+};
+
+function CollapsibleThreadSection({
+  section,
+  defaultOpen,
+}: CollapsibleThreadSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const panelId = `thread-section-${section.id}`;
+
+  return (
+    <section className="thread-section">
+      {/*
+        We keep the existing .thread-section__header div untouched (so its CSS
+        layout is preserved) and wrap it in a transparent button that toggles
+        `open`. The button strips its native chrome via inline styles so the
+        click target visually equals the header, while remaining keyboard-
+        accessible and announced as expanded/collapsed by screen readers.
+      */}
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        style={{
+          display: "block",
+          width: "100%",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          margin: 0,
+          cursor: "pointer",
+          color: "inherit",
+          font: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <div className={`thread-section__header thread-section__header--${section.id}`}>
+          <span className="thread-section__title">{section.title}</span>
+          <span className="thread-section__count">{section.threads.length}</span>
+          <span
+            aria-hidden="true"
+            className="thread-section__chevron"
+          >
+            <FontAwesomeIcon
+              icon={faChevronDown}
+              className={open ? "thread-section__chevron-icon thread-section__chevron-icon--open" : "thread-section__chevron-icon"}
+            />
+            ▾
+          </span>
+        </div>
+      </button>
+
+      {open ? (
+        <div id={panelId}>
+          {section.threads.length ? (
+            <div className="thread-list">
+              {section.threads.map((thread) => (
+                <ThreadCard key={thread.thread_id} thread={thread} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function EmptyInboxState({ syncing = false }: { syncing?: boolean }) {
+  return (
+    <section className="panel empty-state">
+      <p className="eyebrow">{syncing ? "Refreshing Inbox" : "Inbox Ready"}</p>
+      <h3>{syncing ? "Checking for new email" : "No email in your local inbox yet"}</h3>
+      <p className="summary-text">
+        {syncing
+          ? "We are checking Gmail now. If nothing new is found, this view will stay empty without a loading skeleton."
+          : "Your local queue is currently empty. Refresh Gmail when you want to pull the latest messages into the app."}
+      </p>
+    </section>
+  );
+}
+
 export function InboxPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useQueueDashboard();
+  const {
+    data,
+    isLoading,
+    error,
+    refetch: refetchQueueSummary,
+    isFetching: isQueueDashboardFetching,
+  } = useQueueDashboard();
   const syncMutation = useSyncMutation();
+  const cancelSyncMutation = useCancelSyncMutation();
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
-  const [lastHandledRunId, setLastHandledRunId] = useState<number | null>(null);
   const [isSyncSettling, setIsSyncSettling] = useState(false);
   const [displayedProgress, setDisplayedProgress] = useState(0);
   const [stageStartedAt, setStageStartedAt] = useState<number | null>(null);
   const [activeStageKey, setActiveStageKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] =
+    useState<PriorityFilterValue>("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [syncLookbackDays, setSyncLookbackDays] = useState(7);
+  const [isPriorityModalOpen, setIsPriorityModalOpen] = useState(false);
+  const [priorityModalIndex, setPriorityModalIndex] = useState(0);
+  const handledCompletionRunIdRef = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   const syncRunQuery = useSyncRunStatus(activeRunId);
@@ -180,6 +707,7 @@ export function InboxPage() {
   useEffect(() => {
     if (syncMutation.data?.run_id) {
       setIsSyncSettling(false);
+      handledCompletionRunIdRef.current = null;
       setActiveRunId(syncMutation.data.run_id);
     }
   }, [syncMutation.data?.run_id]);
@@ -281,11 +809,11 @@ export function InboxPage() {
       return;
     }
 
-    if (syncStatus.run_id === lastHandledRunId) {
+    if (syncStatus.run_id === handledCompletionRunIdRef.current) {
       return;
     }
 
-    setLastHandledRunId(syncStatus.run_id);
+    handledCompletionRunIdRef.current = syncStatus.run_id;
     setIsSyncSettling(true);
     setDisplayedProgress((current) =>
       syncStatus.status === "completed"
@@ -295,15 +823,27 @@ export function InboxPage() {
 
     let cancelled = false;
 
+    // Minimum time the terminal state (100% / cancelled / failed) stays
+    // visible after the sync run resolves. This is deliberate UX: the
+    // user should clearly see the bar reach its final position before
+    // the panel disappears, regardless of how fast the React Query
+    // invalidations finish.
+    const TERMINAL_HOLD_MS: Record<string, number> = {
+      completed: 700,
+      cancelled: 600,
+      failed: 1200,
+    };
+    const terminalHoldMs = TERMINAL_HOLD_MS[syncStatus.status] ?? 500;
+
     void (async () => {
+      // Run the query invalidation and the minimum hold in parallel so
+      // the bar is guaranteed to be visible for terminalHoldMs even if
+      // the network round-trips return faster than that.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["threads"] }),
         queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        new Promise((resolve) => window.setTimeout(resolve, terminalHoldMs)),
       ]);
-
-      if (syncStatus.status === "completed") {
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-      }
 
       if (cancelled) {
         return;
@@ -315,91 +855,214 @@ export function InboxPage() {
       setActiveRunId(null);
       setDisplayedProgress(0);
       setIsSyncSettling(false);
+      handledCompletionRunIdRef.current = null;
       syncMutation.reset();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [activeRunId, lastHandledRunId, queryClient, syncMutation, syncStatus]);
+  }, [activeRunId, queryClient, syncStatus]);
 
   const queueThreads = data?.threads ?? [];
+  const categoryOptions = useMemo(() => {
+    const categories = new Set<string>(CATEGORY_ORDER);
+
+    for (const thread of queueThreads) {
+      categories.add(normalizedCategory(thread));
+    }
+
+    return [...categories].sort((left, right) => {
+      const leftIndex = CATEGORY_ORDER.indexOf(left);
+      const rightIndex = CATEGORY_ORDER.indexOf(right);
+
+      if (leftIndex === -1 && rightIndex === -1) {
+        return left.localeCompare(right);
+      }
+      if (leftIndex === -1) {
+        return 1;
+      }
+      if (rightIndex === -1) {
+        return -1;
+      }
+      return leftIndex - rightIndex;
+    });
+  }, [queueThreads]);
+
   const filteredThreads = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
-    if (!term) {
-      return queueThreads;
-    }
+
     return queueThreads.filter((thread) =>
-      `${thread.subject} ${thread.participants.join(" ")} ${
-        thread.analysis?.summary ?? ""
-      } ${thread.analysis?.next_action ?? ""}`
+      `${thread.subject} ${thread.participants.join(" ")} ${thread.analysis?.summary ?? ""
+        } ${thread.analysis?.next_action ?? ""}`
         .toLowerCase()
-        .includes(term),
+        .includes(term) &&
+      (priorityFilter === "all" ||
+        normalizedUrgency(thread) === priorityFilter) &&
+      (categoryFilter === "all" ||
+        normalizedCategory(thread) === categoryFilter),
     );
-  }, [deferredSearch, queueThreads]);
+  }, [categoryFilter, deferredSearch, priorityFilter, queueThreads]);
 
   const sections = useMemo(
     () => sectionedThreads(filteredThreads),
     [filteredThreads],
   );
-  const highlightedActions = useMemo(
-    () => nextActionThreads(queueThreads),
-    [queueThreads],
+  const priorityThreads = useMemo(
+    () => topPriorityThreads(filteredThreads),
+    [filteredThreads],
   );
-  const priorityBriefs = useMemo(
-    () => topPriorityBriefs(queueThreads),
-    [queueThreads],
-  );
+  useEffect(() => {
+    if (!priorityThreads.length) {
+      setPriorityModalIndex(0);
+      return;
+    }
 
-  const actNowCount = queueThreads.filter(
+    setPriorityModalIndex((current) => Math.min(current, priorityThreads.length));
+  }, [priorityThreads.length]);
+  const hasActiveFilters =
+    deferredSearch.trim().length > 0 ||
+    priorityFilter !== "all" ||
+    categoryFilter !== "all";
+
+  const actNowCount = filteredThreads.filter(
     (thread) => workflowBucket(thread) === "act-now",
   ).length;
-  const waitingCount = queueThreads.filter(
+  const waitingCount = filteredThreads.filter(
     (thread) => workflowBucket(thread) === "waiting",
   ).length;
-  const monitorCount = queueThreads.filter(
+  const monitorCount = filteredThreads.filter(
     (thread) => workflowBucket(thread) === "monitor",
   ).length;
-  const closedCount = queueThreads.filter(
-    (thread) => workflowBucket(thread) === "closed",
+  const lowPriorityCount = filteredThreads.filter(
+    (thread) => workflowBucket(thread) === "low-priority",
   ).length;
+  const doneCount = filteredThreads.filter(
+    (thread) => workflowBucket(thread) === "done",
+  ).length;
+  const pinnedCount = filteredThreads.filter(isPinned).length;
 
   const showSyncProgress =
     activeRunId !== null &&
     syncStatus !== null &&
     (syncStatus.status === "running" ||
+      syncStatus.status === "cancelled" ||
       syncStatus.status === "completed" ||
       syncStatus.status === "failed" ||
       isSyncSettling);
   const isSyncing = activeRunId !== null && syncStatus?.status === "running";
-  const isRefreshLocked = isSyncing || isSyncSettling;
+  const isCancelling =
+    syncStatus?.status === "running" && Boolean(syncStatus.cancellation_requested);
+  const isRefreshLocked = isSyncing || isSyncSettling || isCancelling;
   const hasExistingInboxContent =
     queueThreads.length > 0 ||
-    Boolean(data?.summary.executive_summary?.trim()) ||
-    priorityBriefs.length > 0;
-  const shouldHideInboxContent = showSyncProgress && !hasExistingInboxContent;
+    Boolean(data?.summary.executive_summary?.trim());
+  const hasSyncActivity =
+    (syncStatus?.fetched_message_count ?? 0) > 0 ||
+    (syncStatus?.thread_count ?? 0) > 0 ||
+    (syncStatus?.ai_thread_count ?? 0) > 0;
+  const showInitialSkeleton = isLoading && !data;
+  const showRefreshSkeleton =
+    isSyncing && !hasExistingInboxContent && hasSyncActivity;
+  const canRenderInboxShell = !showInitialSkeleton && !showRefreshSkeleton;
+  const showEmptyState =
+    canRenderInboxShell &&
+    queueThreads.length === 0 &&
+    !data?.summary.executive_summary?.trim();
+  const shouldRenderInboxContent = canRenderInboxShell && !showEmptyState;
+  const triggerRefresh = () => {
+    if (isRefreshLocked) {
+      return;
+    }
+
+    syncMutation.mutate({
+      source: "anywhere",
+      maxResults: 50,
+      lookbackDays: syncLookbackDays,
+    });
+  };
+
+  const openPriorityModal = () => {
+    setPriorityModalIndex(0);
+    setIsPriorityModalOpen(true);
+  };
+
+  const advancePriorityModal = () => {
+    setPriorityModalIndex((current) => current + 1);
+  };
+
+  const retreatPriorityModal = () => {
+    setPriorityModalIndex((current) => Math.max(0, current - 1));
+  };
 
   return (
-    <section className="page stack stack--page">
-      <div className="hero">
-        <div>
+    <section className="page page--inbox stack stack--page">
+      <div className="hero inbox-hero">
+        <div className="inbox-hero__left">
           <p className="eyebrow">Daily Queue</p>
-          <h1>Inbox Command Center</h1>
-          <p className="hero-copy">
-            Start with what needs action, keep the rest in order, and always
-            know the next step.
-          </p>
+          <h1>Inbox</h1>
+          {data?.summary.executive_summary?.trim() ? (
+            <p className="inbox-hero__summary">
+              {data.summary.executive_summary}
+            </p>
+          ) : null}
         </div>
 
-        <button
-          className="button"
-          onClick={() =>
-            syncMutation.mutate({ source: "anywhere", maxResults: 50 })
-          }
-          disabled={syncMutation.isPending || isRefreshLocked}
-        >
-          {isRefreshLocked ? "Refreshing inbox..." : "Refresh Gmail"}
-        </button>
+        <div className="hero__actions inbox-hero__actions">
+          <label className="hero__field" htmlFor="sync-lookback-days">
+            <span className="eyebrow">Fetch from</span>
+            <span className="select-field">
+              <select
+                id="sync-lookback-days"
+                value={syncLookbackDays}
+                onChange={(event) =>
+                  setSyncLookbackDays(Number(event.target.value))
+                }
+                disabled={syncMutation.isPending || isRefreshLocked}
+              >
+                {SYNC_LOOKBACK_OPTIONS.map((option) => (
+                  <option key={option.days} value={option.days}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
+            </span>
+          </label>
+          <button
+            type="button"
+            className={`button ${isSyncing ? "button--danger" : ""}`}
+            onClick={() => {
+              if (isSyncing && activeRunId !== null && !isCancelling) {
+                cancelSyncMutation.mutate(activeRunId);
+                return;
+              }
+              triggerRefresh();
+            }}
+            disabled={
+              syncMutation.isPending ||
+              cancelSyncMutation.isPending ||
+              isCancelling ||
+              (isSyncSettling && !isSyncing)
+            }
+          >
+            {isCancelling || cancelSyncMutation.isPending
+              ? "Cancelling..."
+              : isSyncing
+                ? "Cancel refresh"
+                : isSyncSettling
+                  ? "Refreshing inbox..."
+                  : "Refresh Gmail"}
+          </button>
+          <button
+            type="button"
+            className="button button--ghost priority-queue-button"
+            onClick={openPriorityModal}
+            disabled={!priorityThreads.length}
+          >
+            {priorityThreads.length ? `Priority queue (${priorityThreads.length})` : "Priority queue"}
+          </button>
+        </div>
       </div>
 
       {showSyncProgress && syncStatus ? (
@@ -425,153 +1088,106 @@ export function InboxPage() {
             <span>{syncStatus.ai_thread_count} AI-reviewed</span>
             <span>
               {syncStatus.status === "running"
-                ? "Last update: in progress"
-                : syncStatus.status === "failed"
-                  ? "Last update: failed"
-                  : "Last update: applying refresh"}
+                ? syncStatus.cancellation_requested
+                  ? "Last update: cancellation requested"
+                  : "Last update: in progress"
+                : syncStatus.status === "cancelled"
+                  ? "Last update: cancelled"
+                  : syncStatus.status === "failed"
+                    ? "Last update: failed"
+                    : "Last update: applying refresh"}
             </span>
           </div>
           <p className="summary-text">
-            {shouldHideInboxContent
+            {showRefreshSkeleton
               ? "Your inbox will appear once the refresh is fully complete."
               : "Your current inbox stays visible until the new refresh is fully complete."}
           </p>
         </section>
       ) : null}
 
-      {!shouldHideInboxContent ? (
-        <>
-          <div className="inbox-overview">
-            <section className="panel panel--summary panel--summary-rich">
-              <p className="eyebrow">What Matters First</p>
-              <h3>Priority snapshot</h3>
-              <p className="summary-text">
-                {data?.summary.executive_summary ??
-                  "Run your first refresh to build the inbox summary."}
-              </p>
-              {priorityBriefs.length ? (
-                <ul className="priority-briefs">
-                  {priorityBriefs.map((brief) => (
-                    <li key={brief.threadId} className="priority-brief">
-                      <div className="priority-brief__header">
-                        <Link className="priority-brief__title" to={`/threads/${brief.threadId}`}>
-                          {brief.subject}
-                        </Link>
-                        <span className="pill tone-outline">{brief.urgency}</span>
-                      </div>
-                      <p className="priority-brief__line">
-                        <strong>Summary:</strong> {brief.summary}
-                      </p>
-                      <p className="priority-brief__line">
-                        <strong>Next action:</strong> {brief.nextAction}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </section>
+      {showInitialSkeleton ? <QueueSkeleton /> : null}
+      {showRefreshSkeleton ? <QueueSkeleton refreshing /> : null}
+      {showEmptyState ? <EmptyInboxState syncing={isSyncing} /> : null}
 
-            <section className="panel">
-              <p className="eyebrow">Your Next Actions</p>
-              <h3>Start here</h3>
-              {highlightedActions.length ? (
-                <div className="action-list">
-                  {highlightedActions.map((thread) => (
-                    <Link
-                      key={thread.thread_id}
-                      className="action-item"
-                      to={`/threads/${thread.thread_id}`}
-                    >
-                      <div>
-                        <p className="action-item__title">{thread.subject}</p>
-                        <p className="action-item__body">
-                          {thread.analysis?.next_action}
-                        </p>
-                      </div>
-                      <span className="pill tone-outline">
-                        {thread.analysis?.urgency ?? "unknown"}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="summary-text">
-                  Your next actions will appear here once threads are analyzed.
-                </p>
-              )}
-            </section>
-          </div>
-
-          <div className="metric-grid">
-            <article className="panel metric-card">
-              <p className="eyebrow">Act Now</p>
-              <h3>{actNowCount}</h3>
-              <p className="summary-text">High-priority threads to handle first.</p>
-            </article>
-            <article className="panel metric-card">
-              <p className="eyebrow">Waiting On Us</p>
-              <h3>{waitingCount}</h3>
-              <p className="summary-text">Items that need a reply or decision.</p>
-            </article>
-            <article className="panel metric-card">
-              <p className="eyebrow">Monitor</p>
-              <h3>{monitorCount}</h3>
-              <p className="summary-text">Useful context without immediate action.</p>
-            </article>
-            <article className="panel metric-card">
-              <p className="eyebrow">Closed</p>
-              <h3>{closedCount}</h3>
-              <p className="summary-text">Resolved or low-priority conversations.</p>
-            </article>
-          </div>
-
-          <label className="search-bar panel panel--search">
-            <span className="eyebrow">Search</span>
-            <input
-              type="text"
-              value={search}
-              onChange={(event) =>
-                startTransition(() => {
-                  setSearch(event.target.value);
-                })
-              }
-              placeholder="Search by subject, participant, summary, or next action"
-            />
-          </label>
-        </>
+      {isPriorityModalOpen ? (
+        <PriorityQueueModal
+          threads={priorityThreads}
+          currentIndex={priorityModalIndex}
+          onClose={() => setIsPriorityModalOpen(false)}
+          onPrevious={retreatPriorityModal}
+          onNext={advancePriorityModal}
+        />
       ) : null}
 
-      {isLoading ? <p>Loading queue...</p> : null}
+      {shouldRenderInboxContent ? (
+        <div className="inbox-toolbar">
+          <input
+            type="text"
+            className="inbox-toolbar__search"
+            value={search}
+            onChange={(event) =>
+              startTransition(() => setSearch(event.target.value))
+            }
+            placeholder="Search threads…"
+          />
+          <div className="inbox-toolbar__filters">
+            <label className="select-field">
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+              >
+                <option value="all">All categories</option>
+                {categoryOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
+            </label>
+            <label className="select-field">
+              <select
+                value={priorityFilter}
+                onChange={(event) =>
+                  setPriorityFilter(event.target.value as PriorityFilterValue)
+                }
+              >
+                {PRIORITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
+            </label>
+            {hasActiveFilters ? (
+              <button
+                className="button button--ghost inbox-toolbar__clear"
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setPriorityFilter("all");
+                  setCategoryFilter("all");
+                }}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {error instanceof Error ? <p>{error.message}</p> : null}
       {syncMutation.error instanceof Error ? <p>{syncMutation.error.message}</p> : null}
       {syncRunQuery.error instanceof Error ? <p>{syncRunQuery.error.message}</p> : null}
 
-      {!shouldHideInboxContent
+      {shouldRenderInboxContent
         ? sections.map((section) => (
-            <section className="thread-section" key={section.id}>
-              <div className="thread-section__header">
-                <div>
-                  <p className="eyebrow">{section.title}</p>
-                  <h3>{section.threads.length} thread(s)</h3>
-                </div>
-                <p className="summary-text">{section.description}</p>
-              </div>
-
-              {section.threads.length ? (
-                <div className="thread-list">
-                  {section.threads.map((thread) => (
-                    <ThreadCard key={thread.thread_id} thread={thread} />
-                  ))}
-                </div>
-              ) : (
-                <div className="panel thread-section__empty">
-                  <p className="summary-text">
-                    No threads in this section for the current search.
-                  </p>
-                </div>
-              )}
-            </section>
-          ))
+          <CollapsibleThreadSection
+            key={section.id}
+            section={section}
+            defaultOpen={SECTION_DEFAULT_OPEN[section.id] ?? true}
+          />
+        ))
         : null}
     </section>
   );

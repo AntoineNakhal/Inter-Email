@@ -13,7 +13,12 @@ from backend.application.sync_progress_store import SyncProgressStore
 from backend.application.thread_analysis_service import ThreadAnalysisService
 from backend.domain.runtime_settings import RuntimeSettings
 from backend.domain.sync import SyncRunSummary, SyncStage, SyncStatus
-from backend.domain.thread import AnalysisStatus, RelevanceBucket, SecurityStatus
+from backend.domain.thread import (
+    AnalysisStatus,
+    EmailThread,
+    RelevanceBucket,
+    SecurityStatus,
+)
 from backend.persistence.repositories.sync_repository import SyncRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.gmail.client import GmailReadonlyClient
@@ -21,6 +26,10 @@ from backend.providers.gmail.mapper import group_messages_by_thread
 
 
 logger = logging.getLogger(__name__)
+
+
+class SyncCancelledError(Exception):
+    """Raised when a running sync is cancelled by the user."""
 
 
 class GmailSyncService:
@@ -66,16 +75,25 @@ class GmailSyncService:
     def get_running_run(self) -> SyncRunSummary | None:
         return self.progress_store.running()
 
+    def cancel_run(self, run_id: int) -> SyncRunSummary | None:
+        run = self.sync_repository.get_run_model(run_id)
+        if run is None or run.status != SyncStatus.RUNNING.value:
+            return None
+        return self.progress_store.request_cancel(run_id)
+
     def sync_recent_threads(
         self,
         run_id: int,
         source: str,
         max_results: int,
+        lookback_days: int = 7,
     ) -> SyncRunSummary:
         run = self.sync_repository.get_run_model(run_id)
         if run is None:
             raise ValueError(f"Sync run `{run_id}` was not found.")
 
+        snapshot_threads = self.thread_repository.list_threads()
+        self.progress_store.capture_snapshot(run_id, snapshot_threads)
         fetched_message_count = 0
         persisted_thread_count = 0
         analyzed_thread_count = 0
@@ -83,10 +101,11 @@ class GmailSyncService:
         try:
             sync_started_at = perf_counter()
             logger.info(
-                "Sync run %s started source=%s max_results=%s",
+                "Sync run %s started source=%s max_results=%s lookback_days=%s",
                 run_id,
                 source,
                 max_results,
+                lookback_days,
             )
             self.progress_store.update(
                 run_id,
@@ -95,11 +114,15 @@ class GmailSyncService:
                 status_message="Fetching recent Gmail threads.",
             )
             fetch_started_at = perf_counter()
+            known_message_ids = self.thread_repository.get_known_message_ids()
             messages = self.gmail_client.list_recent_messages(
                 max_results=max_results,
                 source=source,
+                lookback_days=lookback_days,
+                known_message_ids=known_message_ids,
             )
             fetched_message_count = len(messages)
+            self._raise_if_cancel_requested(run_id)
             logger.info(
                 "Sync run %s fetched %s Gmail messages in %.2fs",
                 run_id,
@@ -116,6 +139,7 @@ class GmailSyncService:
             grouping_started_at = perf_counter()
             grouped_threads = group_messages_by_thread(messages)
             grouped_threads = self._apply_runtime_ai_strategy(grouped_threads)
+            self._raise_if_cancel_requested(run_id)
             logger.info(
                 "Sync run %s grouped %s threads in %.2fs",
                 run_id,
@@ -127,6 +151,8 @@ class GmailSyncService:
                 grouped_threads=grouped_threads,
                 fetched_message_count=len(messages),
             )
+            self.session.commit()
+            self._raise_if_cancel_requested(run_id)
             persisted_thread_count = len(saved_threads)
             ai_thread_count = len(
                 [thread for thread in saved_threads if thread.included_in_ai]
@@ -145,6 +171,13 @@ class GmailSyncService:
                 ai_thread_count=ai_thread_count,
             )
             analysis_started_at = perf_counter()
+            # Pull the connected mailbox owner so analysis prompts know
+            # whose perspective to take. Falls back to None if no mailbox
+            # is connected yet — providers handle that by skipping the
+            # user-perspective preamble entirely.
+            mailbox_email = (
+                self.runtime_settings.gmail_mailbox_email.strip() or None
+            )
             analyzed_threads = self.analysis_service.analyze_threads_with_progress(
                 saved_threads,
                 progress_callback=lambda current, total, _: self._update_analysis_progress(
@@ -155,7 +188,11 @@ class GmailSyncService:
                     thread_count=len(saved_threads),
                     ai_thread_count=ai_thread_count,
                 ),
+                persist_callback=lambda _thread: self.session.commit(),
+                should_cancel=lambda: self.progress_store.is_cancel_requested(run_id),
+                user_email=mailbox_email,
             )
+            self._raise_if_cancel_requested(run_id)
             analyzed_thread_count = len(analyzed_threads)
             logger.info(
                 "Sync run %s analyzed %s threads in %.2fs",
@@ -176,6 +213,7 @@ class GmailSyncService:
             )
             summary_started_at = perf_counter()
             queue_summary = self.queue_service.summarize_threads(analyzed_threads)
+            self._raise_if_cancel_requested(run_id)
             logger.info(
                 "Sync run %s built queue summary in %.2fs",
                 run_id,
@@ -201,6 +239,35 @@ class GmailSyncService:
                 perf_counter() - sync_started_at,
             )
             return self.progress_store.complete(result)
+        except SyncCancelledError:
+            self.session.rollback()
+            cancelled_run_model = self.sync_repository.get_run_model(run_id)
+            restored_threads = self.thread_repository.restore_threads_snapshot(
+                snapshot_threads,
+            )
+            cancelled_run = self.sync_repository.complete_run(
+                run=cancelled_run_model or run,
+                status=SyncStatus.CANCELLED,
+                fetched_message_count=fetched_message_count,
+                thread_count=len(restored_threads),
+                ai_thread_count=0,
+                error_message=None,
+            )
+            cancelled_run.threads = restored_threads
+            cancelled_run.status_message = (
+                "Inbox refresh cancelled. Restored the previous local inbox."
+            )
+            cancelled_run.completed_at = datetime.now(timezone.utc)
+            self.session.commit()
+            logger.info("Sync run %s cancelled and previous snapshot restored", run_id)
+            return self.progress_store.cancel(
+                run_id,
+                source=source,
+                status_message=cancelled_run.status_message,
+                fetched_message_count=fetched_message_count,
+                thread_count=len(restored_threads),
+                ai_thread_count=0,
+            )
         except Exception as exc:
             self.session.rollback()
             try:
@@ -298,6 +365,7 @@ class GmailSyncService:
 
         saved_threads = []
         for index, thread in enumerate(grouped_threads, start=1):
+            self._raise_if_cancel_requested(run_id)
             thread_started_at = perf_counter()
             obsolete_source_threads = [
                 source_thread_id
@@ -343,6 +411,8 @@ class GmailSyncService:
                 message_progress_callback=on_message_saved,
             )
             saved_threads.append(saved_thread)
+            self.session.commit()
+            self._raise_if_cancel_requested(run_id)
             processed_messages += len(thread.messages)
             self.progress_store.update(
                 run_id,
@@ -377,10 +447,7 @@ class GmailSyncService:
         return saved_threads
 
     def _apply_runtime_ai_strategy(self, grouped_threads: list) -> list:
-        if not (
-            self.runtime_settings.local_ai_enabled
-            and self.runtime_settings.local_ai_force_all_threads
-        ):
+        if not self.runtime_settings.local_ai_analyzes_all_fetched_threads:
             return grouped_threads
 
         for thread in grouped_threads:
@@ -388,9 +455,15 @@ class GmailSyncService:
                 continue
             thread.included_in_ai = True
             thread.relevance_bucket = thread.relevance_bucket or RelevanceBucket.IMPORTANT
-            thread.ai_decision = "local_ai_all_threads"
+            thread.ai_decision = (
+                "local_ai_all_threads"
+                if self.runtime_settings.local_ai_enabled
+                else "manual_all_threads"
+            )
             thread.ai_decision_reason = (
                 "Local AI mode is active, so every fetched email thread is analyzed."
+                if self.runtime_settings.local_ai_enabled
+                else "Every fetched email thread is configured to be analyzed."
             )
             if thread.analysis_status == AnalysisStatus.SKIPPED:
                 thread.analysis_status = AnalysisStatus.PENDING
@@ -404,3 +477,7 @@ class GmailSyncService:
         if total_messages <= 0:
             return 40
         return 36 + int((processed_messages / total_messages) * 22)
+
+    def _raise_if_cancel_requested(self, run_id: int) -> None:
+        if self.progress_store.is_cancel_requested(run_id):
+            raise SyncCancelledError()

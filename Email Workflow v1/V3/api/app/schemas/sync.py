@@ -13,6 +13,7 @@ from backend.domain.sync import SyncRunSummary
 class SyncRequest(BaseModel):
     source: str = "anywhere"
     max_results: int = 50
+    lookback_days: int = Field(default=7, ge=1, le=365)
 
 
 class SyncStatusResponse(BaseModel):
@@ -25,6 +26,7 @@ class SyncStatusResponse(BaseModel):
     fetched_message_count: int
     thread_count: int
     ai_thread_count: int
+    cancellation_requested: bool = False
     completed_at: datetime | None = None
     queue_summary: QueueSummaryResponse | None = None
     error_message: str | None = None
@@ -41,6 +43,7 @@ class SyncStatusResponse(BaseModel):
             fetched_message_count=result.fetched_message_count,
             thread_count=result.thread_count,
             ai_thread_count=result.ai_thread_count,
+            cancellation_requested=result.cancellation_requested,
             completed_at=result.completed_at,
             queue_summary=(
                 QueueSummaryResponse.from_domain(result.queue_summary)
@@ -66,6 +69,7 @@ class SyncResponse(SyncStatusResponse):
             fetched_message_count=result.fetched_message_count,
             thread_count=result.thread_count,
             ai_thread_count=result.ai_thread_count,
+            cancellation_requested=result.cancellation_requested,
             completed_at=result.completed_at,
             queue_summary=(
                 QueueSummaryResponse.from_domain(result.queue_summary)

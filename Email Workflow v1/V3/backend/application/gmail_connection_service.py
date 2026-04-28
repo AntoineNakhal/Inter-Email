@@ -6,7 +6,13 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.orm import Session
+
+from backend.application.runtime_settings_service import RuntimeSettingsService
+from backend.application.sync_progress_store import SyncProgressStore
 from backend.domain.gmail import GmailConnectionStatus
+from backend.persistence.repositories.sync_repository import SyncRepository
+from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.gmail.client import GmailReadonlyClient
 
 
@@ -55,12 +61,24 @@ class GmailConnectionService:
         self,
         gmail_client: GmailReadonlyClient,
         state_store: GmailConnectionStateStore,
+        runtime_settings_service: RuntimeSettingsService | None = None,
+        thread_repository: ThreadRepository | None = None,
+        sync_repository: SyncRepository | None = None,
+        progress_store: SyncProgressStore | None = None,
+        session: Session | None = None,
     ) -> None:
         self.gmail_client = gmail_client
         self.state_store = state_store
+        self.runtime_settings_service = runtime_settings_service
+        self.thread_repository = thread_repository
+        self.sync_repository = sync_repository
+        self.progress_store = progress_store
+        self.session = session
 
     def get_status(self, connect_url: str | None = None) -> GmailConnectionStatus:
-        return self.gmail_client.get_connection_status(connect_url=connect_url)
+        status = self.gmail_client.get_connection_status(connect_url=connect_url)
+        self._synchronize_mailbox_scope(status)
+        return status
 
     def build_connect_url(self, redirect_uri: str) -> str:
         code_verifier = self.gmail_client.generate_code_verifier()
@@ -87,4 +105,32 @@ class GmailConnectionService:
                 status.error_message
                 or "The Gmail account could not be connected."
             )
+        self._synchronize_mailbox_scope(status)
         return status
+
+    def _synchronize_mailbox_scope(self, status: GmailConnectionStatus) -> None:
+        if (
+            self.runtime_settings_service is None
+            or not status.connected
+            or not status.email_address
+        ):
+            return
+
+        next_mailbox_email = str(status.email_address or "").strip().lower()
+        current_mailbox_email = (
+            self.runtime_settings_service.get().gmail_mailbox_email.strip().lower()
+        )
+        if current_mailbox_email == next_mailbox_email:
+            return
+
+        if current_mailbox_email and current_mailbox_email != next_mailbox_email:
+            if self.thread_repository is not None:
+                self.thread_repository.clear_all()
+            if self.sync_repository is not None:
+                self.sync_repository.delete_all()
+            if self.progress_store is not None:
+                self.progress_store.clear()
+
+        self.runtime_settings_service.set_gmail_mailbox_email(next_mailbox_email)
+        if self.session is not None:
+            self.session.commit()

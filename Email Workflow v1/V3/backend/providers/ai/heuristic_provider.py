@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from email.utils import parseaddr
 
+from backend.core.email_text import normalize_email_text
 from backend.domain.analysis import (
     CRMExtractionRequest,
     CRMExtractionResult,
@@ -12,6 +13,8 @@ from backend.domain.analysis import (
     QueueSummaryRequest,
     QueueSummaryResult,
     ThreadAnalysisRequest,
+    ThreadVerificationRequest,
+    ThreadVerificationResult,
 )
 from backend.domain.thread import (
     DraftDocument,
@@ -19,7 +22,10 @@ from backend.domain.thread import (
     TriageCategory,
     UrgencyLevel,
 )
+from backend.providers.ai.analysis_style import suggest_current_status
+from backend.providers.ai.action_style import fit_next_action_to_thread, suggest_next_action
 from backend.providers.ai.base import AIProvider
+from backend.providers.ai.summary_style import suggest_summary
 
 
 DATE_HINT_PATTERNS = (
@@ -112,6 +118,57 @@ class HeuristicAIProvider(AIProvider):
             used_fallback=True,
         )
 
+    def verify_thread_analysis(
+        self,
+        request: ThreadVerificationRequest,
+    ) -> ThreadVerificationResult:
+        thread = request.thread
+        analysis = request.analysis
+        accuracy_percent = 58
+
+        if analysis.summary.strip():
+            accuracy_percent += 10
+        if analysis.next_action.strip():
+            accuracy_percent += 12
+        if analysis.current_status.strip():
+            accuracy_percent += 6
+        if analysis.needs_action_today == thread.waiting_on_us:
+            accuracy_percent += 6
+        if thread.waiting_on_us and analysis.should_draft_reply:
+            accuracy_percent += 4
+        if analysis.category == self._infer_category(
+            f"{thread.subject}\n{thread.combined_thread_text}".lower()
+        ):
+            accuracy_percent += 8
+        if analysis.urgency == self._infer_urgency(
+            text=f"{thread.subject}\n{thread.combined_thread_text}".lower(),
+            waiting_on_us=thread.waiting_on_us,
+        ):
+            accuracy_percent += 6
+
+        accuracy_percent = max(35, min(96, accuracy_percent))
+        needs_human_review = accuracy_percent < 70 or not analysis.next_action.strip()
+        review_reason = (
+            "The local verifier is not fully confident in the summary or next action."
+            if needs_human_review
+            else None
+        )
+        verification_summary = (
+            "Heuristic verifier sees a strong match between the thread signals and the generated analysis."
+            if not needs_human_review
+            else "Heuristic verifier found gaps or ambiguity in the generated analysis."
+        )
+        return ThreadVerificationResult(
+            accuracy_percent=accuracy_percent,
+            verification_summary=verification_summary,
+            needs_human_review=needs_human_review,
+            review_reason=review_reason,
+            provider_name=self.name,
+            model_name="deterministic-fallback",
+            used_fallback=True,
+            verified_at=datetime.now(timezone.utc),
+        )
+
     def draft_reply(self, request: DraftReplyRequest) -> DraftDocument:
         thread = request.thread
         recipient = self._first_name(thread.participants[0] if thread.participants else "")
@@ -120,24 +177,8 @@ class HeuristicAIProvider(AIProvider):
         if not subject.lower().startswith(("re:", "fw:", "fwd:")):
             subject = f"Re: {subject}"
 
-        lines = [greeting, "", "Thanks for the update."]
-        if thread.analysis and thread.analysis.summary:
-            lines.append(thread.analysis.summary)
-        if request.user_instructions.strip():
-            lines.append(request.user_instructions.strip())
-        if request.selected_date:
-            lines.append(f"We are available on {request.selected_date}.")
-        if request.attachment_names:
-            lines.append(
-                f"I've attached {', '.join(request.attachment_names)} for reference."
-            )
-        elif thread.analysis and thread.analysis.next_action:
-            lines.append(thread.analysis.next_action)
-
-        if thread.analysis and thread.analysis.needs_action_today:
-            lines.append("We will follow up today with the next step.")
-        else:
-            lines.append("We will follow up shortly with the next step.")
+        lines = [greeting, ""]
+        lines.extend(self._build_draft_body_lines(request))
 
         lines.extend(["", "Best,", "Inter-Op Team"])
         return DraftDocument(
@@ -186,32 +227,82 @@ class HeuristicAIProvider(AIProvider):
         return TriageCategory.FYI_LOW_PRIORITY
 
     def _build_summary(self, thread) -> str:
-        latest_snippet = thread.messages[-1].snippet if thread.messages else ""
-        return (latest_snippet or thread.subject).strip()[:280]
+        return suggest_summary(thread)
 
     def _build_status(self, thread) -> str:
-        if thread.resolved_or_closed:
-            return "Conversation appears resolved."
-        if thread.waiting_on_us:
-            return "Waiting on Inter-Op to respond."
-        if thread.latest_message_from_me:
-            return "Waiting on the external party to respond."
-        return "Conversation needs monitoring."
+        return suggest_current_status(thread)
 
     def _build_next_action(self, thread, needs_action_today: bool) -> str:
         if thread.resolved_or_closed:
             return "Keep the thread archived unless a new message reopens it."
         if thread.waiting_on_us and needs_action_today:
-            return "Prepare and send a reply today."
+            return fit_next_action_to_thread("", thread)
         if thread.waiting_on_us:
-            return "Prepare a follow-up reply when ready."
+            return fit_next_action_to_thread("", thread)
         if thread.latest_message_from_me:
-            return "Monitor for the external party's response."
-        return "Review the thread and decide the next owner."
+            return suggest_next_action(thread)
+        return suggest_next_action(thread)
+
+    def _build_draft_body_lines(self, request: DraftReplyRequest) -> list[str]:
+        thread = request.thread
+        latest_text = self._latest_message_text(thread)
+        lines: list[str] = []
+
+        if any(
+            marker in latest_text
+            for marker in ("did you receive", "did you get this", "confirm receipt")
+        ):
+            lines.append("Yes, I received it. Thanks for the update.")
+        elif any(
+            marker in latest_text
+            for marker in ("meet.google.com", "google meet", "meeting link", "join link")
+        ):
+            lines.append("Thanks, I received the link.")
+        elif request.selected_date:
+            lines.append(f"We are available on {request.selected_date}.")
+        elif request.attachment_names:
+            lines.append(
+                f"I've attached {', '.join(request.attachment_names)} for reference."
+            )
+        else:
+            lines.append("Thanks for the update.")
+
+        if request.user_instructions.strip():
+            lines.append(request.user_instructions.strip())
+        elif request.selected_date:
+            pass
+        elif request.attachment_names:
+            pass
+        elif thread.analysis and thread.analysis.next_action:
+            next_action = fit_next_action_to_thread(thread.analysis.next_action, thread)
+            if "confirming you received this" in next_action.lower():
+                pass
+            elif "reply to" in next_action.lower() and "requested confirmation" in next_action.lower():
+                lines.append("I'll get back to you with the requested confirmation shortly.")
+            elif "meeting link" in next_action.lower():
+                lines.append("I'll review the meeting details and follow up if anything else is needed.")
+
+        return lines
+
+    def _latest_message_text(self, thread) -> str:
+        latest_message = thread.messages[-1] if thread.messages else None
+        return normalize_email_text(
+            "\n".join(
+                part
+                for part in [
+                    latest_message.subject if latest_message else thread.subject,
+                    latest_message.snippet if latest_message else "",
+                    latest_message.cleaned_body if latest_message else thread.combined_thread_text,
+                ]
+                if part
+            )
+        ).lower()
 
     def _first_name(self, raw_value: str) -> str:
         name, email_address = parseaddr(raw_value)
-        candidate = (name or email_address.split("@")[0]).strip()
+        candidate = (name or email_address.split("@")[0]).strip().strip('"')
+        if "," in candidate:
+            candidate = candidate.split(",", 1)[1].strip()
         return candidate.split()[0].title() if candidate else ""
 
     def _infer_company(self, participants: list[str]) -> str | None:

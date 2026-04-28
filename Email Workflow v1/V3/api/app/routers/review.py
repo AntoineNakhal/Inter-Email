@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import OperationalError
 
 from api.app.dependencies.services import ServiceBundle, get_service_bundle
-from api.app.schemas.review import ReviewRequest, SeenStateRequest
+from api.app.schemas.review import PinStateRequest, ReviewRequest, SeenStateRequest
 
 
 router = APIRouter()
@@ -34,6 +35,27 @@ def mark_seen(
 ) -> dict[str, str]:
     try:
         services.review_service.mark_seen(thread_id, payload.seen)
+        services.session.commit()
+    except ValueError as exc:
+        services.session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OperationalError as exc:
+        services.session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="The inbox is busy finishing another write. Please try again.",
+        ) from exc
+    return {"status": "saved"}
+
+
+@router.post("/threads/{thread_id}/pin")
+def mark_pinned(
+    thread_id: str,
+    payload: PinStateRequest,
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> dict[str, str]:
+    try:
+        services.review_service.mark_pinned(thread_id, payload.pinned)
         services.session.commit()
     except ValueError as exc:
         services.session.rollback()

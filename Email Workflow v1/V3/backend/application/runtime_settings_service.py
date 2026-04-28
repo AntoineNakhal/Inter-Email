@@ -31,3 +31,6 @@ class RuntimeSettingsService:
             local_ai_model=local_ai_model,
             local_ai_agent_prompt=local_ai_agent_prompt,
         )
+
+    def set_gmail_mailbox_email(self, gmail_mailbox_email: str) -> RuntimeSettings:
+        return self.repository.update_gmail_mailbox_email(gmail_mailbox_email)

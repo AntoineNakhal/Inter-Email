@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inter-Email V3 Documentation</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121933;
+      --panel-2: #182246;
+      --panel-3: #0d1430;
+      --text: #eaf0ff;
+      --muted: #aeb8d6;
+      --accent: #6ea8fe;
+      --accent-2: #8ef0c5;
+      --accent-3: #c9a7ff;
+      --line: #2a376b;
+      --warn: #ffd479;
+      --danger: #f29bb2;
+      --shadow: 0 12px 30px rgba(0, 0, 0, .25);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #0b1020 0%, #111933 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    aside {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 28px 20px;
+      border-right: 1px solid var(--line);
+      background: rgba(9, 13, 28, 0.82);
+      backdrop-filter: blur(10px);
+    }
+
+    aside h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    aside p { color: var(--muted); font-size: 0.95rem; margin: 0 0 20px; }
+
+    .version-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, rgba(110, 168, 254, 0.25), rgba(142, 240, 197, 0.18));
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      margin-bottom: 14px;
+    }
+
+    nav a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 9px 12px;
+      margin: 3px 0;
+      border-radius: 12px;
+      font-size: 0.93rem;
+      transition: 0.2s ease;
+    }
+
+    nav a:hover { background: var(--panel); color: var(--text); }
+    nav a.active { background: var(--panel-2); color: var(--text); }
+
+    main { padding: 36px; max-width: 1200px; }
+
+    .hero {
+      background: linear-gradient(135deg, rgba(110, 168, 254, 0.18), rgba(142, 240, 197, 0.12));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+
+    .hero h2 { margin: 0 0 12px; font-size: 2rem; }
+    .hero p { margin: 0; color: var(--muted); max-width: 920px; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+    .chip {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+    }
+
+    .chip.accent { border-color: var(--accent); color: var(--accent); }
+    .chip.green { border-color: var(--accent-2); color: var(--accent-2); }
+    .chip.warn { border-color: var(--warn); color: var(--warn); }
+
+    section {
+      margin-bottom: 26px;
+      background: rgba(18, 25, 51, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    section h3 { margin-top: 0; font-size: 1.45rem; }
+    section > p.lead { color: var(--muted); max-width: 920px; margin-top: -6px; margin-bottom: 18px; }
+
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card h4 { margin: 0 0 8px; font-size: 1.05rem; }
+    .card p, .card li { color: var(--muted); }
+
+    .card.accent { border-color: rgba(110, 168, 254, 0.45); }
+    .card.green { border-color: rgba(142, 240, 197, 0.45); }
+    .card.warn { border-color: rgba(255, 212, 121, 0.45); }
+    .card.danger { border-color: rgba(242, 155, 178, 0.45); }
+
+    ul { padding-left: 18px; margin-bottom: 0; }
+    ol { padding-left: 22px; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-size: 0.88em;
+      color: var(--accent-2);
+    }
+
+    pre {
+      background: var(--panel-3);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      color: var(--text);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+
+    pre code { background: none; border: none; padding: 0; color: inherit; }
+
+    .diagram-wrap {
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 14% 12%, rgba(110, 168, 254, 0.16), transparent 28%),
+        radial-gradient(circle at 86% 84%, rgba(142, 240, 197, 0.11), transparent 30%),
+        linear-gradient(180deg, #0d1430 0%, #111b3e 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      padding: 18px;
+      margin-top: 14px;
+    }
+
+    .diagram-wrap svg { display: block; width: 100%; height: auto; }
+
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      margin-top: 14px; font-size: 0.88rem; color: var(--muted);
+    }
+    .legend span::before {
+      content: ""; display: inline-block;
+      width: 12px; height: 12px; border-radius: 3px;
+      margin-right: 8px; vertical-align: middle;
+    }
+    .lg-frontend::before { background: #6ea8fe; }
+    .lg-api::before { background: #8ef0c5; }
+    .lg-app::before { background: #c9a7ff; }
+    .lg-domain::before { background: #ffd479; }
+    .lg-persist::before { background: #f29bb2; }
+    .lg-provider::before { background: #7adcff; }
+    .lg-external::before { background: #aeb8d6; }
+
+    table {
+      width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.92rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line); text-align: left;
+      padding: 11px 10px; vertical-align: top;
+    }
+    th { color: var(--text); font-weight: 600; background: rgba(255,255,255,0.02); }
+    td { color: var(--muted); }
+    td code { color: var(--accent-2); }
+
+    .note {
+      border-left: 4px solid var(--warn);
+      padding: 12px 14px;
+      background: rgba(255, 212, 121, 0.08);
+      border-radius: 12px;
+      color: var(--text);
+      margin-top: 14px;
+    }
+
+    .note.danger {
+      border-left-color: var(--danger);
+      background: rgba(242, 155, 178, 0.08);
+    }
+
+    .note.info {
+      border-left-color: var(--accent);
+      background: rgba(110, 168, 254, 0.08);
+    }
+
+    .status-bar {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em;
+      border: 1px solid var(--line);
+    }
+    .pill::before {
+      content: ""; width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+    }
+    .pill.scaffolded { background: rgba(110, 168, 254, 0.14); border-color: var(--accent); color: var(--accent); }
+    .pill.scaffolded::before { background: var(--accent); }
+    .pill.partial { background: rgba(255, 212, 121, 0.14); border-color: var(--warn); color: var(--warn); }
+    .pill.partial::before { background: var(--warn); }
+    .pill.missing { background: rgba(242, 155, 178, 0.14); border-color: var(--danger); color: var(--danger); }
+    .pill.missing::before { background: var(--danger); }
+    .pill.done { background: rgba(142, 240, 197, 0.14); border-color: var(--accent-2); color: var(--accent-2); }
+    .pill.done::before { background: var(--accent-2); }
+
+    footer { color: var(--muted); padding: 8px 0 30px; text-align: center; font-size: 0.88rem; }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+      main { padding: 20px; }
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="layout">
+    <aside>
+      <h1>Inter-Email V3</h1>
+      <span class="version-badge">Target architecture · Senior-dev handoff</span>
+      <p>Modular-monolith design spec for the V2 → V3 refactor.</p>
+      <nav>
+        <a href="#overview">Overview</a>
+        <a href="#thesis">1. Core Thesis</a>
+        <a href="#layers">2. Layered Architecture</a>
+        <a href="#sync-flow">3. Refresh Gmail Flow</a>
+        <a href="#ai-layer">4. AI Provider Layer</a>
+        <a href="#data-model">5. Database Schema</a>
+        <a href="#frontend">6. Frontend Shape</a>
+        <a href="#stack">7. Technology Stack</a>
+        <a href="#status">8. Current Build Status</a>
+        <a href="#strengths">9. Strengths</a>
+        <a href="#risks">10. Risks &amp; Push-back</a>
+        <a href="#refactors">11. Next Refactors</a>
+      </nav>
+    </aside>
+
+    <main>
+      <div class="hero" id="overview">
+        <h2>Inter-Email V3 — Architecture &amp; Handoff</h2>
+        <p>
+          V3 is a modular monolith for AI-assisted email operations. A React frontend talks only to a FastAPI API,
+          and the API delegates all real work to an internal <code>backend/</code> package split into application
+          services, domain models, provider adapters, and repositories. It is not microservices, but it already has
+          clean internal boundaries — and a clear migration path to Postgres, background workers, and self-hosted AI
+          without rewriting business logic.
+        </p>
+        <div class="chips">
+          <div class="chip accent">Modular monolith</div>
+          <div class="chip">API-first</div>
+          <div class="chip">Provider-agnostic AI</div>
+          <div class="chip">Thread-as-primary-abstraction</div>
+          <div class="chip green">SQLite → Postgres ready</div>
+          <div class="chip green">Built end-to-end</div>
+        </div>
+      </div>
+
+      <div class="note info">
+        <strong>Read this first.</strong> This document describes the V3 architecture as defined in
+        <code>V3/docs/architecture.md</code> and as currently implemented on disk. As of April 2026 the system is
+        essentially built end-to-end; see <a href="#status" style="color: var(--accent);">Section 8 — Current Build Status</a>
+        for the precise per-layer state and the remaining operational gaps (migrations, tests, type generation,
+        sync durability). The V2 system this refactor extracted from is documented separately in
+        <code>inter_email_v_2_documentation.html</code>.
+      </div>
+
+      <!-- ========= 1. CORE THESIS ========= -->
+      <section id="thesis">
+        <h3>1. Core Thesis</h3>
+        <p class="lead">
+          The one-minute pitch for any new senior dev joining V3.
+        </p>
+
+        <div class="grid-2">
+          <div class="card accent">
+            <h4>What V3 is</h4>
+            <p>
+              One React frontend, one FastAPI backend service, one importable Python <code>backend</code> package,
+              one repository-based persistence layer, one provider-agnostic AI abstraction, one local-first runtime
+              data volume. Deployed as a single service today; ready to split into a worker process tomorrow without
+              rewriting the business layer.
+            </p>
+          </div>
+          <div class="card green">
+            <h4>Why this shape</h4>
+            <p>
+              V2 proved the workflow but coupled UI, Gmail, AI, and persistence into the same scripts. V3 keeps the
+              good parts — thread-centric processing, human-in-the-loop, structured AI outputs — and repackages them
+              into deployment-ready shape: HTTP boundary, vendor-agnostic AI, SQL-backed state, environment-driven config.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top: 16px;">
+          <div class="card">
+            <h4>Primary abstraction</h4>
+            <p>
+              The product unit is a <strong>thread</strong>, not a Gmail message. This is the right level for queueing,
+              next-action recommendations, drafts, and CRM extraction. Gmail's <code>threadId</code> is the seed,
+              but threads can merge across Gmail's split (HR/interview/calendar cases) via a domain-aware
+              <code>mapper.py</code>.
+            </p>
+          </div>
+          <div class="card">
+            <h4>One-minute summary</h4>
+            <p>
+              Gmail is normalized and grouped into product threads, threads are persisted and signature-hashed, then
+              analyzed through a provider-agnostic AI layer that can route to OpenAI, Ollama, or a deterministic
+              heuristic fallback. Every analysis also gets a verification pass for confidence and review routing.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Migration discipline</h4>
+            <p>
+              SQLite is the current persistence layer, but the application layer talks only to repositories. Switching
+              <code>DATABASE_URL</code> to Postgres should be a config change, not a rewrite. Same principle for AI:
+              business code calls the <code>AIProvider</code> interface, not OpenAI's SDK.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========= 2. LAYERED ARCHITECTURE ========= -->
+      <section id="layers">
+        <h3>2. Layered Architecture</h3>
+        <p class="lead">
+          Six layers, strict dependency direction (top → bottom). The frontend imports no backend code.
+          The API layer holds no business rules. Application services depend on repositories and providers, never
+          on SQLAlchemy or vendor SDKs directly.
+        </p>
+
+        <div class="diagram-wrap">
+          <svg viewBox="0 0 1100 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="V3 layered architecture diagram">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#aeb8d6"/>
+              </marker>
+              <linearGradient id="gFrontend" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#6ea8fe" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#3a6dd1" stop-opacity="0.95"/>
+              </linearGradient>
+              <linearGradient id="gApi" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#8ef0c5" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#4ab28a" stop-opacity="0.95"/>
+              </linearGradient>
+              <linearGradient id="gApp" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#c9a7ff" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#8b6cd1" stop-opacity="0.95"/>
+              </linearGradient>
+              <linearGradient id="gDomain" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#ffd479" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#cf9d3f" stop-opacity="0.95"/>
+              </linearGradient>
+              <linearGradient id="gPersist" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#f29bb2" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#b86b85" stop-opacity="0.95"/>
+              </linearGradient>
+              <linearGradient id="gProvider" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#7adcff" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#3da0c2" stop-opacity="0.95"/>
+              </linearGradient>
+              <style>
+                .lyr-label { font: 700 14px Inter, sans-serif; fill: #0b1020; }
+                .lyr-sub { font: 500 11px Inter, sans-serif; fill: rgba(11,16,32,0.78); }
+                .ext-label { font: 600 12px Inter, sans-serif; fill: #eaf0ff; }
+                .arrow-label { font: 500 10.5px Inter, sans-serif; fill: #aeb8d6; }
+                .layer-band { font: 700 11px Inter, sans-serif; fill: #aeb8d6; letter-spacing: 0.08em; }
+              </style>
+            </defs>
+
+            <!-- Browser / Frontend -->
+            <text x="40" y="40" class="layer-band">FRONTEND  ·  React + TypeScript + Vite</text>
+            <rect x="40" y="50" width="780" height="70" rx="14" fill="url(#gFrontend)"/>
+            <text x="60" y="80" class="lyr-label">React App  (router.tsx)</text>
+            <text x="60" y="100" class="lyr-sub">InboxPage · ThreadDetailPage · ReviewPage · SettingsPage  ·  hooks/useApi · lib/client</text>
+
+            <!-- Arrow Frontend → API -->
+            <line x1="430" y1="120" x2="430" y2="155" stroke="#aeb8d6" stroke-width="1.6" marker-end="url(#arrow)"/>
+            <text x="440" y="142" class="arrow-label">HTTP / JSON  (only path)</text>
+
+            <!-- API -->
+            <text x="40" y="170" class="layer-band">API  ·  FastAPI · Pydantic · transport boundary only</text>
+            <rect x="40" y="180" width="780" height="70" rx="14" fill="url(#gApi)"/>
+            <text x="60" y="210" class="lyr-label">api/app/routers  ·  schemas  ·  dependencies</text>
+            <text x="60" y="230" class="lyr-sub">sync.py · threads.py · drafts.py · review.py · gmail.py · settings.py  ·  per-request DB session + service bundle</text>
+
+            <!-- Arrow API → Application -->
+            <line x1="430" y1="250" x2="430" y2="285" stroke="#aeb8d6" stroke-width="1.6" marker-end="url(#arrow)"/>
+            <text x="440" y="272" class="arrow-label">service calls  (use-case methods)</text>
+
+            <!-- Application Services -->
+            <text x="40" y="300" class="layer-band">APPLICATION SERVICES  ·  use-case orchestration · "what the product does"</text>
+            <rect x="40" y="310" width="780" height="80" rx="14" fill="url(#gApp)"/>
+            <text x="60" y="338" class="lyr-label">backend/application/</text>
+            <text x="60" y="358" class="lyr-sub">GmailSyncService  ·  ThreadAnalysisService  ·  QueueService  ·  DraftService</text>
+            <text x="60" y="376" class="lyr-sub">ReviewService  ·  CRMService  ·  GmailConnectionService</text>
+
+            <!-- Arrow Application → Domain -->
+            <line x1="240" y1="390" x2="240" y2="425" stroke="#aeb8d6" stroke-width="1.6" marker-end="url(#arrow)"/>
+            <!-- Arrow Application → Persistence -->
+            <line x1="620" y1="390" x2="620" y2="425" stroke="#aeb8d6" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+            <!-- Domain -->
+            <text x="40" y="440" class="layer-band">DOMAIN  ·  pure language</text>
+            <rect x="40" y="450" width="370" height="80" rx="14" fill="url(#gDomain)"/>
+            <text x="60" y="478" class="lyr-label">backend/domain/</text>
+            <text x="60" y="498" class="lyr-sub">thread · analysis · sync · review</text>
+            <text x="60" y="516" class="lyr-sub">runtime_settings · policies (no FastAPI/SQL/SDK imports)</text>
+
+            <!-- Persistence -->
+            <text x="450" y="440" class="layer-band">PERSISTENCE  ·  repositories hide SQLAlchemy</text>
+            <rect x="450" y="450" width="370" height="80" rx="14" fill="url(#gPersist)"/>
+            <text x="470" y="478" class="lyr-label">backend/persistence/</text>
+            <text x="470" y="498" class="lyr-sub">thread_repo · sync_repo · draft_repo · review_repo</text>
+            <text x="470" y="516" class="lyr-sub">models/ (SQLAlchemy)  ·  migrations/ (Alembic)  ·  SQLite → Postgres</text>
+
+            <!-- AI Providers (right column) -->
+            <text x="850" y="170" class="layer-band">AI PROVIDERS</text>
+            <rect x="850" y="180" width="220" height="350" rx="14" fill="url(#gProvider)"/>
+            <text x="870" y="210" class="lyr-label">backend/providers/ai/</text>
+            <text x="870" y="232" class="lyr-sub">base.py  (AIProvider interface)</text>
+            <text x="870" y="250" class="lyr-sub">router.py  (task → provider)</text>
+            <text x="870" y="268" class="lyr-sub">registry.py  (instantiation)</text>
+            <text x="870" y="294" class="lyr-sub" style="font-weight:600;">Implementations:</text>
+            <text x="870" y="312" class="lyr-sub">openai_provider.py</text>
+            <text x="870" y="330" class="lyr-sub">ollama_provider.py</text>
+            <text x="870" y="348" class="lyr-sub">heuristic_provider.py</text>
+            <text x="870" y="376" class="lyr-sub" style="font-weight:600;">Task agents:</text>
+            <text x="870" y="394" class="lyr-sub">inbox · queue · draft</text>
+            <text x="870" y="412" class="lyr-sub">crm · verification</text>
+            <text x="870" y="438" class="lyr-sub" style="font-weight:600;">Gmail:</text>
+            <text x="870" y="456" class="lyr-sub">providers/gmail/client.py</text>
+            <text x="870" y="474" class="lyr-sub">providers/gmail/mapper.py</text>
+
+            <!-- Arrow Application → Providers -->
+            <line x1="820" y1="350" x2="850" y2="350" stroke="#aeb8d6" stroke-width="1.6" marker-end="url(#arrow)"/>
+            <text x="822" y="343" class="arrow-label" text-anchor="end" style="font-size:9.5px;">interface only</text>
+
+            <!-- External services -->
+            <text x="40" y="555" class="layer-band">EXTERNAL  ·  vendor SDKs and HTTP only reached through providers</text>
+            <rect x="40" y="565" width="180" height="40" rx="10" fill="rgba(174,184,214,0.12)" stroke="#2a376b"/>
+            <text x="60" y="589" class="ext-label">Gmail API (OAuth)</text>
+            <rect x="240" y="565" width="180" height="40" rx="10" fill="rgba(174,184,214,0.12)" stroke="#2a376b"/>
+            <text x="260" y="589" class="ext-label">OpenAI API</text>
+            <rect x="440" y="565" width="180" height="40" rx="10" fill="rgba(174,184,214,0.12)" stroke="#2a376b"/>
+            <text x="460" y="589" class="ext-label">Ollama (localhost HTTP)</text>
+            <rect x="640" y="565" width="180" height="40" rx="10" fill="rgba(174,184,214,0.12)" stroke="#2a376b"/>
+            <text x="660" y="589" class="ext-label">SQLite  (data/sqlite/app.db)</text>
+
+            <!-- arrows from persistence + providers down to externals -->
+            <line x1="730" y1="530" x2="730" y2="565" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#arrow)"/>
+            <line x1="960" y1="530" x2="960" y2="555" stroke="#aeb8d6" stroke-width="1.4"/>
+            <line x1="960" y1="555" x2="350" y2="555" stroke="#aeb8d6" stroke-width="1.4"/>
+            <line x1="350" y1="555" x2="350" y2="565" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#arrow)"/>
+            <line x1="540" y1="555" x2="540" y2="565" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#arrow)"/>
+            <line x1="140" y1="555" x2="140" y2="565" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#arrow)"/>
+          </svg>
+        </div>
+
+        <div class="legend">
+          <span class="lg-frontend">Frontend (React)</span>
+          <span class="lg-api">API (FastAPI)</span>
+          <span class="lg-app">Application services</span>
+          <span class="lg-domain">Domain (pure logic)</span>
+          <span class="lg-persist">Persistence / Repositories</span>
+          <span class="lg-provider">Providers (AI &amp; Gmail)</span>
+          <span class="lg-external">External systems</span>
+        </div>
+
+        <div class="grid-2" style="margin-top: 20px;">
+          <div class="card">
+            <h4>Hard rules — do not break</h4>
+            <ul>
+              <li>Frontend never imports backend code, never reads JSON files, never calls vendor SDKs.</li>
+              <li>API routers contain no business logic — only request/response mapping and dependency injection.</li>
+              <li>Application services never call <code>OpenAI()</code>, never write SQL, never touch <code>googleapiclient</code> directly.</li>
+              <li>Domain layer has no FastAPI, SQLAlchemy, or vendor imports.</li>
+              <li>Repositories are the only path to the database from the application layer.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>Why it scales without rewrite</h4>
+            <ul>
+              <li><strong>SQLite → Postgres:</strong> change <code>DATABASE_URL</code>; repositories shield the use cases.</li>
+              <li><strong>OpenAI → Ollama:</strong> flip <code>AI_DEFAULT_PROVIDER</code> per task; business code unchanged.</li>
+              <li><strong>BackgroundTasks → real worker:</strong> a worker process imports the same <code>backend</code> package and calls <code>GmailSyncService</code> directly.</li>
+              <li><strong>One service → split deploy:</strong> the API and worker can ship as separate containers because they share only the package, not in-process state.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========= 3. REFRESH GMAIL FLOW ========= -->
+      <section id="sync-flow">
+        <h3>3. Refresh Gmail — End-to-End Sequence</h3>
+        <p class="lead">
+          The happy path when the user clicks <strong>Refresh Gmail</strong> in the inbox. Four real backend stages
+          (fetch, persist, analyze, summarize), with live progress pushed into an in-memory store and polled by the frontend.
+        </p>
+
+        <div class="diagram-wrap">
+          <svg viewBox="0 0 1100 760" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Refresh Gmail sequence diagram">
+            <defs>
+              <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#8ef0c5"/>
+              </marker>
+              <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#6ea8fe"/>
+              </marker>
+              <marker id="arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#aeb8d6"/>
+              </marker>
+              <style>
+                .seq-actor { font: 700 12px Inter, sans-serif; fill: #eaf0ff; }
+                .seq-actor-sub { font: 500 10px Inter, sans-serif; fill: #aeb8d6; }
+                .seq-msg { font: 500 11px Inter, sans-serif; fill: #eaf0ff; }
+                .seq-stage-label { font: 700 11px Inter, sans-serif; fill: #ffd479; letter-spacing: 0.06em; }
+                .seq-note { font: 500 10.5px Inter, sans-serif; fill: #c9a7ff; font-style: italic; }
+              </style>
+            </defs>
+
+            <!-- Actor headers -->
+            <g>
+              <rect x="20" y="20" width="130" height="48" rx="12" fill="#3a6dd1" stroke="#6ea8fe"/>
+              <text x="85" y="42" text-anchor="middle" class="seq-actor">User / Inbox</text>
+              <text x="85" y="58" text-anchor="middle" class="seq-actor-sub">React</text>
+
+              <rect x="170" y="20" width="130" height="48" rx="12" fill="#4ab28a" stroke="#8ef0c5"/>
+              <text x="235" y="42" text-anchor="middle" class="seq-actor">FastAPI Route</text>
+              <text x="235" y="58" text-anchor="middle" class="seq-actor-sub">/api/v1/sync</text>
+
+              <rect x="320" y="20" width="150" height="48" rx="12" fill="#8b6cd1" stroke="#c9a7ff"/>
+              <text x="395" y="42" text-anchor="middle" class="seq-actor">GmailSyncService</text>
+              <text x="395" y="58" text-anchor="middle" class="seq-actor-sub">orchestrator</text>
+
+              <rect x="490" y="20" width="130" height="48" rx="12" fill="#3da0c2" stroke="#7adcff"/>
+              <text x="555" y="42" text-anchor="middle" class="seq-actor">Gmail Provider</text>
+              <text x="555" y="58" text-anchor="middle" class="seq-actor-sub">client+mapper</text>
+
+              <rect x="640" y="20" width="140" height="48" rx="12" fill="#b86b85" stroke="#f29bb2"/>
+              <text x="710" y="42" text-anchor="middle" class="seq-actor">Repositories</text>
+              <text x="710" y="58" text-anchor="middle" class="seq-actor-sub">thread+sync</text>
+
+              <rect x="800" y="20" width="150" height="48" rx="12" fill="#8b6cd1" stroke="#c9a7ff"/>
+              <text x="875" y="42" text-anchor="middle" class="seq-actor">Analysis Service</text>
+              <text x="875" y="58" text-anchor="middle" class="seq-actor-sub">+ verification</text>
+
+              <rect x="970" y="20" width="110" height="48" rx="12" fill="#3da0c2" stroke="#7adcff"/>
+              <text x="1025" y="42" text-anchor="middle" class="seq-actor">AI Router</text>
+              <text x="1025" y="58" text-anchor="middle" class="seq-actor-sub">→ provider</text>
+            </g>
+
+            <!-- Lifelines (vertical dashed) -->
+            <g stroke="#2a376b" stroke-dasharray="3 5" stroke-width="1">
+              <line x1="85"   y1="68" x2="85"   y2="745"/>
+              <line x1="235"  y1="68" x2="235"  y2="745"/>
+              <line x1="395"  y1="68" x2="395"  y2="745"/>
+              <line x1="555"  y1="68" x2="555"  y2="745"/>
+              <line x1="710"  y1="68" x2="710"  y2="745"/>
+              <line x1="875"  y1="68" x2="875"  y2="745"/>
+              <line x1="1025" y1="68" x2="1025" y2="745"/>
+            </g>
+
+            <!-- Stage 0: trigger -->
+            <text x="20" y="92" class="seq-stage-label">TRIGGER</text>
+            <line x1="85" y1="105" x2="232" y2="105" stroke="#6ea8fe" stroke-width="2" marker-end="url(#arrow3)"/>
+            <text x="158" y="100" text-anchor="middle" class="seq-msg">POST /sync (useSyncMutation)</text>
+
+            <line x1="235" y1="125" x2="235" y2="148" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="245" y="142" class="seq-msg">create SyncRun (status=running)</text>
+
+            <line x1="235" y1="160" x2="392" y2="160" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="313" y="155" text-anchor="middle" class="seq-msg">BackgroundTask → sync_recent_threads()</text>
+
+            <line x1="232" y1="180" x2="88" y2="180" stroke="#aeb8d6" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-back)"/>
+            <text x="160" y="175" text-anchor="middle" class="seq-msg">202 Accepted { run_id }</text>
+
+            <!-- Stage 1: FETCH -->
+            <text x="20" y="210" class="seq-stage-label">STAGE 1 · FETCH</text>
+            <line x1="395" y1="225" x2="552" y2="225" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="473" y="220" text-anchor="middle" class="seq-msg">list_recent_message_refs()</text>
+
+            <line x1="555" y1="245" x2="555" y2="268" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="565" y="262" class="seq-msg">Gmail API (OAuth)</text>
+
+            <line x1="552" y1="285" x2="398" y2="285" stroke="#aeb8d6" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-back)"/>
+            <text x="475" y="280" text-anchor="middle" class="seq-msg">[InboundEmailMessage]  (deduped, normalized)</text>
+
+            <text x="395" y="308" text-anchor="middle" class="seq-note">email_text.py strips quotes, signatures, footers</text>
+            <text x="395" y="322" text-anchor="middle" class="seq-note">mapper.py merges threads (subject/participants/HR signals)</text>
+
+            <!-- Stage 2: PERSIST -->
+            <text x="20" y="350" class="seq-stage-label">STAGE 2 · PERSIST</text>
+            <line x1="395" y1="365" x2="707" y2="365" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="551" y="360" text-anchor="middle" class="seq-msg">upsert_threads + upsert_messages (by external_message_id)</text>
+            <text x="551" y="382" text-anchor="middle" class="seq-note">recompute thread signature  ·  drives seen-state &amp; analysis reuse</text>
+
+            <line x1="707" y1="400" x2="398" y2="400" stroke="#aeb8d6" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-back)"/>
+            <text x="555" y="395" text-anchor="middle" class="seq-msg">Thread[] (with signature + change flags)</text>
+
+            <!-- Stage 3: ANALYZE -->
+            <text x="20" y="428" class="seq-stage-label">STAGE 3 · ANALYZE</text>
+            <line x1="395" y1="445" x2="872" y2="445" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="635" y="440" text-anchor="middle" class="seq-msg">analyze_threads(threads, run_id)</text>
+
+            <text x="875" y="465" text-anchor="middle" class="seq-note">cache hit if signature+provider unchanged → skip</text>
+            <text x="875" y="479" text-anchor="middle" class="seq-note">classified threads → guardrail stop, mark for human review</text>
+
+            <line x1="875" y1="495" x2="1022" y2="495" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="950" y="490" text-anchor="middle" class="seq-msg">analyze_thread (task)</text>
+
+            <line x1="1022" y1="515" x2="878" y2="515" stroke="#aeb8d6" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-back)"/>
+            <text x="950" y="510" text-anchor="middle" class="seq-msg">ThreadAnalysisResult</text>
+
+            <line x1="875" y1="535" x2="1022" y2="535" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="950" y="530" text-anchor="middle" class="seq-msg">verify_analysis (second pass)</text>
+
+            <line x1="1022" y1="555" x2="878" y2="555" stroke="#aeb8d6" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-back)"/>
+            <text x="950" y="550" text-anchor="middle" class="seq-msg">accuracy_percent + needs_human_review</text>
+
+            <line x1="875" y1="575" x2="713" y2="575" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="794" y="570" text-anchor="middle" class="seq-msg">save analysis + verification + provider metadata</text>
+
+            <!-- Stage 4: SUMMARIZE -->
+            <text x="20" y="605" class="seq-stage-label">STAGE 4 · SUMMARIZE</text>
+            <line x1="395" y1="620" x2="1022" y2="620" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="710" y="615" text-anchor="middle" class="seq-msg">QueueService.summarize_threads → AI dashboard summary</text>
+
+            <line x1="395" y1="645" x2="395" y2="665" stroke="#8ef0c5" stroke-width="2" marker-end="url(#arrow2)"/>
+            <text x="405" y="660" class="seq-msg">SyncRun.complete(status=success, counts)</text>
+
+            <!-- Progress polling (parallel) -->
+            <text x="20" y="690" class="seq-stage-label">PROGRESS POLLING  (parallel, GET /sync/runs/active every ~1s)</text>
+            <line x1="85" y1="710" x2="232" y2="710" stroke="#6ea8fe" stroke-width="2" marker-end="url(#arrow3)"/>
+            <text x="158" y="705" text-anchor="middle" class="seq-msg">poll active run + stage/progress</text>
+            <line x1="232" y1="730" x2="88" y2="730" stroke="#aeb8d6" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-back)"/>
+            <text x="158" y="725" text-anchor="middle" class="seq-msg">{ stage, percent, counts }   (sync_progress_store, in-memory)</text>
+          </svg>
+        </div>
+
+        <div class="grid-2" style="margin-top: 20px;">
+          <div class="card warn">
+            <h4>What makes this flow honest</h4>
+            <ul>
+              <li><strong>Background, not synchronous.</strong> POST /sync returns 202 + run_id immediately; the frontend never holds the connection during a Gmail+AI run.</li>
+              <li><strong>Email cleanup before AI.</strong> <code>email_text.py</code> strips reply chains, footers, and signature blocks so the AI never sees raw Gmail noise.</li>
+              <li><strong>Cache by signature, not by ID.</strong> If the thread content didn't change, cached analysis is reused — even across regroupings.</li>
+              <li><strong>Verification is persisted.</strong> <code>accuracy_percent</code> and <code>needs_human_review</code> live alongside the analysis row, not as a UI overlay.</li>
+              <li><strong>Provider provenance is stored.</strong> Every analysis row records which provider/model produced it — important when comparing OpenAI vs. Ollama later.</li>
+            </ul>
+          </div>
+          <div class="card danger">
+            <h4>What this flow is NOT yet</h4>
+            <ul>
+              <li><strong>Not durable.</strong> Progress lives in <code>sync_progress_store.py</code> (in-memory). An API restart mid-sync loses progress; the run record is left in <code>running</code>.</li>
+              <li><strong>Not incremental.</strong> Polling fetches a "recent window" — it does not use Gmail's <code>history.list</code> or push notifications, so changes outside the window are missed.</li>
+              <li><strong>Not concurrent-safe across runs.</strong> Two overlapping Refresh clicks could spawn two BackgroundTasks against the same mailbox; protection is by-convention only.</li>
+              <li><strong>Not isolated from process failure.</strong> If the AI provider hangs, the run hangs with it — no per-task timeout enforced at the orchestrator.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========= 4. AI PROVIDER LAYER ========= -->
+      <section id="ai-layer">
+        <h3>4. AI Provider Layer</h3>
+        <p class="lead">
+          The strongest design boundary in V3. Product code depends on the <code>AIProvider</code> interface, never on
+          a vendor SDK. Provider routing is configuration-driven; fallback is per-task, not global.
+        </p>
+
+        <div class="grid-2">
+          <div class="card accent">
+            <h4>Routing model</h4>
+            <ul>
+              <li><code>registry.py</code> instantiates each implementation: <strong>heuristic</strong>, <strong>openai</strong>, <strong>ollama</strong>.</li>
+              <li><code>router.py</code> resolves a provider per task using config and runtime state.</li>
+              <li>If runtime <code>ai_mode == "local"</code>, every task routes to Ollama.</li>
+              <li>Otherwise, tasks route by <code>AI_*_PROVIDER</code> env vars, with <strong>heuristic</strong> as the safe deterministic fallback.</li>
+              <li>On provider error, the orchestrator falls back to <code>provider_router.fallback_provider()</code> — visible today in <code>DraftService</code>.</li>
+            </ul>
+          </div>
+          <div class="card green">
+            <h4>Task-specialized agents (not autonomous agents)</h4>
+            <p>The local AI is <em>not</em> a tool-using autonomous agent. It is five task-specific prompt wrappers over one shared provider contract:</p>
+            <ul>
+              <li><code>inbox_agent.py</code> — analyze a thread (category, urgency, next action)</li>
+              <li><code>queue_agent.py</code> — summarize the dashboard queue</li>
+              <li><code>draft_agent.py</code> — guided draft generation</li>
+              <li><code>crm_agent.py</code> — extract structured CRM fields</li>
+              <li><code>verification_agent.py</code> — second-pass scoring</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <h4>Interface shape (target)</h4>
+<pre><code>class AIProvider(Protocol):
+    name: str
+    def analyze_thread(self, request: ThreadAnalysisRequest) -> ThreadAnalysisResult: ...
+    def summarize_queue(self, request: QueueSummaryRequest) -> QueueSummaryResult: ...
+    def draft_reply(self, request: DraftReplyRequest) -> DraftReplyResult: ...
+    def extract_crm(self, request: CRMExtractionRequest) -> CRMExtractionResult: ...
+    def verify_analysis(self, request: VerificationRequest) -> VerificationResult: ...</code></pre>
+          <p style="margin-top: 10px;">
+            Both OpenAI and Ollama implementations <strong>normalize outputs after generation</strong>, so business code
+            sees the same shape regardless of provider. That's what keeps the analysis service vendor-agnostic.
+          </p>
+        </div>
+
+        <div class="note info">
+          <strong>Senior-dev framing:</strong> the V2 "agent per task file" pattern is preserved by name, but
+          intentionally reshaped — these are <em>prompt constructors</em>, not autonomous tool-using agents. That keeps
+          the system testable and swappable, and avoids tying the architecture to any single SDK's agent concept.
+        </div>
+      </section>
+
+      <!-- ========= 5. DATA MODEL ========= -->
+      <section id="data-model">
+        <h3>5. Database Schema</h3>
+        <p class="lead">
+          SQLite today, Postgres-ready by repository contract. Eight core tables. Repositories are the only path in.
+        </p>
+
+        <div class="diagram-wrap" style="padding: 22px;">
+          <svg viewBox="0 0 1100 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="V3 database schema diagram">
+            <defs>
+              <marker id="rel-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#aeb8d6"/>
+              </marker>
+              <style>
+                .tbl-name { font: 700 13px Inter, sans-serif; fill: #eaf0ff; }
+                .tbl-col { font: 500 10.5px ui-monospace, monospace; fill: #aeb8d6; }
+                .tbl-pk { fill: #ffd479; font-weight: 700; }
+                .tbl-fk { fill: #8ef0c5; }
+                .rel-label { font: 600 10px Inter, sans-serif; fill: #aeb8d6; }
+              </style>
+            </defs>
+
+            <!-- email_threads -->
+            <g>
+              <rect x="40" y="40" width="220" height="180" rx="14" fill="#182246" stroke="#6ea8fe" stroke-width="1.5"/>
+              <rect x="40" y="40" width="220" height="32" rx="14" fill="#3a6dd1"/>
+              <text x="150" y="62" text-anchor="middle" class="tbl-name">email_threads</text>
+              <text x="56" y="92"  class="tbl-col tbl-pk">PK  id</text>
+              <text x="56" y="108" class="tbl-col">external_thread_id (uniq)</text>
+              <text x="56" y="124" class="tbl-col">account_email</text>
+              <text x="56" y="140" class="tbl-col">subject</text>
+              <text x="56" y="156" class="tbl-col">participants (json)</text>
+              <text x="56" y="172" class="tbl-col">signature  (content hash)</text>
+              <text x="56" y="188" class="tbl-col">last_message_at</text>
+              <text x="56" y="204" class="tbl-col">created_at, updated_at</text>
+            </g>
+
+            <!-- thread_messages -->
+            <g>
+              <rect x="40" y="250" width="220" height="180" rx="14" fill="#182246" stroke="#f29bb2" stroke-width="1.5"/>
+              <rect x="40" y="250" width="220" height="32" rx="14" fill="#b86b85"/>
+              <text x="150" y="272" text-anchor="middle" class="tbl-name">thread_messages</text>
+              <text x="56" y="302" class="tbl-col tbl-pk">PK  id</text>
+              <text x="56" y="318" class="tbl-col tbl-fk">FK  thread_id → email_threads</text>
+              <text x="56" y="334" class="tbl-col">external_message_id (uniq)</text>
+              <text x="56" y="350" class="tbl-col">sender, recipients</text>
+              <text x="56" y="366" class="tbl-col">subject, body_clean</text>
+              <text x="56" y="382" class="tbl-col">sent_at</text>
+              <text x="56" y="398" class="tbl-col">is_internal (bool)</text>
+              <text x="56" y="414" class="tbl-col">created_at</text>
+            </g>
+
+            <!-- thread_analyses -->
+            <g>
+              <rect x="320" y="40" width="240" height="220" rx="14" fill="#182246" stroke="#c9a7ff" stroke-width="1.5"/>
+              <rect x="320" y="40" width="240" height="32" rx="14" fill="#8b6cd1"/>
+              <text x="440" y="62" text-anchor="middle" class="tbl-name">thread_analyses</text>
+              <text x="336" y="92"  class="tbl-col tbl-pk">PK  id</text>
+              <text x="336" y="108" class="tbl-col tbl-fk">FK  thread_id → email_threads</text>
+              <text x="336" y="124" class="tbl-col">signature_at_analysis</text>
+              <text x="336" y="140" class="tbl-col">category, urgency</text>
+              <text x="336" y="156" class="tbl-col">summary, next_action</text>
+              <text x="336" y="172" class="tbl-col">crm_fields (json)</text>
+              <text x="336" y="188" class="tbl-col">accuracy_percent</text>
+              <text x="336" y="204" class="tbl-col">needs_human_review (bool)</text>
+              <text x="336" y="220" class="tbl-col">provider, model, prompt_version</text>
+              <text x="336" y="236" class="tbl-col">fallback_used (bool)</text>
+              <text x="336" y="252" class="tbl-col">generated_at</text>
+            </g>
+
+            <!-- thread_states -->
+            <g>
+              <rect x="320" y="290" width="240" height="140" rx="14" fill="#182246" stroke="#ffd479" stroke-width="1.5"/>
+              <rect x="320" y="290" width="240" height="32" rx="14" fill="#cf9d3f"/>
+              <text x="440" y="312" text-anchor="middle" class="tbl-name">thread_states</text>
+              <text x="336" y="342" class="tbl-col tbl-pk">PK  id</text>
+              <text x="336" y="358" class="tbl-col tbl-fk">FK  thread_id → email_threads</text>
+              <text x="336" y="374" class="tbl-col">seen_signature_version</text>
+              <text x="336" y="390" class="tbl-col">is_seen (derived)</text>
+              <text x="336" y="406" class="tbl-col">snoozed_until, hidden</text>
+              <text x="336" y="422" class="tbl-col">updated_at</text>
+            </g>
+
+            <!-- review_decisions -->
+            <g>
+              <rect x="620" y="40" width="220" height="160" rx="14" fill="#182246" stroke="#8ef0c5" stroke-width="1.5"/>
+              <rect x="620" y="40" width="220" height="32" rx="14" fill="#4ab28a"/>
+              <text x="730" y="62" text-anchor="middle" class="tbl-name">review_decisions</text>
+              <text x="636" y="92"  class="tbl-col tbl-pk">PK  id</text>
+              <text x="636" y="108" class="tbl-col tbl-fk">FK  thread_id → email_threads</text>
+              <text x="636" y="124" class="tbl-col">decision (approve/reject/edit)</text>
+              <text x="636" y="140" class="tbl-col">reviewer_email</text>
+              <text x="636" y="156" class="tbl-col">notes</text>
+              <text x="636" y="172" class="tbl-col">decided_at</text>
+            </g>
+
+            <!-- drafts -->
+            <g>
+              <rect x="620" y="230" width="220" height="160" rx="14" fill="#182246" stroke="#7adcff" stroke-width="1.5"/>
+              <rect x="620" y="230" width="220" height="32" rx="14" fill="#3da0c2"/>
+              <text x="730" y="252" text-anchor="middle" class="tbl-name">drafts</text>
+              <text x="636" y="282" class="tbl-col tbl-pk">PK  id</text>
+              <text x="636" y="298" class="tbl-col tbl-fk">FK  thread_id → email_threads</text>
+              <text x="636" y="314" class="tbl-col">subject, body</text>
+              <text x="636" y="330" class="tbl-col">selected_date</text>
+              <text x="636" y="346" class="tbl-col">attachment_names (json)</text>
+              <text x="636" y="362" class="tbl-col">provider, model</text>
+              <text x="636" y="378" class="tbl-col">created_at</text>
+            </g>
+
+            <!-- sync_runs -->
+            <g>
+              <rect x="900" y="40" width="190" height="200" rx="14" fill="#182246" stroke="#6ea8fe" stroke-width="1.5"/>
+              <rect x="900" y="40" width="190" height="32" rx="14" fill="#3a6dd1"/>
+              <text x="995" y="62" text-anchor="middle" class="tbl-name">sync_runs</text>
+              <text x="916" y="92"  class="tbl-col tbl-pk">PK  id (run_id)</text>
+              <text x="916" y="108" class="tbl-col">account_email</text>
+              <text x="916" y="124" class="tbl-col">status</text>
+              <text x="916" y="140" class="tbl-col">stage</text>
+              <text x="916" y="156" class="tbl-col">thread_count</text>
+              <text x="916" y="172" class="tbl-col">ai_thread_count</text>
+              <text x="916" y="188" class="tbl-col">started_at, finished_at</text>
+              <text x="916" y="204" class="tbl-col">error_message</text>
+              <text x="916" y="220" class="tbl-col">duration_ms</text>
+            </g>
+
+            <!-- runtime_settings -->
+            <g>
+              <rect x="900" y="270" width="190" height="160" rx="14" fill="#182246" stroke="#aeb8d6" stroke-width="1.5"/>
+              <rect x="900" y="270" width="190" height="32" rx="14" fill="#7d88a8"/>
+              <text x="995" y="292" text-anchor="middle" class="tbl-name">runtime_settings</text>
+              <text x="916" y="322" class="tbl-col tbl-pk">PK  key</text>
+              <text x="916" y="338" class="tbl-col">value (json)</text>
+              <text x="916" y="354" class="tbl-col">updated_at</text>
+              <text x="916" y="378" class="tbl-col" style="font-style:italic;">examples:</text>
+              <text x="916" y="394" class="tbl-col">  ai_mode = local | cloud</text>
+              <text x="916" y="410" class="tbl-col">  active_gmail_account</text>
+            </g>
+
+            <!-- Relationships -->
+            <line x1="260" y1="155" x2="260" y2="320" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#rel-arrow)"/>
+            <text x="266" y="240" class="rel-label">1 ─ ∗  messages</text>
+
+            <line x1="260" y1="130" x2="320" y2="130" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#rel-arrow)"/>
+            <text x="270" y="124" class="rel-label">1 ─ ∗  analyses</text>
+
+            <line x1="260" y1="170" x2="320" y2="345" stroke="#aeb8d6" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#rel-arrow)"/>
+            <text x="262" y="262" class="rel-label">1 ─ 1  state</text>
+
+            <line x1="260" y1="115" x2="620" y2="115" stroke="#aeb8d6" stroke-width="1.4" marker-end="url(#rel-arrow)"/>
+            <text x="430" y="109" class="rel-label">1 ─ ∗  reviews</text>
+
+            <line x1="260" y1="195" x2="620" y2="290" stroke="#aeb8d6" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#rel-arrow)"/>
+            <text x="430" y="246" class="rel-label">1 ─ ∗  drafts</text>
+
+            <!-- Free notes -->
+            <text x="40" y="475" class="seq-stage-label">PRIMARY UPSERT KEYS</text>
+            <text x="40" y="495" class="tbl-col" style="fill:#eaf0ff;">email_threads</text>
+            <text x="180" y="495" class="tbl-col">→ external_thread_id  (Gmail thread, scoped to account)</text>
+            <text x="40" y="513" class="tbl-col" style="fill:#eaf0ff;">thread_messages</text>
+            <text x="180" y="513" class="tbl-col">→ external_message_id  (global; survives regrouping under a different thread)</text>
+            <text x="40" y="531" class="tbl-col" style="fill:#eaf0ff;">thread_analyses</text>
+            <text x="180" y="531" class="tbl-col">→ keyed by (thread_id, signature, provider) — drives cache reuse</text>
+            <text x="40" y="549" class="tbl-col" style="fill:#eaf0ff;">thread_states</text>
+            <text x="180" y="549" class="tbl-col">→ versioned by signature, not boolean — content change re-surfaces a thread</text>
+          </svg>
+        </div>
+
+        <h4 style="margin-top: 22px;">Table-by-table reference</h4>
+        <table>
+          <thead>
+            <tr><th>Table</th><th>Owns</th><th>Key columns</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>email_threads</code></td>
+              <td>The product thread (post-grouping).</td>
+              <td><code>external_thread_id</code>, <code>signature</code>, <code>account_email</code></td>
+              <td><strong>Signature</strong> is a content hash used for analysis cache and seen-state versioning.</td>
+            </tr>
+            <tr>
+              <td><code>thread_messages</code></td>
+              <td>Individual Gmail messages, cleaned.</td>
+              <td><code>external_message_id</code> (global uniq)</td>
+              <td>Global uniqueness lets a message move under a different thread on regrouping without dupes.</td>
+            </tr>
+            <tr>
+              <td><code>thread_analyses</code></td>
+              <td>AI analysis results + verification.</td>
+              <td><code>signature_at_analysis</code>, <code>provider</code>, <code>accuracy_percent</code></td>
+              <td>One row per (thread, signature, provider). Stored fallback flag for evaluation.</td>
+            </tr>
+            <tr>
+              <td><code>thread_states</code></td>
+              <td>Per-user view state.</td>
+              <td><code>seen_signature_version</code></td>
+              <td>Seen is versioned by signature — a changed thread re-surfaces.</td>
+            </tr>
+            <tr>
+              <td><code>review_decisions</code></td>
+              <td>Internal review outcomes.</td>
+              <td><code>decision</code>, <code>reviewer_email</code></td>
+              <td>Append-only. Drives review queue and audit.</td>
+            </tr>
+            <tr>
+              <td><code>drafts</code></td>
+              <td>AI-generated reply drafts.</td>
+              <td><code>provider</code>, <code>model</code></td>
+              <td>Latest-per-thread used by the UI; history retained for audit.</td>
+            </tr>
+            <tr>
+              <td><code>sync_runs</code></td>
+              <td>Each Refresh Gmail invocation.</td>
+              <td><code>status</code>, <code>stage</code>, <code>thread_count</code></td>
+              <td>Source of truth for run progress; <code>sync_progress_store</code> is in-memory cache only.</td>
+            </tr>
+            <tr>
+              <td><code>runtime_settings</code></td>
+              <td>Mutable runtime config.</td>
+              <td><code>key</code> / <code>value</code> (json)</td>
+              <td>Holds <code>ai_mode</code>, active Gmail account, etc. Survives restart; user-editable from Settings.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="note">
+          <strong>Account isolation invariant.</strong> When the connected mailbox email changes,
+          <code>GmailConnectionService</code> clears <code>email_threads</code>, <code>thread_messages</code>,
+          <code>thread_analyses</code>, <code>thread_states</code>, and <code>sync_runs</code> for prior accounts.
+          One account never sees another account's data. Worth a regression test in CI.
+        </div>
+      </section>
+
+      <!-- ========= 6. FRONTEND ========= -->
+      <section id="frontend">
+        <h3>6. Frontend Shape</h3>
+        <p class="lead">
+          Route-driven React app. Owns presentation, local interaction, and query orchestration. Owns no business rules.
+        </p>
+
+        <div class="grid-3">
+          <div class="card">
+            <h4>Routes</h4>
+            <ul>
+              <li><code>/inbox</code> — InboxPage</li>
+              <li><code>/threads/:threadId</code> — ThreadDetailPage</li>
+              <li><code>/review</code> — ReviewPage</li>
+              <li><code>/settings</code> — SettingsPage</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>Data layer</h4>
+            <ul>
+              <li><code>lib/client.ts</code> — typed HTTP client (one instance, env-driven base URL).</li>
+              <li><code>hooks/useApi.ts</code> — TanStack Query wrappers per endpoint.</li>
+              <li><code>useSyncMutation</code> — POST /sync; <code>useActiveSyncRun</code> — poll progress.</li>
+              <li>Manual TS types in <code>api.ts</code> today; OpenAPI generation is the planned source of truth.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>Progress UX</h4>
+            <ul>
+              <li>Source of truth: <code>GET /sync/runs/active</code>.</li>
+              <li>InboxPage applies client-side smoothing on top of polled values.</li>
+              <li>Active run polled every ~1s; idles otherwise.</li>
+              <li>Stage labels surface from the sync run record, not hardcoded in JSX.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========= 7. STACK ========= -->
+      <section id="stack">
+        <h3>7. Technology Stack</h3>
+        <p class="lead">
+          Picked deliberately for the migration path: keep Python where the AI/Gmail work is, give the UI a real
+          frontend, and stay container-friendly from day one.
+        </p>
+
+        <div class="grid-4">
+          <div class="card">
+            <h4>Frontend</h4>
+            <ul>
+              <li>React 18 + TypeScript</li>
+              <li>Vite</li>
+              <li>React Router</li>
+              <li>TanStack Query</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>API</h4>
+            <ul>
+              <li>FastAPI</li>
+              <li>Pydantic v2</li>
+              <li>Uvicorn</li>
+              <li>OpenAPI as shared contract</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>Backend &amp; data</h4>
+            <ul>
+              <li>SQLAlchemy 2.x</li>
+              <li>Alembic (planned)</li>
+              <li>SQLite → Postgres</li>
+              <li><code>data/sqlite/app.db</code> volume</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>AI &amp; Gmail</h4>
+            <ul>
+              <li>OpenAI SDK (1.x)</li>
+              <li>Ollama HTTP (localhost)</li>
+              <li>google-api-python-client</li>
+              <li>google-auth-oauthlib</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========= 8. CURRENT BUILD STATUS ========= -->
+      <section id="status">
+        <h3>8. Current Build Status</h3>
+        <p class="lead">
+          As of <strong>April 2026</strong>, V3 is essentially built end-to-end. The architecture described in
+          Sections 2–6 is on disk and importable. The remaining gaps are migration discipline, test coverage, and
+          a couple of operational hardening items — not foundational code.
+        </p>
+
+        <div class="status-bar">
+          <span class="pill done">Done</span>
+          <span class="pill partial">Partial</span>
+          <span class="pill missing">Missing</span>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Status</th><th>What's on disk</th><th>Gaps</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Repo layout</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td>Full target tree (<code>frontend</code>, <code>api</code>, <code>backend</code>, <code>shared</code>, <code>infra</code>, <code>data</code>, <code>docs</code>).</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>App entry &amp; wiring</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>api/app/main.py</code> (FastAPI app, CORS, lifespan, all routers mounted under <code>/api/v1</code>), <code>dependencies/db.py</code>, <code>dependencies/services.py</code>.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>API routers</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td>All seven: <code>health</code>, <code>sync</code>, <code>threads</code>, <code>drafts</code>, <code>review</code>, <code>gmail</code>, <code>settings</code>. Pydantic schemas present for each.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Application services</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td>All nine: <code>gmail_sync_service</code>, <code>thread_analysis_service</code>, <code>queue_service</code>, <code>draft_service</code>, <code>review_service</code>, <code>crm_service</code>, <code>gmail_connection_service</code>, <code>runtime_settings_service</code>, <code>sync_progress_store</code>.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Domain</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>thread.py</code>, <code>analysis.py</code>, <code>sync.py</code>, <code>runtime_settings.py</code>, <code>gmail.py</code>.</td>
+              <td>No <code>policies.py</code> as a separate file (policies live inside the relevant domain modules).</td>
+            </tr>
+            <tr>
+              <td><strong>Persistence models</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>base</code>, <code>thread</code>, <code>draft</code>, <code>review</code>, <code>sync_run</code>, <code>runtime_settings</code>.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Repositories</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td>All five: <code>thread_repository</code>, <code>sync_repository</code>, <code>draft_repository</code>, <code>review_repository</code>, <code>runtime_settings_repository</code>.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>AI provider layer</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>base.py</code>, <code>router.py</code>, <code>registry.py</code>, three implementations (<code>openai_provider</code>, <code>ollama_provider</code>, <code>heuristic_provider</code>), the five Ollama task agents (<code>inbox</code>, <code>queue</code>, <code>draft</code>, <code>crm</code>, <code>verification</code>), plus shared style modules (<code>action_style</code>, <code>analysis_style</code>, <code>summary_style</code>).</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Gmail provider</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>providers/gmail/client.py</code>, <code>providers/gmail/mapper.py</code>, plus <code>backend/core/email_text.py</code> for cleanup.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Database init</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>backend/core/config.py</code>, <code>backend/core/database.py</code>, <code>core/logging.py</code>. Initialised at FastAPI lifespan startup.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Frontend pages &amp; data layer</strong></td>
+              <td><span class="pill done">Done</span></td>
+              <td><code>AppShell</code>, <code>InboxPage</code>, <code>ThreadDetailPage</code>, <code>ReviewPage</code>, <code>SettingsPage</code>, <code>ThreadCard</code>, <code>ReviewForm</code>, <code>DraftComposer</code>, <code>api/client.ts</code>, <code>hooks/useApi.ts</code>, <code>types/api.ts</code>, <code>lib/format.ts</code>, <code>lib/messageFormat.ts</code>.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>OpenAPI artifact</strong></td>
+              <td><span class="pill partial">Partial</span></td>
+              <td><code>shared/openapi/openapi.json</code> exists.</td>
+              <td>Frontend types in <code>types/api.ts</code> are still hand-mirrored — not yet generated from the schema, so drift is possible.</td>
+            </tr>
+            <tr>
+              <td><strong>Infra</strong></td>
+              <td><span class="pill partial">Partial</span></td>
+              <td>Dockerfiles for API and frontend; <code>.env</code> in place.</td>
+              <td>No Docker Compose files (<code>local</code>, <code>selfhost</code>) under <code>infra/compose</code>; no <code>.env.example</code> committed.</td>
+            </tr>
+            <tr>
+              <td><strong>Migrations</strong></td>
+              <td><span class="pill missing">Missing</span></td>
+              <td>—</td>
+              <td><code>migrations/</code> folder is empty — no Alembic config, no baseline migration. Schema is created via <code>create_all</code> in <code>core/database.py</code>; some evolution is done inline via repository <code>ALTER TABLE</code>. Will not survive a Postgres switch as-is.</td>
+            </tr>
+            <tr>
+              <td><strong>Tests</strong></td>
+              <td><span class="pill partial">Partial</span></td>
+              <td><code>api/tests/test_health.py</code> (smoke test).</td>
+              <td>No service-level tests for sync or analysis, no repository tests, no provider contract tests, no frontend tests. The biggest correctness risk in the codebase today.</td>
+            </tr>
+            <tr>
+              <td><strong>Legacy artifact</strong></td>
+              <td><span class="pill partial">Drift</span></td>
+              <td><code>backend/jobs/sync_runner.py</code> exists as a CLI runner for local syncs.</td>
+              <td>Per the project narrative, its service signatures may not match the current orchestrator path. Worth a 30-minute review pass: confirm it still imports cleanly and runs, or delete it.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="note info">
+          <strong>Bottom line.</strong> What was originally framed as a "scaffold" is in fact a working modular monolith.
+          The senior-dev push-back from here is operational — migrations, tests, type generation, sync durability —
+          not "go build the architecture."
+        </div>
+      </section>
+
+      <!-- ========= 9. STRENGTHS ========= -->
+      <section id="strengths">
+        <h3>9. Strengths of the Architecture</h3>
+        <p class="lead">
+          What's worth defending in design review — even before the code catches up.
+        </p>
+
+        <div class="grid-2">
+          <div class="card green">
+            <h4>API-first by construction</h4>
+            <p>
+              The frontend imports zero backend code. That single rule eliminates most future deployment pain
+              (separate origins, separate containers, separate languages) and makes the OpenAPI contract a real
+              boundary, not a wishlist.
+            </p>
+          </div>
+          <div class="card green">
+            <h4>Provider-agnostic AI</h4>
+            <p>
+              The product layer never calls <code>OpenAI()</code>. Routing is per-task and config-driven, with a
+              deterministic heuristic fallback that keeps the app responsive when providers fail. Migration to
+              self-hosted AI is a config change, not a refactor.
+            </p>
+          </div>
+          <div class="card green">
+            <h4>Thread as the unit, not message</h4>
+            <p>
+              Queueing, next-action recommendations, drafts, and CRM extraction are all expressed against threads.
+              Gmail's <code>threadId</code> seeds it, but the system can merge HR/interview/calendar threads that
+              Gmail splits — which is the correct product behavior.
+            </p>
+          </div>
+          <div class="card green">
+            <h4>Persistence portability</h4>
+            <p>
+              Every read/write goes through a repository. Switching SQLite to Postgres should be a config flip plus
+              a migration run — the application and domain layers stay untouched. The same shape leaves room for a
+              future cache or object store.
+            </p>
+          </div>
+          <div class="card green">
+            <h4>Provenance is persisted</h4>
+            <p>
+              Every analysis row stores <code>provider</code>, <code>model</code>, <code>prompt_version</code>, and a
+              <code>fallback_used</code> flag. That's not just nice-to-have — it's what makes A/B between OpenAI and
+              Ollama a tractable evaluation problem instead of a guessing game.
+            </p>
+          </div>
+          <div class="card green">
+            <h4>Verification is first-class</h4>
+            <p>
+              <code>accuracy_percent</code> and <code>needs_human_review</code> are persisted alongside the analysis,
+              not bolted on as a UI overlay. The review queue can be driven directly from the database without
+              re-running the AI.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========= 10. RISKS ========= -->
+      <section id="risks">
+        <h3>10. Risks &amp; Push-back a Senior Dev Will Raise</h3>
+        <p class="lead">
+          The places the design will get challenged in review. None are blockers; all need owners.
+        </p>
+
+        <table>
+          <thead>
+            <tr><th>Area</th><th>Risk</th><th>Why it matters</th><th>Mitigation</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Sync durability</strong></td>
+              <td>FastAPI <code>BackgroundTasks</code> + in-memory <code>sync_progress_store</code>.</td>
+              <td>API restart loses in-flight progress; the run row is left <code>running</code>.</td>
+              <td>Phase-1: pin progress to the <code>sync_runs</code> row. Phase-2: real worker (Arq, RQ, or Celery) reading from a queue.</td>
+            </tr>
+            <tr>
+              <td><strong>Migration discipline</strong></td>
+              <td><code>create_all</code> in <code>database.py</code>, schema evolution via repository <code>ALTER TABLE</code>.</td>
+              <td>SQLite tolerates this; Postgres won't. Drift becomes silent.</td>
+              <td>Adopt Alembic now, even before Postgres. Convert existing <code>create_all</code> into the baseline migration.</td>
+            </tr>
+            <tr>
+              <td><strong>Type drift</strong></td>
+              <td>Frontend mirrors backend types by hand in <code>api.ts</code> while <code>shared/openapi</code> exists unused.</td>
+              <td>API change without frontend update fails silently in TS instead of at compile time.</td>
+              <td>Generate frontend types from the OpenAPI schema in the build (<code>openapi-typescript</code>). Fail CI on drift.</td>
+            </tr>
+            <tr>
+              <td><strong>Gmail sync model</strong></td>
+              <td>Polling + recent-window. No <code>history.list</code>, no push.</td>
+              <td>Changes outside the window are missed; cost grows linearly with mailbox size.</td>
+              <td>Phase-2: switch to incremental history sync, persist <code>historyId</code> per account. Phase-3: Gmail push notifications via Pub/Sub.</td>
+            </tr>
+            <tr>
+              <td><strong>Grouping heuristics</strong></td>
+              <td><code>mapper.py</code> merges threads by subject/participants/links/HR signals.</td>
+              <td>Better than raw Gmail threading, but false-positive/false-negative risk on edge cases.</td>
+              <td>Keep merges traceable (store why two threads merged), and add a "split thread" admin action for recovery.</td>
+            </tr>
+            <tr>
+              <td><strong>Stale runtime artifact</strong></td>
+              <td><code>backend/jobs/sync_runner.py</code> imports services that don't exist.</td>
+              <td>Confuses new devs into thinking it's the canonical entry point.</td>
+              <td>Either delete it or refit it once the services land. Mark it explicitly non-canonical in the meantime.</td>
+            </tr>
+            <tr>
+              <td><strong>Concurrency &amp; timeouts</strong></td>
+              <td>Two refreshes can spawn overlapping background tasks; no per-task AI timeout in the orchestrator.</td>
+              <td>Wedged provider call hangs the whole run; double-runs corrupt progress.</td>
+              <td>Add a per-account "single active run" lock; enforce per-task timeout in the analysis service.</td>
+            </tr>
+            <tr>
+              <td><strong>Account isolation regression</strong></td>
+              <td>Switching mailbox triggers a wipe of prior threads.</td>
+              <td>Correctness-critical: one account must never see another's data.</td>
+              <td>Pin a regression test on <code>GmailConnectionService.switch_account</code>; assert all related tables are scoped.</td>
+            </tr>
+            <tr>
+              <td><strong>Local AI bypasses relevance gate</strong></td>
+              <td>In <code>ai_mode=local</code>, every fetched non-classified thread runs through AI.</td>
+              <td>Intentional, but expensive on large mailboxes; could hide bugs in the relevance gate.</td>
+              <td>Document explicitly; add a <code>local_ai_max_threads</code> safety knob in <code>runtime_settings</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ========= 11. NEXT REFACTORS ========= -->
+      <section id="refactors">
+        <h3>11. Next Refactors — Prioritized Backlog</h3>
+        <p class="lead">
+          With the architecture built, the remaining work is operational hardening. Order assumes a single dev
+          or small team prioritizing correctness and deployability over new features.
+        </p>
+
+        <ol style="color: var(--muted); line-height: 1.8;">
+          <li>
+            <strong style="color: var(--text);">P0 — Test coverage.</strong>
+            The single biggest correctness risk today. Add: repository tests (CRUD + signature/upsert behavior),
+            service-level tests for <code>GmailSyncService</code> and <code>ThreadAnalysisService</code> (with
+            in-memory SQLite + mocked providers), provider contract tests against the <code>AIProvider</code>
+            interface (heuristic should pass the same tests as OpenAI/Ollama), and a frontend smoke test for the
+            Refresh Gmail mutation.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P0 — Alembic baseline migration.</strong>
+            Replace <code>create_all</code> in <code>core/database.py</code> with an Alembic baseline. Convert any
+            inline repository <code>ALTER TABLE</code> into versioned migrations. Required before any Postgres
+            switch and before any deploy that mutates schema.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P0 — Account-isolation regression test.</strong>
+            Pin a test on <code>GmailConnectionService.switch_account</code>: assert that switching mailbox wipes
+            <code>email_threads</code>, <code>thread_messages</code>, <code>thread_analyses</code>,
+            <code>thread_states</code>, and <code>sync_runs</code> for the prior account. Correctness-critical
+            and currently unverified.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P1 — OpenAPI-generated frontend types.</strong>
+            Add <code>openapi-typescript</code> to the frontend build. Generate <code>types/api.ts</code> from
+            <code>shared/openapi/openapi.json</code> at build time. Fail CI on drift between the schema and
+            committed types.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P1 — Sync durability.</strong>
+            Move the in-flight progress representation off <code>sync_progress_store</code> (in-memory) onto the
+            <code>sync_runs</code> row. Add a per-account "single active run" lock; enforce a per-task AI timeout
+            in <code>ThreadAnalysisService</code>. Restart-safe by construction.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P1 — Resolve the legacy <code>jobs/sync_runner.py</code>.</strong>
+            Either re-fit it against the current service signatures and keep it as a CLI utility, or delete it.
+            The risk is a new dev assuming it's the canonical entry point.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P2 — Worker process.</strong>
+            Move the BackgroundTask invocation behind a worker (<strong>Arq</strong> is the lightest fit; Redis-backed,
+            asyncio-native). Worker imports the same <code>backend</code> package, so no business-logic rewrite.
+            Lets the API and worker scale and restart independently.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P2 — Docker Compose &amp; env templates.</strong>
+            Add <code>infra/compose/docker-compose.local.yml</code> and <code>docker-compose.selfhost.yml</code>;
+            commit a <code>.env.example</code>. Makes onboarding and self-hosted deployment a one-command path.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P2 — Local AI safety knob.</strong>
+            Add <code>local_ai_max_threads</code> to <code>runtime_settings</code> so that <code>ai_mode=local</code>
+            cannot accidentally fan-out across a large mailbox.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P3 — Provider evaluation harness.</strong>
+            With provenance already persisted on <code>thread_analyses</code>, build a small Jupyter or CLI report:
+            agreement rate between OpenAI and Ollama, confidence calibration, fallback rate. Now is the right time —
+            the data model already supports it.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P3 — Incremental Gmail sync.</strong>
+            Switch from polling-window to <code>users.history.list</code> with per-account <code>historyId</code>
+            persisted on the Gmail account record. Later: Gmail push notifications via Pub/Sub.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P3 — Postgres switch.</strong>
+            With Alembic in place, flip <code>DATABASE_URL</code> in self-host compose; verify SQLAlchemy types
+            (especially JSON columns) port cleanly. Repository contracts should require zero change.
+          </li>
+          <li>
+            <strong style="color: var(--text);">P4 — Thread-merge transparency.</strong>
+            Persist <em>why</em> two Gmail threads were merged by <code>mapper.py</code> (subject match, participant overlap, link match, HR signal). Add a "split thread" admin action so false-positive merges are recoverable in production.
+          </li>
+        </ol>
+
+        <div class="note info">
+          <strong>Single-minute pitch (rehearsed):</strong> "V3 is a modular monolith for AI-assisted email operations.
+          The React frontend is only a client. FastAPI exposes the product API, but all real logic lives in backend
+          application services. Gmail is normalized and grouped into product threads, threads are persisted and
+          signature-hashed, then analyzed through a provider-agnostic AI layer that can route to OpenAI, Ollama, or a
+          deterministic fallback. Every analysis also gets a verification pass for confidence and review routing.
+          SQLite is the current persistence layer, but the business layer is repository-based, so the system can move
+          to Postgres and a real worker model later without rewriting core logic."
+        </div>
+      </section>
+
+      <footer>
+        Inter-Email V3 — Architecture &amp; senior-dev handoff document  ·  Companion to <code>inter_email_v_2_documentation.html</code>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // Highlight current section in sidebar nav while scrolling.
+    (function () {
+      const links = Array.from(document.querySelectorAll("nav a[href^='#']"));
+      const sections = links
+        .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
+        .filter(Boolean);
+
+      function setActive() {
+        const y = window.scrollY + 120;
+        let activeId = sections[0] && sections[0].id;
+        for (let i = 0; i < sections.length; i++) {
+          if (sections[i].offsetTop <= y) activeId = sections[i].id;
+        }
+        links.forEach(function (a) {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + activeId);
+        });
+      }
+      window.addEventListener("scroll", setActive, { passive: true });
+      setActive();
+    })();
+  </script>
+</body>
+
+</html>

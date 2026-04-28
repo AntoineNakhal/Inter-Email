@@ -38,10 +38,14 @@ export const apiClient = {
   listThreads: () => request<ThreadListResponse>("/threads"),
   getThread: (threadId: string) => request<EmailThread>(`/threads/${threadId}`),
   getQueueSummary: () => request<QueueDashboardResponse>("/queue/summary"),
-  startSync: (source = "anywhere", maxResults = 50) =>
+  startSync: (source = "anywhere", maxResults = 50, lookbackDays = 7) =>
     request<SyncRunStatus>("/sync", {
       method: "POST",
-      body: JSON.stringify({ source, max_results: maxResults }),
+      body: JSON.stringify({
+        source,
+        max_results: maxResults,
+        lookback_days: lookbackDays,
+      }),
     }),
   getLatestSyncRunStatus: async () => {
     try {
@@ -55,6 +59,10 @@ export const apiClient = {
   },
   getSyncRunStatus: (runId: number) =>
     request<SyncRunStatus>(`/sync/runs/${runId}`),
+  cancelSyncRun: (runId: number) =>
+    request<SyncRunStatus>(`/sync/runs/${runId}/cancel`, {
+      method: "POST",
+    }),
   saveReview: (threadId: string, payload: Record<string, unknown>) =>
     request<{ status: string }>(`/threads/${threadId}/review`, {
       method: "POST",
@@ -64,6 +72,11 @@ export const apiClient = {
     request<{ status: string }>(`/threads/${threadId}/seen`, {
       method: "POST",
       body: JSON.stringify({ seen }),
+    }),
+  markPinned: (threadId: string, pinned: boolean) =>
+    request<{ status: string }>(`/threads/${threadId}/pin`, {
+      method: "POST",
+      body: JSON.stringify({ pinned }),
     }),
   getDraft: (threadId: string) =>
     request<DraftDocument | null>(`/threads/${threadId}/draft`),
