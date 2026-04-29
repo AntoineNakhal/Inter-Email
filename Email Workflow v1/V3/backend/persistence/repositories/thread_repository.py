@@ -37,6 +37,29 @@ class ThreadRepository:
         self.session = session
         self._schema_checked = False
 
+    def get_threads_with_stale_analysis(self, expected_provider: str) -> list[EmailThread]:
+        """Return threads whose analysis was produced by a different provider.
+
+        Used by the sync service to re-analyze threads that were skipped at
+        fetch time (already-known message IDs) but whose analysis belongs to
+        an old provider (e.g. heuristic) while the current mode uses Claude.
+        """
+        self._ensure_schema()
+        query = (
+            select(EmailThreadModel)
+            .join(ThreadAnalysisModel, isouter=False)
+            .where(ThreadAnalysisModel.provider_name != expected_provider)
+            .options(
+                selectinload(EmailThreadModel.messages),
+                selectinload(EmailThreadModel.analysis),
+                selectinload(EmailThreadModel.review),
+                selectinload(EmailThreadModel.state),
+                selectinload(EmailThreadModel.drafts),
+            )
+        )
+        models = self.session.scalars(query).all()
+        return [self._to_domain(model) for model in models]
+
     def get_known_message_ids(self) -> set[str]:
         """Return the set of all message IDs currently stored in the DB.
 
@@ -104,6 +127,10 @@ class ThreadRepository:
             and previous_signature == next_signature
             and model.analysis is not None
         )
+
+        # Mark as new when the thread receives a fresh message.
+        if not signature_unchanged:
+            model.is_new = True
 
         # Auto-reset "done" state when the thread has new content.
         # seen_version is set to the thread signature at the time the user
@@ -329,6 +356,25 @@ class ThreadRepository:
             raise last_error
         raise RuntimeError("mark_seen retry loop ended unexpectedly")
 
+    def acknowledge(self, external_thread_id: str) -> EmailThread:
+        """Mark a thread as seen (new notification cleared). Separate from done."""
+        self._ensure_schema()
+        model = self._require_thread_model(external_thread_id)
+        model.is_new = False
+        self.session.flush()
+        return self.get_thread(external_thread_id) or self._to_domain(model)
+
+    def acknowledge_all(self) -> int:
+        """Clear is_new on all threads. Returns number of threads acknowledged."""
+        self._ensure_schema()
+        models = self.session.scalars(
+            select(EmailThreadModel).where(EmailThreadModel.is_new == True)  # noqa: E712
+        ).all()
+        for m in models:
+            m.is_new = False
+        self.session.flush()
+        return len(models)
+
     def mark_pinned(self, external_thread_id: str, pinned: bool) -> EmailThread:
         self._ensure_schema()
         model = self._require_thread_model(external_thread_id)
@@ -446,6 +492,11 @@ class ThreadRepository:
                 if column_name not in column_names:
                     self.session.execute(text(ddl))
 
+        if inspector.has_table(EmailThreadModel.__tablename__):
+            thread_cols = {c["name"] for c in inspector.get_columns(EmailThreadModel.__tablename__)}
+            if "is_new" not in thread_cols:
+                self.session.execute(text("ALTER TABLE email_threads ADD COLUMN is_new BOOLEAN DEFAULT 0"))
+
         if inspector.has_table(ThreadStateModel.__tablename__):
             state_column_names = {
                 column["name"]
@@ -496,6 +547,7 @@ class ThreadRepository:
             ai_decision_reason=model.ai_decision_reason,
             analysis_status=model.analysis_status,
             signature=model.signature,
+            is_new=bool(model.is_new),
             last_synced_at=model.last_synced_at,
             last_analyzed_at=model.last_analyzed_at,
             analysis=_to_analysis(model.analysis),

@@ -95,6 +95,7 @@ class ThreadResponse(BaseModel):
     ai_decision_reason: str | None = None
     analysis_status: str
     signature: str
+    is_new: bool = False
     messages: list[ThreadMessageResponse] = Field(default_factory=list)
     analysis: ThreadAnalysisResponse | None = None
     seen_state: SeenStateResponse | None = None
@@ -122,6 +123,7 @@ class ThreadResponse(BaseModel):
             ai_decision_reason=thread.ai_decision_reason,
             analysis_status=thread.analysis_status.value,
             signature=thread.signature,
+            is_new=thread.is_new,
             messages=[
                 ThreadMessageResponse(
                     message_id=message.external_message_id,

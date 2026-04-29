@@ -1,5 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useQueueDashboard } from "../hooks/useApi";
+import { useAcknowledgeAllMutation } from "../hooks/useApi";
 
 // Same animation pattern as the AI-mode selector in SettingsPage:
 // position the indicator absolutely behind the nav links, measure the
@@ -7,6 +9,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 // and let CSS transition handle the slide. Vertical instead of
 // horizontal because the sidebar is a column.
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/inbox", label: "Inbox" },
   { to: "/review", label: "Review" },
   { to: "/settings", label: "Settings" },
@@ -14,6 +17,9 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
 
 export function AppShell() {
   const location = useLocation();
+  const { data } = useQueueDashboard();
+  const acknowledgeAll = useAcknowledgeAllMutation();
+  const newCount = (data?.threads ?? []).filter((t) => t.is_new).length;
   const navLinkRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   // Track the very first measurement so we can disable the CSS
   // transition on initial mount — otherwise the indicator visibly
@@ -120,6 +126,15 @@ export function AppShell() {
               })}
             >
               {item.label}
+              {item.to === "/inbox" && newCount > 0 && (
+                <button
+                  className="nav-new-badge"
+                  title={`${newCount} new — click to acknowledge all`}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); acknowledgeAll.mutate(); }}
+                >
+                  {newCount}
+                </button>
+              )}
             </NavLink>
           ))}
         </nav>

@@ -146,6 +146,19 @@ function buildOptimisticSeenState(prior: SeenState | null, seen: boolean): SeenS
     seen,
     seen_version: prior?.seen_version ?? "",
     seen_at: seen ? new Date().toISOString() : null,
+    pinned: prior?.pinned ?? false,
+  };
+}
+
+function patchThreadAcknowledged(
+  thread: EmailThread,
+  threadId?: string,
+): EmailThread {
+  if (threadId && thread.thread_id !== threadId) return thread;
+  if (!thread.is_new) return thread;
+  return {
+    ...thread,
+    is_new: false,
   };
 }
 
@@ -155,12 +168,13 @@ function patchThreadSeen(
   seen: boolean,
 ): EmailThread {
   if (thread.thread_id !== threadId) return thread;
+  const optimisticSeenState = buildOptimisticSeenState(thread.seen_state, seen);
   return {
     ...thread,
+    is_new: false,
     seen_state: {
-      ...buildOptimisticSeenState(thread.seen_state, seen),
-      // Marking done also unpins immediately.
-      pinned: seen ? false : (thread.seen_state?.pinned ?? false),
+      ...optimisticSeenState,
+      pinned: seen ? false : optimisticSeenState.pinned,
     },
     // Marking done clears "act today" immediately — no need to wait for
     // the server round-trip. Undo Done doesn't restore it; the next sync will.
@@ -178,6 +192,7 @@ function patchThreadPinned(
   if (thread.thread_id !== threadId) return thread;
   return {
     ...thread,
+    is_new: false,
     seen_state: thread.seen_state
       ? { ...thread.seen_state, pinned }
       : { seen: false, seen_version: "", seen_at: null, pinned },
@@ -267,6 +282,109 @@ export function useSeenMutation(threadId: string) {
         queryClient.invalidateQueries({ queryKey: ["threads"] }),
         queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+      ]);
+    },
+  });
+}
+
+export function useContactStats() {
+  return useQuery({
+    queryKey: ["contact-stats"],
+    queryFn: apiClient.getContactStats,
+  });
+}
+
+export function useAcknowledgeAllMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.acknowledgeAll(),
+    onSuccess: async () => {
+      const previousThreads =
+        queryClient.getQueryData<ThreadListResponse>(["threads"]);
+      const previousQueue =
+        queryClient.getQueryData<QueueDashboardResponse>(["queue-dashboard"]);
+
+      if (previousThreads) {
+        queryClient.setQueryData<ThreadListResponse>(["threads"], {
+          ...previousThreads,
+          threads: previousThreads.threads.map((thread) =>
+            patchThreadAcknowledged(thread),
+          ),
+        });
+      }
+
+      if (previousQueue) {
+        queryClient.setQueryData<QueueDashboardResponse>(["queue-dashboard"], {
+          ...previousQueue,
+          threads: previousQueue.threads.map((thread) =>
+            patchThreadAcknowledged(thread),
+          ),
+        });
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+      ]);
+    },
+  });
+}
+
+export function useAcknowledgeThreadMutation(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.acknowledgeThread(threadId),
+    onSuccess: async () => {
+      const previousThreads =
+        queryClient.getQueryData<ThreadListResponse>(["threads"]);
+      const previousQueue =
+        queryClient.getQueryData<QueueDashboardResponse>(["queue-dashboard"]);
+      const previousThread =
+        queryClient.getQueryData<EmailThread>(["thread", threadId]);
+
+      if (previousThreads) {
+        queryClient.setQueryData<ThreadListResponse>(["threads"], {
+          ...previousThreads,
+          threads: previousThreads.threads.map((thread) =>
+            patchThreadAcknowledged(thread, threadId),
+          ),
+        });
+      }
+
+      if (previousQueue) {
+        queryClient.setQueryData<QueueDashboardResponse>(["queue-dashboard"], {
+          ...previousQueue,
+          threads: previousQueue.threads.map((thread) =>
+            patchThreadAcknowledged(thread, threadId),
+          ),
+        });
+      }
+
+      if (previousThread) {
+        queryClient.setQueryData<EmailThread>(
+          ["thread", threadId],
+          patchThreadAcknowledged(previousThread, threadId),
+        );
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+        queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+      ]);
+    },
+  });
+}
+
+export function useAnalyzeMutation(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.analyzeThread(threadId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
       ]);
     },
   });

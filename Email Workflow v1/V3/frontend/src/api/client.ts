@@ -68,6 +68,18 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  getContactStats: () => request<{
+    total: number;
+    by_type: Record<string, number>;
+    new_per_month: { month: string; count: number }[];
+    top_contacts: { email: string; display_name: string; contact_type: string; organization: string; thread_count: number }[];
+  }>("/contacts/stats"),
+  acknowledgeThread: (threadId: string) =>
+    request<{ status: string }>(`/threads/${threadId}/acknowledge`, { method: "POST" }),
+  acknowledgeAll: () =>
+    request<{ acknowledged: number }>("/inbox/acknowledge-all", { method: "POST" }),
+  analyzeThread: (threadId: string) =>
+    request<EmailThread>(`/threads/${threadId}/analyze`, { method: "POST" }),
   markSeen: (threadId: string, seen: boolean) =>
     request<{ status: string }>(`/threads/${threadId}/seen`, {
       method: "POST",

@@ -471,11 +471,13 @@ const SECTION_DEFAULT_OPEN: Record<string, boolean> = {
 type CollapsibleThreadSectionProps = {
   section: InboxSection;
   defaultOpen: boolean;
+  newCount?: number;
 };
 
 function CollapsibleThreadSection({
   section,
   defaultOpen,
+  newCount = 0,
 }: CollapsibleThreadSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = `thread-section-${section.id}`;
@@ -510,6 +512,9 @@ function CollapsibleThreadSection({
         <div className={`thread-section__header thread-section__header--${section.id}`}>
           <span className="thread-section__title">{section.title}</span>
           <span className="thread-section__count">{section.threads.length}</span>
+          {newCount > 0 && (
+            <span className="thread-section__new-badge">{newCount} new</span>
+          )}
           <span
             aria-hidden="true"
             className="thread-section__chevron"
@@ -1071,6 +1076,7 @@ export function InboxPage() {
             key={section.id}
             section={section}
             defaultOpen={SECTION_DEFAULT_OPEN[section.id] ?? true}
+            newCount={section.threads.filter((t) => t.is_new).length}
           />
         ))
         : null}

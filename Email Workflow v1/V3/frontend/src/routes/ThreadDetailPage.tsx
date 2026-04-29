@@ -2,10 +2,10 @@ import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEnvelope, faSquare } from "@fortawesome/free-regular-svg-icons";
-import { faBolt, faArrowLeft, faCopy, faSquareCheck, faThumbtack } from "@fortawesome/free-solid-svg-icons";
+import { faBolt, faArrowLeft, faCopy, faSquareCheck, faThumbtack, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
 
 import { DraftComposer } from "../features/drafts/DraftComposer";
-import { usePinMutation, useSeenMutation, useThread } from "../hooks/useApi";
+import { useAnalyzeMutation, usePinMutation, useSeenMutation, useThread } from "../hooks/useApi";
 import { formatDate } from "../lib/format";
 import { formatInlineText, formatMessageExcerpt } from "../lib/messageFormat";
 
@@ -126,6 +126,7 @@ export function ThreadDetailPage() {
   const { data: thread, isLoading, error } = useThread(threadId);
   const seenMutation = useSeenMutation(threadId ?? "");
   const pinMutation = usePinMutation(threadId ?? "");
+  const analyzeMutation = useAnalyzeMutation(threadId ?? "");
 
   useEffect(() => {
     document.body.classList.add("body--thread-detail");
@@ -149,6 +150,15 @@ export function ThreadDetailPage() {
             Inbox
           </Link>
           <div className="td-header__actions">
+            <button
+              className={`td-action-btn${analyzeMutation.isPending ? " td-action-btn--active" : ""}`}
+              onClick={() => analyzeMutation.mutate()}
+              disabled={analyzeMutation.isPending}
+              title={analyzeMutation.isPending ? "Analysing…" : "Analyse with AI"}
+              aria-label="Analyse with AI"
+            >
+              <FontAwesomeIcon icon={faWandMagicSparkles} style={analyzeMutation.isPending ? { animation: "spin 1s linear infinite" } : undefined} />
+            </button>
             <DraftComposer thread={thread} recommended={Boolean(thread.analysis?.should_draft_reply)} iconOnly />
             <a
               className="td-action-btn"
@@ -204,15 +214,27 @@ export function ThreadDetailPage() {
       <div className="td-body">
 
         {/* Left: Analysis */}
-        <aside className="td-analysis">
+        <aside className={`td-analysis${analyzeMutation.isPending ? " td-analysis--loading" : ""}`}>
 
-          {thread.analysis?.summary ? (
+          {analyzeMutation.isPending ? (
+            <div className="td-analysis__skeleton">
+              <div className="td-skeleton-label" />
+              <div className="td-skeleton-line td-skeleton-line--wide" />
+              <div className="td-skeleton-line td-skeleton-line--med" />
+              <div className="td-skeleton-line td-skeleton-line--narrow" />
+              <div className="td-skeleton-divider" />
+              <div className="td-skeleton-block" />
+              <div className="td-skeleton-block td-skeleton-block--accent" />
+              <div className="td-skeleton-divider" />
+              <div className="td-skeleton-facts" />
+            </div>
+          ) : thread.analysis?.summary ? (
             <p className="td-analysis__summary">{thread.analysis.summary}</p>
           ) : (
-            <p className="td-analysis__summary td-analysis__summary--empty">No analysis yet. Run a sync to analyze this thread.</p>
+            <p className="td-analysis__summary td-analysis__summary--empty">No analysis yet. Run a sync or click ✨ to analyse.</p>
           )}
 
-          <div className="td-analysis__divider" />
+          {!analyzeMutation.isPending && <><div className="td-analysis__divider" />
 
           <div className="td-analysis__block">
             <p className="td-analysis__label">Current status</p>
@@ -262,6 +284,7 @@ export function ThreadDetailPage() {
               </p>
             </div>
           )}
+          </>}
 
         </aside>
 

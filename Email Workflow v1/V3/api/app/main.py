@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.app.routers import drafts, gmail, health, review, settings as settings_router, sync, threads
+from api.app.routers import contacts, drafts, gmail, health, review, settings as settings_router, sync, threads
 from backend.core.config import get_settings
 from backend.core.database import init_database
 
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(drafts.router, prefix="/api/v1", tags=["drafts"])
     app.include_router(gmail.router, prefix="/api/v1", tags=["gmail"])
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
+    app.include_router(contacts.router, prefix="/api/v1", tags=["contacts"])
     return app
 
 

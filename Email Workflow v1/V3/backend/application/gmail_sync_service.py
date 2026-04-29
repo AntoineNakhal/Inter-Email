@@ -19,6 +19,7 @@ from backend.domain.thread import (
     RelevanceBucket,
     SecurityStatus,
 )
+from backend.persistence.repositories.contact_repository import ContactRepository
 from backend.persistence.repositories.sync_repository import SyncRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.gmail.client import GmailReadonlyClient
@@ -54,6 +55,7 @@ class GmailSyncService:
         self.analysis_service = analysis_service
         self.queue_service = queue_service
         self.progress_store = progress_store
+        self.contact_repository = ContactRepository(session)
 
     def create_run(self, source: str) -> SyncRunSummary:
         run = self.sync_repository.start_run(source)
@@ -153,6 +155,29 @@ class GmailSyncService:
             )
             self.session.commit()
             self._raise_if_cancel_requested(run_id)
+
+            # Threads skipped at fetch time (already-known message IDs) may
+            # still need re-analysis if the active AI provider changed since
+            # they were last analyzed (e.g. heuristic → Claude). Merge them
+            # into the analysis batch, deduplicating by thread ID.
+            active_provider = self.analysis_service.provider_router.provider_for_task("thread_analysis").name
+            stale_threads = self.thread_repository.get_threads_with_stale_analysis(active_provider)
+            saved_ids = {t.external_thread_id for t in saved_threads}
+            stale_new = [t for t in stale_threads if t.external_thread_id not in saved_ids]
+            if stale_new:
+                logger.info(
+                    "Sync run %s found %s thread(s) with stale analysis for provider %s",
+                    run_id,
+                    len(stale_new),
+                    active_provider,
+                )
+                # Mark them pending so the reuse check in ThreadAnalysisService
+                # treats them as needing fresh analysis.
+                for thread in stale_new:
+                    thread.analysis_status = AnalysisStatus.PENDING
+                    thread.included_in_ai = True
+                saved_threads = saved_threads + stale_new
+
             persisted_thread_count = len(saved_threads)
             ai_thread_count = len(
                 [thread for thread in saved_threads if thread.included_in_ai]
@@ -411,6 +436,18 @@ class GmailSyncService:
                 message_progress_callback=on_message_saved,
             )
             saved_threads.append(saved_thread)
+
+            # Upsert contact personas from this thread's participants.
+            for message in thread.messages:
+                recipients = message.recipients if hasattr(message, "recipients") else []
+                self.contact_repository.upsert_from_thread(
+                    external_thread_id=thread.external_thread_id,
+                    sender_raw=message.sender or "",
+                    recipient_raws=recipients,
+                    thread_date=message.sent_at,
+                    ai_category=saved_thread.analysis.category.value if saved_thread.analysis else None,
+                )
+
             self.session.commit()
             self._raise_if_cancel_requested(run_id)
             processed_messages += len(thread.messages)
@@ -447,7 +484,17 @@ class GmailSyncService:
         return saved_threads
 
     def _apply_runtime_ai_strategy(self, grouped_threads: list) -> list:
-        if not self.runtime_settings.local_ai_analyzes_all_fetched_threads:
+        # When Claude or Local AI mode is active, every non-classified thread
+        # should be analyzed by the selected provider — regardless of its
+        # heuristic relevance score. Without this, low-relevance threads keep
+        # their `included_in_ai = False` flag and always fall back to the
+        # heuristic provider even when the user explicitly chose Claude.
+        force_all = (
+            self.runtime_settings.local_ai_analyzes_all_fetched_threads
+            or self.runtime_settings.claude_enabled
+            or self.runtime_settings.local_ai_enabled
+        )
+        if not force_all:
             return grouped_threads
 
         for thread in grouped_threads:
@@ -455,16 +502,15 @@ class GmailSyncService:
                 continue
             thread.included_in_ai = True
             thread.relevance_bucket = thread.relevance_bucket or RelevanceBucket.IMPORTANT
-            thread.ai_decision = (
-                "local_ai_all_threads"
-                if self.runtime_settings.local_ai_enabled
-                else "manual_all_threads"
-            )
-            thread.ai_decision_reason = (
-                "Local AI mode is active, so every fetched email thread is analyzed."
-                if self.runtime_settings.local_ai_enabled
-                else "Every fetched email thread is configured to be analyzed."
-            )
+            if self.runtime_settings.local_ai_enabled:
+                thread.ai_decision = "local_ai_all_threads"
+                thread.ai_decision_reason = "Local AI mode is active — every thread is analyzed."
+            elif self.runtime_settings.claude_enabled:
+                thread.ai_decision = "claude_all_threads"
+                thread.ai_decision_reason = "Claude mode is active — every thread is analyzed."
+            else:
+                thread.ai_decision = "manual_all_threads"
+                thread.ai_decision_reason = "Every fetched email thread is configured to be analyzed."
             if thread.analysis_status == AnalysisStatus.SKIPPED:
                 thread.analysis_status = AnalysisStatus.PENDING
         return grouped_threads

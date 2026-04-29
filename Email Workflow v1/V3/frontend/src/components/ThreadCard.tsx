@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faThumbtack } from "@fortawesome/free-solid-svg-icons";
 
 import type { EmailThread } from "../types/api";
-import { usePinMutation } from "../hooks/useApi";
+import { useAcknowledgeThreadMutation, usePinMutation } from "../hooks/useApi";
 
 const isDone = (thread: EmailThread) => Boolean(thread.seen_state?.seen);
 
@@ -30,6 +30,7 @@ function urgencyTone(urgency: string | undefined): string {
 
 export function ThreadCard({ thread }: { thread: EmailThread }) {
   const pinMutation = usePinMutation(thread.thread_id);
+  const acknowledgeThreadMutation = useAcknowledgeThreadMutation(thread.thread_id);
   const tone = statusTone(thread);
   const label = statusLabel(thread);
   const nextAction = thread.analysis?.next_action || "Open to review.";
@@ -37,9 +38,15 @@ export function ThreadCard({ thread }: { thread: EmailThread }) {
 
   return (
     <div className="thread-row">
+      {thread.is_new ? <span className="thread-row__new-dot" aria-hidden="true" /> : null}
       <Link
         to={`/threads/${thread.thread_id}`}
         className="thread-row__link"
+        onClick={() => {
+          if (thread.is_new && !acknowledgeThreadMutation.isPending) {
+            acknowledgeThreadMutation.mutate();
+          }
+        }}
       >
         <div className="thread-row__top">
           <span className={`pill tone-${tone}`}>{label}</span>

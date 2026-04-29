@@ -83,6 +83,7 @@ export type EmailThread = {
   ai_decision_reason: string | null;
   analysis_status: string;
   signature: string;
+  is_new: boolean;
   messages: ThreadMessage[];
   analysis: ThreadAnalysis | null;
   seen_state: SeenState | null;

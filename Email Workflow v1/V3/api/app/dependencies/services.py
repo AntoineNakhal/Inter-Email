@@ -21,6 +21,7 @@ from backend.application.runtime_settings_service import RuntimeSettingsService
 from backend.application.sync_progress_store import SyncProgressStore
 from backend.application.thread_analysis_service import ThreadAnalysisService
 from backend.core.config import AppSettings, get_settings
+from backend.persistence.repositories.contact_repository import ContactRepository
 from backend.persistence.repositories.draft_repository import DraftRepository
 from backend.persistence.repositories.review_repository import ReviewRepository
 from backend.persistence.repositories.runtime_settings_repository import (
@@ -43,6 +44,8 @@ class ServiceBundle:
     review_service: ReviewService
     draft_service: DraftService
     sync_service: GmailSyncService
+    analysis_service: ThreadAnalysisService
+    contact_repository: ContactRepository
 
 
 GMAIL_CONNECTION_STATE_STORE = GmailConnectionStateStore()
@@ -103,6 +106,8 @@ def build_service_bundle(session: Session) -> ServiceBundle:
         review_service=review_service,
         draft_service=draft_service,
         sync_service=sync_service,
+        analysis_service=analysis_service,
+        contact_repository=ContactRepository(session),
     )
 
 

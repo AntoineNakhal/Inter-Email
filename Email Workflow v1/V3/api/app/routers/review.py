@@ -48,6 +48,29 @@ def mark_seen(
     return {"status": "saved"}
 
 
+@router.post("/threads/{thread_id}/acknowledge")
+def acknowledge_thread(
+    thread_id: str,
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> dict[str, str]:
+    try:
+        services.review_service.thread_repository.acknowledge(thread_id)
+        services.session.commit()
+    except ValueError as exc:
+        services.session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "acknowledged"}
+
+
+@router.post("/inbox/acknowledge-all")
+def acknowledge_all(
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> dict[str, int]:
+    count = services.review_service.thread_repository.acknowledge_all()
+    services.session.commit()
+    return {"acknowledged": count}
+
+
 @router.post("/threads/{thread_id}/pin")
 def mark_pinned(
     thread_id: str,

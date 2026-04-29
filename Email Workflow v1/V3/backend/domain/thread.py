@@ -170,6 +170,7 @@ class EmailThread(BaseModel):
     ai_decision_reason: str | None = None
     analysis_status: AnalysisStatus = AnalysisStatus.PENDING
     signature: str = ""
+    is_new: bool = False
     last_synced_at: datetime | None = None
     last_analyzed_at: datetime | None = None
     analysis: ThreadAnalysis | None = None

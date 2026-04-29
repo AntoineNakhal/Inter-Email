@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from backend.domain.thread import AnalysisStatus
 
 from api.app.dependencies.services import ServiceBundle, get_service_bundle
 from api.app.schemas.thread import (
@@ -35,6 +36,33 @@ def get_thread(
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found.")
     return ThreadResponse.from_domain(thread)
+
+
+@router.post("/threads/{thread_id}/analyze", response_model=ThreadResponse)
+def analyze_thread(
+    thread_id: str,
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> ThreadResponse:
+    """Force re-analysis of a single thread using the active AI provider."""
+    thread = services.queue_service.get_thread(thread_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+
+    # Force the thread through AI regardless of relevance score.
+    thread.included_in_ai = True
+    thread.analysis_status = AnalysisStatus.PENDING
+
+    mailbox_email = services.runtime_settings_service.get().gmail_mailbox_email.strip() or None
+    analyzed = services.analysis_service.analyze_threads(
+        [thread],
+        user_email=mailbox_email,
+    )
+    services.session.commit()
+
+    updated = services.queue_service.get_thread(thread_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Thread not found after analysis.")
+    return ThreadResponse.from_domain(updated)
 
 
 @router.get("/queue/summary", response_model=QueueDashboardResponse)
