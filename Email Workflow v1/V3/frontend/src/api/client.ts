@@ -68,12 +68,12 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  getContactStats: () => request<{
+  getContactStats: (range = "all") => request<{
     total: number;
     by_type: Record<string, number>;
     new_per_month: { month: string; count: number }[];
     top_contacts: { email: string; display_name: string; contact_type: string; organization: string; thread_count: number }[];
-  }>("/contacts/stats"),
+  }>(`/contacts/stats?range=${encodeURIComponent(range)}`),
   acknowledgeThread: (threadId: string) =>
     request<{ status: string }>(`/threads/${threadId}/acknowledge`, { method: "POST" }),
   acknowledgeAll: () =>

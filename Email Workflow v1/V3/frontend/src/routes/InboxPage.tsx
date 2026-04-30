@@ -907,12 +907,12 @@ export function InboxPage() {
 
   return (
     <section className="page page--inbox stack stack--page">
-      <div className="inbox-header">
-        <div className="inbox-header__left">
-          <p className="inbox-header__eyebrow">
+      <div className="sp-header inbox-page__header">
+        <div className="sp-header__left inbox-page__header-copy">
+          <p className="sp-header__eyebrow">
             Daily Queue · {new Date().toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })}
           </p>
-          <h1 className="inbox-header__title">Inbox</h1>
+          <h1 className="sp-header__title">Inbox</h1>
           {queueThreads.length > 0 && (
             <div className="inbox-header__stats">
               {actNowCount > 0 && <span className="inbox-header__stat inbox-header__stat--urgent">{actNowCount} act now</span>}
@@ -927,7 +927,7 @@ export function InboxPage() {
               <SkeletonLine width="52%" />
             </div>
           ) : data?.summary.executive_summary?.trim() ? (
-            <p className="inbox-header__summary">{data.summary.executive_summary}</p>
+            <p className="sp-header__sub">{data.summary.executive_summary}</p>
           ) : null}
         </div>
 
@@ -977,6 +977,7 @@ export function InboxPage() {
           </button>
         </div>
       </div>
+      <div className="sp-divider" />
       {showSyncProgress && syncStatus ? (
         <div className="sync-bar">
           <div className="sync-bar__top">
@@ -994,7 +995,7 @@ export function InboxPage() {
         </div>
       ) : null}
 
-      <div className="inbox-header__divider" />
+      <div className="sp-divider" />
 
       <div className="inbox-toolbar">
           <input
@@ -1049,7 +1050,7 @@ export function InboxPage() {
             </button>
           </div>
         </div>
-      <div className="inbox-header__divider" />
+      <div className="sp-divider" />
 
 
       {showInitialSkeleton ? <QueueSkeleton /> : null}

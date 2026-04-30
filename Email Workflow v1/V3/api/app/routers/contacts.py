@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -25,9 +27,20 @@ def list_contacts(
 
 @router.get("/contacts/stats", response_model=ContactStats)
 def contact_stats(
+    range: Literal[
+        "today",
+        "week",
+        "month",
+        "three_months",
+        "six_months",
+        "year",
+        "three_years",
+        "five_years",
+        "all",
+    ] = "all",
     services: ServiceBundle = Depends(get_service_bundle),
 ) -> ContactStats:
-    return services.contact_repository.get_stats()
+    return services.contact_repository.get_stats(range)
 
 
 @router.get("/contacts/{email}", response_model=Contact)

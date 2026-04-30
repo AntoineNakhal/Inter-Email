@@ -287,10 +287,15 @@ export function useSeenMutation(threadId: string) {
   });
 }
 
-export function useContactStats() {
+export function useContactStats(range = "all") {
   return useQuery({
-    queryKey: ["contact-stats"],
-    queryFn: apiClient.getContactStats,
+    queryKey: ["contact-stats", range],
+    queryFn: () => apiClient.getContactStats(range),
+    staleTime: LOCAL_CACHE_STALE_MS,
+    gcTime: LOCAL_CACHE_GC_MS,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

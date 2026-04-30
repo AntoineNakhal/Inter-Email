@@ -1,3 +1,6 @@
+import { faChevronDown } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useContactStats, useQueueDashboard } from "../hooks/useApi";
@@ -270,9 +273,23 @@ const TYPE_COLOR: Record<string, string> = {
   external:   "var(--muted)",
 };
 
+const CONTACT_RANGE_OPTIONS = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "three_months", label: "Last 3 months" },
+  { value: "six_months", label: "Last 6 months" },
+  { value: "year", label: "Last year" },
+  { value: "three_years", label: "Last 3 years" },
+  { value: "five_years", label: "Last 5 years" },
+  { value: "all", label: "All time" },
+] as const;
+
 export function DashboardPage() {
   const { data, isLoading } = useQueueDashboard();
-  const { data: contactStats } = useContactStats();
+  const [contactRange, setContactRange] =
+    useState<(typeof CONTACT_RANGE_OPTIONS)[number]["value"]>("all");
+  const { data: contactStats } = useContactStats(contactRange);
   const threads = data?.threads ?? [];
   const active  = threads.filter(isActive);
 
@@ -346,6 +363,23 @@ export function DashboardPage() {
               {/* Contact stats */}
               <div>
                 <p className="db-section-title">Contacts · {contactStats.total} people</p>
+                <label className="select-field db-section-filter">
+                  <select
+                    value={contactRange}
+                    onChange={(event) =>
+                      setContactRange(
+                        event.target.value as (typeof CONTACT_RANGE_OPTIONS)[number]["value"],
+                      )
+                    }
+                  >
+                    {CONTACT_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
+                </label>
                 <div className="db-charts-row">
 
                   {/* Type breakdown */}

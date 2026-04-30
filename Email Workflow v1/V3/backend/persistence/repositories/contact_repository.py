@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import getaddresses, parseaddr
 
 from sqlalchemy import func, select, text
@@ -236,29 +236,41 @@ class ContactRepository:
         self.session.flush()
         return self._to_domain(model)
 
-    def get_stats(self) -> ContactStats:
+    def get_stats(self, range_key: str = "all") -> ContactStats:
         self._ensure_schema()
-        total = self.session.scalar(select(func.count(ContactModel.id))) or 0
+        cutoff = self._range_cutoff(range_key)
 
-        by_type_rows = self.session.execute(
+        total_query = select(func.count(ContactModel.id))
+        if cutoff is not None:
+            total_query = total_query.where(ContactModel.last_seen_at >= cutoff)
+        total = self.session.scalar(total_query) or 0
+
+        by_type_query = (
             select(ContactModel.contact_type, func.count(ContactModel.id))
             .group_by(ContactModel.contact_type)
-        ).all()
+        )
+        if cutoff is not None:
+            by_type_query = by_type_query.where(ContactModel.last_seen_at >= cutoff)
+        by_type_rows = self.session.execute(by_type_query).all()
         by_type = {row[0]: row[1] for row in by_type_rows}
 
-        # New contacts per month for last 12 months.
-        new_per_month_rows = self.session.execute(
-            text(
-                "SELECT strftime('%Y-%m', first_seen_at) AS month, COUNT(*) AS cnt "
-                "FROM contacts "
-                "WHERE first_seen_at >= date('now', '-12 months') "
-                "GROUP BY month ORDER BY month"
+        new_per_month_query = (
+            select(
+                func.strftime("%Y-%m", ContactModel.first_seen_at).label("month"),
+                func.count(ContactModel.id).label("cnt"),
             )
-        ).all()
+            .where(ContactModel.first_seen_at.is_not(None))
+            .group_by("month")
+            .order_by("month")
+        )
+        if cutoff is not None:
+            new_per_month_query = new_per_month_query.where(
+                ContactModel.first_seen_at >= cutoff
+            )
+        new_per_month_rows = self.session.execute(new_per_month_query).all()
         new_per_month = [{"month": r[0], "count": r[1]} for r in new_per_month_rows]
 
-        # Top 10 contacts by thread count.
-        top_rows = self.session.execute(
+        top_query = (
             select(
                 ContactModel.email,
                 ContactModel.display_name,
@@ -268,7 +280,10 @@ class ContactRepository:
             )
             .order_by(ContactModel.thread_count.desc())
             .limit(10)
-        ).all()
+        )
+        if cutoff is not None:
+            top_query = top_query.where(ContactModel.last_seen_at >= cutoff)
+        top_rows = self.session.execute(top_query).all()
         top_contacts = [
             {
                 "email": r[0],
@@ -286,6 +301,30 @@ class ContactRepository:
             new_per_month=new_per_month,
             top_contacts=top_contacts,
         )
+
+    def _range_cutoff(self, range_key: str) -> datetime | None:
+        normalized = (range_key or "all").strip().lower()
+        if normalized in {"all", "all_time"}:
+            return None
+
+        now = datetime.now(timezone.utc)
+        if normalized == "today":
+            return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if normalized == "week":
+            return now - timedelta(days=7)
+        if normalized == "month":
+            return now - timedelta(days=30)
+        if normalized == "three_months":
+            return now - timedelta(days=90)
+        if normalized == "six_months":
+            return now - timedelta(days=180)
+        if normalized == "year":
+            return now - timedelta(days=365)
+        if normalized == "three_years":
+            return now - timedelta(days=365 * 3)
+        if normalized == "five_years":
+            return now - timedelta(days=365 * 5)
+        return None
 
     # ── helpers ──────────────────────────────────────────────────────────────
 

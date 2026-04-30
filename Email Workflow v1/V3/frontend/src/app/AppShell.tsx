@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQueueDashboard } from "../hooks/useApi";
 import { useAcknowledgeAllMutation } from "../hooks/useApi";
+import { useGmailConnectionStatus } from "../hooks/useApi";
 
 // Same animation pattern as the AI-mode selector in SettingsPage:
 // position the indicator absolutely behind the nav links, measure the
@@ -9,8 +10,8 @@ import { useAcknowledgeAllMutation } from "../hooks/useApi";
 // and let CSS transition handle the slide. Vertical instead of
 // horizontal because the sidebar is a column.
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "/dashboard", label: "Dashboard" },
   { to: "/inbox", label: "Inbox" },
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/review", label: "Review" },
   { to: "/settings", label: "Settings" },
 ];
@@ -18,8 +19,11 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
 export function AppShell() {
   const location = useLocation();
   const { data } = useQueueDashboard();
+  const { data: gmailConnection } = useGmailConnectionStatus();
   const acknowledgeAll = useAcknowledgeAllMutation();
   const newCount = (data?.threads ?? []).filter((t) => t.is_new).length;
+  const currentUserSubline =
+    gmailConnection?.email_address ?? "Connect Gmail in Settings";
   const navLinkRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   // Track the very first measurement so we can disable the CSS
   // transition on initial mount — otherwise the indicator visibly
@@ -88,8 +92,8 @@ export function AppShell() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar__brand">
-          <p className="sidebar__brand-sub">Inter-Op</p>
-          <h2 className="sidebar__brand-title">Inter-Email</h2>
+          <p className="sidebar__brand-sub">{currentUserSubline}</p>
+          <h2 className="sidebar__brand-title">INTER-OP</h2>
         </div>
 
         <nav className="nav" style={{ position: "relative" }}>

@@ -12,9 +12,9 @@ export const router = createBrowserRouter([
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: "dashboard", element: <DashboardPage /> },
+      { index: true, element: <Navigate to="/inbox" replace /> },
       { path: "inbox", element: <InboxPage /> },
+      { path: "dashboard", element: <DashboardPage /> },
       { path: "review", element: <ReviewPage /> },
       { path: "threads/:threadId", element: <ThreadDetailPage /> },
       { path: "settings", element: <SettingsPage /> },
