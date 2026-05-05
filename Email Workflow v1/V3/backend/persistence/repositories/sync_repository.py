@@ -77,6 +77,9 @@ class SyncRepository:
                 else SyncStage.FAILED
             ),
             progress_percent=100,
+            stage_unit_current=0,
+            stage_unit_total=0,
+            eta_seconds=0,
             status_message=(
                 "Inbox refresh complete."
                 if status == SyncStatus.COMPLETED
@@ -116,6 +119,9 @@ class SyncRepository:
                 else SyncStage.QUEUED
             ),
             progress_percent=100 if status != SyncStatus.RUNNING else 0,
+            stage_unit_current=0,
+            stage_unit_total=0,
+            eta_seconds=0 if status != SyncStatus.RUNNING else None,
             status_message=(
                 "Inbox refresh complete."
                 if status == SyncStatus.COMPLETED

@@ -82,6 +82,7 @@ class ThreadAnalysis(BaseModel):
     current_status: str = ""
     next_action: str = ""
     needs_action_today: bool = False
+    waiting_on_us: bool | None = None  # None = defer to heuristic
     should_draft_reply: bool = False
     draft_needs_date: bool = False
     draft_date_reason: str | None = None

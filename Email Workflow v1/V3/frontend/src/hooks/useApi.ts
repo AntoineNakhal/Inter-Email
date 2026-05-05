@@ -299,34 +299,79 @@ export function useContactStats(range = "all") {
   });
 }
 
+export function useAcknowledgeBatchMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (threadIds: string[]) => apiClient.acknowledgeBatch(threadIds),
+    onMutate: async (threadIds) => {
+      const idSet = new Set(threadIds);
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.cancelQueries({ queryKey: ["threads"] }),
+      ]);
+      const prevDashboard = queryClient.getQueryData<QueueDashboardResponse>(["queue-dashboard"]);
+      const prevThreads = queryClient.getQueryData<ThreadListResponse>(["threads"]);
+      if (prevDashboard) {
+        queryClient.setQueryData<QueueDashboardResponse>(["queue-dashboard"], {
+          ...prevDashboard,
+          threads: prevDashboard.threads.map((t) =>
+            idSet.has(t.thread_id) ? { ...t, is_new: false } : t
+          ),
+        });
+      }
+      if (prevThreads) {
+        queryClient.setQueryData<ThreadListResponse>(["threads"], {
+          ...prevThreads,
+          threads: prevThreads.threads.map((t) =>
+            idSet.has(t.thread_id) ? { ...t, is_new: false } : t
+          ),
+        });
+      }
+      return { prevDashboard, prevThreads };
+    },
+    onError: (_err, _ids, ctx) => {
+      if (ctx?.prevDashboard) queryClient.setQueryData(["queue-dashboard"], ctx.prevDashboard);
+      if (ctx?.prevThreads) queryClient.setQueryData(["threads"], ctx.prevThreads);
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+      ]);
+    },
+  });
+}
+
 export function useAcknowledgeAllMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiClient.acknowledgeAll(),
-    onSuccess: async () => {
-      const previousThreads =
-        queryClient.getQueryData<ThreadListResponse>(["threads"]);
-      const previousQueue =
-        queryClient.getQueryData<QueueDashboardResponse>(["queue-dashboard"]);
-
-      if (previousThreads) {
-        queryClient.setQueryData<ThreadListResponse>(["threads"], {
-          ...previousThreads,
-          threads: previousThreads.threads.map((thread) =>
-            patchThreadAcknowledged(thread),
-          ),
-        });
-      }
-
-      if (previousQueue) {
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.cancelQueries({ queryKey: ["threads"] }),
+      ]);
+      const prevDashboard = queryClient.getQueryData<QueueDashboardResponse>(["queue-dashboard"]);
+      const prevThreads = queryClient.getQueryData<ThreadListResponse>(["threads"]);
+      if (prevDashboard) {
         queryClient.setQueryData<QueueDashboardResponse>(["queue-dashboard"], {
-          ...previousQueue,
-          threads: previousQueue.threads.map((thread) =>
-            patchThreadAcknowledged(thread),
-          ),
+          ...prevDashboard,
+          threads: prevDashboard.threads.map((t) => ({ ...t, is_new: false })),
         });
       }
-
+      if (prevThreads) {
+        queryClient.setQueryData<ThreadListResponse>(["threads"], {
+          ...prevThreads,
+          threads: prevThreads.threads.map((t) => ({ ...t, is_new: false })),
+        });
+      }
+      return { prevDashboard, prevThreads };
+    },
+    onError: (_err, _v, ctx) => {
+      if (ctx?.prevDashboard) queryClient.setQueryData(["queue-dashboard"], ctx.prevDashboard);
+      if (ctx?.prevThreads) queryClient.setQueryData(["threads"], ctx.prevThreads);
+    },
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["threads"] }),

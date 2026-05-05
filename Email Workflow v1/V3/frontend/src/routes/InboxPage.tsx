@@ -23,6 +23,8 @@ import { Link } from "react-router-dom";
 import { ThreadCard } from "../components/ThreadCard";
 import { DraftComposer } from "../features/drafts/DraftComposer";
 import {
+  useAcknowledgeAllMutation,
+  useAcknowledgeBatchMutation,
   useCancelSyncMutation,
   usePinMutation,
   useQueueDashboard,
@@ -42,11 +44,6 @@ type InboxSection = {
 
 type WorkflowBucket = "act-now" | "waiting" | "monitor" | "low-priority" | "done";
 type PriorityFilterValue = "all" | "high" | "medium" | "low" | "unknown";
-
-type StageProgressRange = {
-  floor: number;
-  cap: number;
-};
 
 const UNCATEGORIZED_LABEL = "Needs review";
 const PRIORITY_OPTIONS: Array<{
@@ -83,7 +80,7 @@ const STAGE_PROGRESS_DURATIONS_MS: Record<string, number> = {
   queued: 1200,
   fetching: 5200,
   persisting: 4800,
-  analyzing: 9000,
+  analyzing: 20000,
   summarizing: 2600,
 };
 
@@ -139,8 +136,16 @@ function buildStageProgressRanges(
   return ranges;
 }
 
-const STAGE_PROGRESS_RANGES: Record<string, StageProgressRange> =
-  buildStageProgressRanges(STAGE_ORDER, STAGE_PROGRESS_DURATIONS_MS);
+const STAGE_PROGRESS_RANGES: Record<string, StageProgressRange> = {
+  queued: { floor: 2, cap: 11 },
+  fetching: { floor: 12, cap: 35 },
+  persisting: { floor: 36, cap: 51 },
+  analyzing: { floor: 52, cap: 89 },
+  summarizing: { floor: 90, cap: 99 },
+  completed: { floor: 100, cap: 100 },
+  cancelled: { floor: 100, cap: 100 },
+  failed: { floor: 100, cap: 100 },
+};
 
 function isPinned(thread: EmailThread): boolean {
   return Boolean(thread.seen_state?.pinned);
@@ -166,6 +171,118 @@ function stageLabel(stage: string): string {
     failed: "Failed",
   };
   return labels[stage] ?? stage;
+}
+
+function formatEta(ms: number): string {
+  const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+  if (totalSeconds < 60) {
+    return `~${totalSeconds}s left`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds === 0
+    ? `~${minutes}m left`
+    : `~${minutes}m ${seconds}s left`;
+}
+
+function parseStageUnits(statusMessage: string): { current: number; total: number } | null {
+  const analysisMatch = statusMessage.match(/\((\d+)\/(\d+)\)/);
+  if (analysisMatch) {
+    const current = Number(analysisMatch[1]);
+    const total = Number(analysisMatch[2]);
+    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+      return { current, total };
+    }
+  }
+
+  const persistingMatch = statusMessage.match(/Saving thread\s+(\d+)\s+of\s+(\d+)/i);
+  if (persistingMatch) {
+    const current = Number(persistingMatch[1]);
+    const total = Number(persistingMatch[2]);
+    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+      return { current: Math.max(0, current - 1), total };
+    }
+  }
+
+  const persistedBatchMatch = statusMessage.match(/Saving threads\s+\((\d+)\/(\d+)\)/i);
+  if (persistedBatchMatch) {
+    const current = Number(persistedBatchMatch[1]);
+    const total = Number(persistedBatchMatch[2]);
+    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+      return { current, total };
+    }
+  }
+
+  return null;
+}
+
+function estimateRemainingMs(
+  status: SyncRunStatus | null,
+  stageStartedAt: number | null,
+  observedMetrics: ObservedStageMetrics | null = null,
+): number | null {
+  if (!status || status.status !== "running") {
+    return null;
+  }
+
+  const elapsed = stageStartedAt ? Math.max(0, Date.now() - stageStartedAt) : 0;
+  const currentStageDuration =
+    STAGE_PROGRESS_DURATIONS_MS[status.stage] ?? 0;
+
+  const currentStageIndex = STAGE_ORDER.indexOf(status.stage);
+  const remainingFutureStagesMs =
+    currentStageIndex === -1
+      ? 0
+      : STAGE_ORDER.slice(currentStageIndex + 1).reduce(
+          (sum, stage) => sum + (STAGE_PROGRESS_DURATIONS_MS[stage] ?? 0),
+          0,
+        );
+
+  let remainingCurrentStageMs = Math.max(0, currentStageDuration - elapsed);
+
+  if (
+    observedMetrics &&
+    observedMetrics.stageKey === `${status.run_id}:${status.stage}` &&
+    observedMetrics.total > 0
+  ) {
+    const msPerUnit =
+      observedMetrics.msPerUnit ??
+      currentStageDuration / Math.max(observedMetrics.total, 1);
+    const currentUnitElapsed = Math.max(
+      0,
+      Date.now() - observedMetrics.unitStartedAt,
+    );
+    const remainingCurrentUnitMs =
+      observedMetrics.current >= observedMetrics.total
+        ? 0
+        : Math.max(0, msPerUnit - currentUnitElapsed);
+    const remainingFullUnitsMs =
+      Math.max(0, observedMetrics.total - observedMetrics.current - 1) *
+      msPerUnit;
+    remainingCurrentStageMs = remainingCurrentUnitMs + remainingFullUnitsMs;
+  } else if (status.stage === "analyzing" && status.thread_count > 0) {
+    remainingCurrentStageMs = currentStageDuration;
+  } else if (status.stage === "persisting" && status.thread_count > 0) {
+    remainingCurrentStageMs = Math.max(
+      0,
+      ((currentStageDuration * 0.8) * Math.max(0, status.thread_count - 1)) /
+        Math.max(status.thread_count, 1),
+    );
+  } else if (status.stage === "fetching") {
+    const range = STAGE_PROGRESS_RANGES.fetching;
+    const stageSpan = Math.max(1, range.cap - range.floor);
+    const normalizedProgress = Math.min(
+      1,
+      Math.max(0, (status.progress_percent - range.floor) / stageSpan),
+    );
+    remainingCurrentStageMs =
+      normalizedProgress > 0
+        ? ((1 - normalizedProgress) * elapsed) / normalizedProgress
+        : remainingCurrentStageMs;
+  }
+
+  const totalRemainingMs = remainingCurrentStageMs + remainingFutureStagesMs;
+  return totalRemainingMs > 0 ? totalRemainingMs : null;
 }
 
 function sectionedThreads(threads: EmailThread[]): InboxSection[] {
@@ -363,7 +480,7 @@ function PriorityQueueModal({
             <button className="pq-nav__btn" type="button" onClick={onPrevious} disabled={currentIndex === 0} title="Previous">
               <FontAwesomeIcon icon={faArrowLeft} />
             </button>
-            <button className="pq-nav__btn" type="button" onClick={onNext} title="Next">
+            <button className="pq-nav__btn" type="button" onClick={onNext} disabled={currentIndex >= threads.length - 1} title="Next">
               <FontAwesomeIcon icon={faArrowRight} />
             </button>
           </div>
@@ -384,8 +501,38 @@ function fakeProgressTarget(status: SyncRunStatus | null): number {
   return status ? Math.max(1, status.progress_percent) : 0;
 }
 
-function shouldUseTimeBasedSmoothing(stage: string): boolean {
-  return stage === "queued" || stage === "fetching" || stage === "summarizing";
+function visualStageDurationMs(status: SyncRunStatus): number {
+  const base = STAGE_PROGRESS_DURATIONS_MS[status.stage] ?? 2600;
+  const parsedUnits = parseStageUnits(status.status_message);
+
+  if (parsedUnits) {
+    const perUnitMs =
+      status.stage === "analyzing"
+        ? 900
+        : status.stage === "persisting"
+          ? 320
+          : 0;
+    if (perUnitMs > 0) {
+      return Math.max(base, parsedUnits.total * perUnitMs);
+    }
+  }
+
+  if (status.stage === "analyzing") {
+    return Math.max(base, Math.max(status.thread_count, 1) * 900);
+  }
+
+  if (status.stage === "persisting") {
+    return Math.max(
+      base,
+      Math.max(status.thread_count, status.fetched_message_count, 1) * 320,
+    );
+  }
+
+  if (status.stage === "fetching") {
+    return Math.max(base, Math.max(status.fetched_message_count, 1) * 110);
+  }
+
+  return base;
 }
 
 function normalizedUrgency(thread: EmailThread): string {
@@ -481,6 +628,7 @@ function CollapsibleThreadSection({
 }: CollapsibleThreadSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = `thread-section-${section.id}`;
+  const acknowledgeBatch = useAcknowledgeBatchMutation();
 
   return (
     <section className="thread-section">
@@ -513,7 +661,18 @@ function CollapsibleThreadSection({
           <span className="thread-section__title">{section.title}</span>
           <span className="thread-section__count">{section.threads.length}</span>
           {newCount > 0 && (
-            <span className="thread-section__new-badge">{newCount} new</span>
+            <button
+              className="thread-section__new-badge"
+              type="button"
+              title="Mark section as seen"
+              onClick={(e) => {
+                e.stopPropagation();
+                const ids = section.threads.filter((t) => t.is_new).map((t) => t.thread_id);
+                acknowledgeBatch.mutate(ids);
+              }}
+            >
+              {newCount} new
+            </button>
           )}
           <span
             aria-hidden="true"
@@ -557,6 +716,123 @@ function EmptyInboxState({ syncing = false }: { syncing?: boolean }) {
   );
 }
 
+function SyncProgressBar({
+  label,
+  progressPercent,
+  isRunning,
+  etaSeconds,
+  fetchedMessageCount,
+  threadCount,
+  aiThreadCount,
+}: {
+  label: string;
+  progressPercent: number;
+  isRunning: boolean;
+  etaSeconds: number | null;
+  fetchedMessageCount: number;
+  threadCount: number;
+  aiThreadCount: number;
+}) {
+  const [animatedProgress, setAnimatedProgress] = useState(progressPercent);
+  const [displayedEtaMs, setDisplayedEtaMs] = useState<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const progressRef = useRef(progressPercent);
+  const progressSnapshotRef = useRef(progressPercent);
+  const etaSnapshotMsRef = useRef<number | null>(
+    etaSeconds !== null ? etaSeconds * 1000 : null,
+  );
+  const snapshotStartedAtRef = useRef<number>(performance.now());
+
+  useEffect(() => {
+    progressRef.current = animatedProgress;
+  }, [animatedProgress]);
+
+  useEffect(() => {
+    const currentVisibleProgress = progressRef.current;
+    const nextBaseProgress = Math.max(currentVisibleProgress, progressPercent);
+    progressSnapshotRef.current = nextBaseProgress;
+    etaSnapshotMsRef.current = etaSeconds !== null ? etaSeconds * 1000 : null;
+    snapshotStartedAtRef.current = performance.now();
+
+    if (!isRunning) {
+      setAnimatedProgress(nextBaseProgress);
+      setDisplayedEtaMs(etaSnapshotMsRef.current);
+      return;
+    }
+
+    setDisplayedEtaMs(etaSnapshotMsRef.current);
+  }, [etaSeconds, isRunning, progressPercent]);
+
+  useEffect(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (!isRunning) {
+      setAnimatedProgress(Math.max(progressRef.current, progressPercent));
+      return;
+    }
+
+    const tick = (timestamp: number) => {
+      const snapshotProgress = progressSnapshotRef.current;
+      const snapshotEtaMs = etaSnapshotMsRef.current;
+      const elapsed = timestamp - snapshotStartedAtRef.current;
+
+      if (snapshotEtaMs === null || snapshotEtaMs <= 0) {
+        setDisplayedEtaMs(null);
+        setAnimatedProgress(snapshotProgress);
+        return;
+      }
+
+      const remainingMs = Math.max(0, snapshotEtaMs - elapsed);
+      const ratio = Math.min(1, elapsed / snapshotEtaMs);
+      const projectedProgress =
+        snapshotProgress + (100 - snapshotProgress) * ratio;
+      const nextProgress = Math.max(progressRef.current, projectedProgress);
+
+      setDisplayedEtaMs(remainingMs);
+      setAnimatedProgress(Math.min(99, nextProgress));
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isRunning, progressPercent]);
+
+  const displayedPercent = isRunning
+    ? Math.max(0, Math.min(99, Math.floor(animatedProgress)))
+    : Math.max(0, Math.min(100, Math.round(animatedProgress)));
+
+  const etaLabel = displayedEtaMs ? formatEta(displayedEtaMs) : null;
+
+  return (
+    <div className="sync-bar">
+      <div className="sync-bar__top">
+        <div className="sync-bar__heading">
+          <span className="sync-bar__label">{label}</span>
+          {etaLabel ? <span className="sync-bar__eta">{etaLabel}</span> : null}
+        </div>
+        <span className="sync-bar__percent">{displayedPercent}%</span>
+      </div>
+      <div className="sync-bar__track" aria-hidden="true">
+        <span
+          className={`sync-bar__fill ${isRunning ? "sync-bar__fill--running" : ""}`}
+          style={{ width: `${animatedProgress}%` }}
+        />
+      </div>
+      <div className="sync-bar__stats">
+        <span>{fetchedMessageCount} messages</span>
+        <span>{threadCount} threads</span>
+        <span>{aiThreadCount} AI-reviewed</span>
+      </div>
+    </div>
+  );
+}
+
 export function InboxPage() {
   const queryClient = useQueryClient();
   const {
@@ -568,32 +844,20 @@ export function InboxPage() {
   } = useQueueDashboard();
   const syncMutation = useSyncMutation();
   const cancelSyncMutation = useCancelSyncMutation();
-  const [activeRunId, setActiveRunId] = useState<number | null>(null);
+  const [activeRunId, setActiveRunIdState] = useState<number | null>(() => {
+    const stored = sessionStorage.getItem("inter-email.active-run-id");
+    return stored ? Number(stored) : null;
+  });
+
+  const setActiveRunId = (id: number | null) => {
+    setActiveRunIdState(id);
+    if (id === null) {
+      sessionStorage.removeItem("inter-email.active-run-id");
+    } else {
+      sessionStorage.setItem("inter-email.active-run-id", String(id));
+    }
+  };
   const [isSyncSettling, setIsSyncSettling] = useState(false);
-  const [displayedProgress, setDisplayedProgress] = useState(0);
-  const [animatedPercent, setAnimatedPercent] = useState(0);
-  const animFrameRef = useRef<number | null>(null);
-  const animTargetRef = useRef(0);
-
-  useEffect(() => {
-    animTargetRef.current = displayedProgress;
-    if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
-    const tick = () => {
-      setAnimatedPercent((cur) => {
-        const target = animTargetRef.current;
-        if (cur >= target) return target;
-        const step = Math.max(1, Math.ceil((target - cur) / 8));
-        const next = Math.min(cur + step, target);
-        animFrameRef.current = requestAnimationFrame(tick);
-        return next;
-      });
-    };
-    animFrameRef.current = requestAnimationFrame(tick);
-    return () => { if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current); };
-  }, [displayedProgress]);
-
-  const [stageStartedAt, setStageStartedAt] = useState<number | null>(null);
-  const [activeStageKey, setActiveStageKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] =
     useState<PriorityFilterValue>("all");
@@ -623,90 +887,6 @@ export function InboxPage() {
   }, [syncMutation.data?.run_id]);
 
   useEffect(() => {
-    if (!syncStatus || syncStatus.status !== "running") {
-      setStageStartedAt(null);
-      setActiveStageKey(null);
-      return;
-    }
-
-    const nextStageKey = `${syncStatus.run_id}:${syncStatus.stage}`;
-    if (nextStageKey === activeStageKey) {
-      return;
-    }
-
-    setActiveStageKey(nextStageKey);
-    setStageStartedAt(Date.now());
-
-    const range = STAGE_PROGRESS_RANGES[syncStatus.stage];
-    if (range) {
-      setDisplayedProgress((current) =>
-        Math.max(current, Math.max(range.floor, syncStatus.progress_percent)),
-      );
-    }
-  }, [activeStageKey, syncStatus]);
-
-  useEffect(() => {
-    if (!syncStatus) {
-      setDisplayedProgress(0);
-      return;
-    }
-
-    if (syncStatus.status !== "running") {
-      setDisplayedProgress((current) =>
-        syncStatus.status === "completed"
-          ? Math.max(current, 100)
-          : Math.max(current, syncStatus.progress_percent || 100),
-      );
-      return;
-    }
-
-    const range = STAGE_PROGRESS_RANGES[syncStatus.stage] ?? {
-      floor: syncStatus.progress_percent,
-      cap: syncStatus.progress_percent,
-    };
-    const duration = STAGE_PROGRESS_DURATIONS_MS[syncStatus.stage] ?? 2600;
-
-    setDisplayedProgress((current) => {
-      const floor = Math.max(range.floor, syncStatus.progress_percent);
-      if (current <= 0) {
-        return floor;
-      }
-      if (current < floor) {
-        return floor;
-      }
-      if (current > range.cap) {
-        return range.cap;
-      }
-      return current;
-    });
-
-    const interval = window.setInterval(() => {
-      setDisplayedProgress((current) => {
-        const elapsed = stageStartedAt ? Date.now() - stageStartedAt : 0;
-        const timeBasedTarget =
-          range.floor +
-          Math.floor(
-            Math.min(1, elapsed / duration) * (range.cap - range.floor),
-          );
-        const backendTarget = Math.max(range.floor, fakeProgressTarget(syncStatus));
-        const target = shouldUseTimeBasedSmoothing(syncStatus.stage)
-          ? Math.min(range.cap, Math.max(timeBasedTarget, backendTarget))
-          : Math.min(range.cap, backendTarget);
-
-        if (current >= target) {
-          return current;
-        }
-
-        const remaining = target - current;
-        const step = remaining > 14 ? 2 : 1;
-        return Math.min(target, current + step);
-      });
-    }, 160);
-
-    return () => window.clearInterval(interval);
-  }, [stageStartedAt, syncStatus]);
-
-  useEffect(() => {
     if (!syncStatus || activeRunId === null) {
       return;
     }
@@ -725,11 +905,6 @@ export function InboxPage() {
 
     handledCompletionRunIdRef.current = syncStatus.run_id;
     setIsSyncSettling(true);
-    setDisplayedProgress((current) =>
-      syncStatus.status === "completed"
-        ? Math.max(current, 100)
-        : Math.max(current, syncStatus.progress_percent || 100),
-    );
 
     let cancelled = false;
 
@@ -760,10 +935,7 @@ export function InboxPage() {
       }
 
       queryClient.removeQueries({ queryKey: ["sync-run", syncStatus.run_id] });
-      setStageStartedAt(null);
-      setActiveStageKey(null);
       setActiveRunId(null);
-      setDisplayedProgress(0);
       setIsSyncSettling(false);
       handledCompletionRunIdRef.current = null;
       syncMutation.reset();
@@ -851,6 +1023,8 @@ export function InboxPage() {
     (thread) => workflowBucket(thread) === "done",
   ).length;
   const pinnedCount = filteredThreads.filter(isPinned).length;
+  const totalNewCount = queueThreads.filter((t) => t.is_new).length;
+  const acknowledgeAll = useAcknowledgeAllMutation();
 
   const showSyncProgress =
     activeRunId !== null &&
@@ -919,6 +1093,17 @@ export function InboxPage() {
               {waitingCount > 0 && <span className="inbox-header__stat inbox-header__stat--watch">{waitingCount} waiting</span>}
               {pinnedCount > 0 && <span className="inbox-header__stat inbox-header__stat--pinned">{pinnedCount} pinned</span>}
               <span className="inbox-header__stat">{queueThreads.length} total</span>
+              {totalNewCount > 0 && (
+                <button
+                  className="inbox-header__see-all"
+                  type="button"
+                  onClick={() => acknowledgeAll.mutate()}
+                  disabled={acknowledgeAll.isPending}
+                  title={`Mark all ${totalNewCount} new emails as seen`}
+                >
+                  See all ({totalNewCount} new)
+                </button>
+              )}
             </div>
           )}
           {isLoading && !data ? (
@@ -977,22 +1162,19 @@ export function InboxPage() {
           </button>
         </div>
       </div>
-      <div className="sp-divider" />
       {showSyncProgress && syncStatus ? (
-        <div className="sync-bar">
-          <div className="sync-bar__top">
-            <span className="sync-bar__label">{syncStatus.status_message || stageLabel(syncStatus.stage)}</span>
-            <span className="sync-bar__percent">{animatedPercent}%</span>
-          </div>
-          <div className="sync-bar__track" aria-hidden="true">
-            <span className="sync-bar__fill" style={{ width: `${displayedProgress}%` }} />
-          </div>
-          <div className="sync-bar__stats">
-            <span>{syncStatus.fetched_message_count} messages</span>
-            <span>{syncStatus.thread_count} threads</span>
-            <span>{syncStatus.ai_thread_count} AI-reviewed</span>
-          </div>
-        </div>
+        <>
+          <div className="sp-divider" />
+          <SyncProgressBar
+            label={syncStatus.status_message || stageLabel(syncStatus.stage)}
+            progressPercent={syncStatus.progress_percent}
+            isRunning={syncStatus.status === "running"}
+            etaSeconds={syncStatus.eta_seconds}
+            fetchedMessageCount={syncStatus.fetched_message_count}
+            threadCount={syncStatus.thread_count}
+            aiThreadCount={syncStatus.ai_thread_count}
+          />
+        </>
       ) : null}
 
       <div className="sp-divider" />

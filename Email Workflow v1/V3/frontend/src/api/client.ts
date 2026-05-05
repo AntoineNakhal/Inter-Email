@@ -76,6 +76,11 @@ export const apiClient = {
   }>(`/contacts/stats?range=${encodeURIComponent(range)}`),
   acknowledgeThread: (threadId: string) =>
     request<{ status: string }>(`/threads/${threadId}/acknowledge`, { method: "POST" }),
+  acknowledgeBatch: (threadIds: string[]) =>
+    request<{ acknowledged: number }>("/inbox/acknowledge-batch", {
+      method: "POST",
+      body: JSON.stringify({ thread_ids: threadIds }),
+    }),
   acknowledgeAll: () =>
     request<{ acknowledged: number }>("/inbox/acknowledge-all", { method: "POST" }),
   analyzeThread: (threadId: string) =>
@@ -94,6 +99,11 @@ export const apiClient = {
     request<DraftDocument | null>(`/threads/${threadId}/draft`),
   generateDraft: (threadId: string, payload: Record<string, unknown>) =>
     request<DraftDocument>(`/threads/${threadId}/draft`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  sendDraft: (threadId: string, payload: { subject: string; body: string; to: string }) =>
+    request<{ status: string; message_id: string }>(`/threads/${threadId}/draft/send`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

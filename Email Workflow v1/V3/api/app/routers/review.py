@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from api.app.dependencies.services import ServiceBundle, get_service_bundle
@@ -60,6 +61,20 @@ def acknowledge_thread(
         services.session.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "acknowledged"}
+
+
+class AcknowledgeBatchRequest(BaseModel):
+    thread_ids: list[str]
+
+
+@router.post("/inbox/acknowledge-batch")
+def acknowledge_batch(
+    payload: AcknowledgeBatchRequest,
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> dict[str, int]:
+    count = services.review_service.thread_repository.acknowledge_batch(payload.thread_ids)
+    services.session.commit()
+    return {"acknowledged": count}
 
 
 @router.post("/inbox/acknowledge-all")

@@ -13,15 +13,41 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useDraftMutation } from "../../hooks/useApi";
-import type { EmailThread } from "../../types/api";
+import { apiClient } from "../../api/client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { DraftDocument, EmailThread } from "../../types/api";
 
 type Props = { thread: EmailThread; recommended?: boolean; iconOnly?: boolean };
 
 const STAGES = ["date", "attachments", "instructions"] as const;
 type Stage = (typeof STAGES)[number];
 
+function hasDraftContent(draft: DraftDocument | null | undefined): draft is DraftDocument {
+  if (!draft) return false;
+  return draft.subject.trim().length > 0 || draft.body.trim().length > 0;
+}
+
 export function DraftComposer({ thread, recommended = false, iconOnly = false }: Props) {
   const mutation = useDraftMutation(thread.thread_id);
+  const queryClient = useQueryClient();
+  const sendMutation = useMutation({
+    mutationFn: (payload: { subject: string; body: string; to: string }) =>
+      apiClient.sendDraft(thread.thread_id, payload),
+    onSuccess: async () => {
+      close();
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["thread", thread.thread_id] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+      ]);
+    },
+  });
+
+  // Editable draft state — initialised from the generated draft.
+  const [editSubject, setEditSubject] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [confirmSkip, setConfirmSkip] = useState(false);
@@ -34,7 +60,11 @@ export function DraftComposer({ thread, recommended = false, iconOnly = false }:
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const draft = mutation.data ?? thread.latest_draft;
+  const draft = hasDraftContent(mutation.data)
+    ? mutation.data
+    : hasDraftContent(thread.latest_draft)
+      ? thread.latest_draft
+      : null;
   const analysis = thread.analysis;
 
   const stageConfig: Record<Stage, {
@@ -81,13 +111,19 @@ export function DraftComposer({ thread, recommended = false, iconOnly = false }:
   function open() {
     setCurrentStage(0);
     setConfirmSkip(false);
+    setEditSubject("");
+    setEditBody("");
+    setGenerationError(null);
+    setSendError(null);
     mutation.reset();
+    sendMutation.reset();
     setIsOpen(true);
   }
 
   function close() {
     setIsOpen(false);
     setConfirmSkip(false);
+    setGenerationError(null);
   }
 
   function tryAdvance() {
@@ -108,11 +144,37 @@ export function DraftComposer({ thread, recommended = false, iconOnly = false }:
   }
 
   function generate() {
-    mutation.mutate({
-      selected_date: selectedDate || null,
-      attachment_names: files.map((f) => f.name),
-      user_instructions: instructions,
-    });
+    setGenerationError(null);
+    mutation.mutate(
+      {
+        selected_date: selectedDate || null,
+        attachment_names: files.map((f) => f.name),
+        user_instructions: instructions,
+      },
+      {
+        onSuccess: (d) => {
+          setEditSubject(d.subject || "");
+          setEditBody(d.body || "");
+          setSendError(null);
+          if (!hasDraftContent(d)) {
+            setGenerationError("The AI returned an empty draft. Try adding clearer instructions and generate again.");
+          }
+        },
+        onError: (err) => {
+          setGenerationError(err instanceof Error ? err.message : "Draft generation failed.");
+        },
+      },
+    );
+  }
+
+  function handleSend() {
+    const to = thread.participants.find((p) => !p.includes(thread.thread_id)) ?? thread.participants[0] ?? "";
+    if (!editBody.trim()) return;
+    setSendError(null);
+    sendMutation.mutate(
+      { subject: editSubject, body: editBody, to },
+      { onError: (err) => setSendError(err instanceof Error ? err.message : "Send failed.") },
+    );
   }
 
   function mergeFiles(incoming: File[]) {
@@ -372,18 +434,46 @@ export function DraftComposer({ thread, recommended = false, iconOnly = false }:
               </div>
             )}
 
-            {/* Draft result */}
-            {draft ? (
+            {/* Draft result — editable */}
+            {draft || generationError ? (
               <div className="draft-result">
                 <div className="draft-result__header">
-                  <p className="eyebrow">Generated draft</p>
-                  <button className="button draft-result__send" type="button" disabled>
+                  <p className="eyebrow">Generated draft — edit before sending</p>
+                  <button
+                    className="button draft-result__send"
+                    type="button"
+                    onClick={handleSend}
+                    disabled={sendMutation.isPending || !editBody.trim()}
+                  >
                     <FontAwesomeIcon icon={faPaperPlane} />
-                    Send
+                    {sendMutation.isPending ? "Sending…" : "Send"}
                   </button>
                 </div>
-                <p className="draft-result__subject">{draft.subject}</p>
-                <pre className="draft-result__body">{draft.body}</pre>
+                {draft ? (
+                  <>
+                    <input
+                      className="draft-result__subject-input"
+                      value={editSubject}
+                      onChange={(e) => setEditSubject(e.target.value)}
+                      placeholder="Subject"
+                    />
+                    <textarea
+                      className="draft-result__body-edit"
+                      rows={8}
+                      value={editBody}
+                      onChange={(e) => setEditBody(e.target.value)}
+                    />
+                  </>
+                ) : null}
+                {generationError ? (
+                  <p className="draft-result__error">{generationError}</p>
+                ) : null}
+                {sendError && (
+                  <p className="draft-result__error">{sendError}</p>
+                )}
+                {sendMutation.isSuccess && (
+                  <p className="draft-result__success">Email sent successfully.</p>
+                )}
               </div>
             ) : null}
 

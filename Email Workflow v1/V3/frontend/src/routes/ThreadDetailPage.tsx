@@ -1,13 +1,22 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "../api/client";
 import { Link, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEnvelope, faSquare } from "@fortawesome/free-regular-svg-icons";
-import { faBolt, faArrowLeft, faCopy, faSquareCheck, faThumbtack, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
+import { faBolt, faArrowLeft, faCopy, faPaperPlane, faSquareCheck, faThumbtack, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
 
 import { DraftComposer } from "../features/drafts/DraftComposer";
 import { useAnalyzeMutation, usePinMutation, useSeenMutation, useThread } from "../hooks/useApi";
 import { formatDate } from "../lib/format";
 import { formatInlineText, formatMessageExcerpt } from "../lib/messageFormat";
+
+function hasDraftContent(
+  draft: { subject: string; body: string } | null | undefined,
+): draft is { subject: string; body: string } {
+  if (!draft) return false;
+  return draft.subject.trim().length > 0 || draft.body.trim().length > 0;
+}
 
 function workflowLabel(thread: {
   analysis: { needs_action_today: boolean } | null;
@@ -90,33 +99,76 @@ function MessageTimelineItem({
   );
 }
 
-function DraftBlock({ draft }: { draft: { subject: string; body: string } }) {
+function DraftBlock({
+  draft,
+  threadId,
+  participants,
+}: {
+  draft: { subject: string; body: string };
+  threadId: string;
+  participants: string[];
+}) {
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   function copy() {
-    const text = draft.body;
-    navigator.clipboard.writeText(text).then(() => {
+    navigator.clipboard.writeText(draft.body).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     });
   }
 
+  async function send() {
+    const to = participants.find((p) => p.includes("@") && !p.includes("inter-op.ca")) ?? participants[0] ?? "";
+    setSending(true);
+    setSendError(null);
+    try {
+      await apiClient.sendDraft(threadId, { subject: draft.subject, body: draft.body, to });
+      setSent(true);
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["thread", threadId] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+      ]);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Send failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="td-analysis__draft">
-      <p className="td-analysis__label">Generated draft</p>
+      <div className="td-analysis__draft-header">
+        <p className="td-analysis__label">Generated draft</p>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <button
+            className={`td-analysis__draft-copy${copied ? " td-analysis__draft-copy--copied" : ""}`}
+            type="button"
+            onClick={copy}
+            title="Copy"
+          >
+            <FontAwesomeIcon icon={faCopy} />
+          </button>
+          <button
+            className="td-analysis__draft-send"
+            type="button"
+            onClick={send}
+            disabled={sending || sent}
+            title={sent ? "Sent" : "Send via Gmail"}
+          >
+            <FontAwesomeIcon icon={faPaperPlane} />
+            {sending ? "Sending…" : sent ? "Sent ✓" : "Send"}
+          </button>
+        </div>
+      </div>
       <p className="td-analysis__draft-subject">{draft.subject}</p>
       <div className="td-analysis__draft-body-wrap">
         <pre className="td-analysis__draft-body">{draft.body}</pre>
-        <button
-          className={`td-analysis__draft-copy${copied ? " td-analysis__draft-copy--copied" : ""}`}
-          type="button"
-          onClick={copy}
-          title="Copy draft"
-          aria-label="Copy draft to clipboard"
-        >
-          <FontAwesomeIcon icon={faCopy} />
-        </button>
       </div>
+      {sendError && <p style={{ fontSize: "0.75rem", color: "var(--alert)", margin: 0 }}>{sendError}</p>}
     </div>
   );
 }
@@ -269,10 +321,10 @@ export function ThreadDetailPage() {
             </div>
           </div>
 
-          {thread.latest_draft && (
+          {hasDraftContent(thread.latest_draft) && (
             <>
               <div className="td-analysis__divider" />
-              <DraftBlock draft={thread.latest_draft} />
+              <DraftBlock draft={thread.latest_draft} threadId={thread.thread_id} participants={thread.participants} />
             </>
           )}
 

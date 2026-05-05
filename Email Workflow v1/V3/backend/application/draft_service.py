@@ -52,9 +52,17 @@ class DraftService:
         provider = self.provider_router.provider_for_task("draft_reply")
         try:
             draft = provider.draft_reply(request)
+            if not self._has_meaningful_draft(draft):
+                raise AIProviderError("Primary provider returned an empty draft.")
         except AIProviderError:
             draft = self.provider_router.fallback_provider().draft_reply(request)
+            if not self._has_meaningful_draft(draft):
+                raise AIProviderError("Draft generation returned empty content.")
         return self.draft_repository.save(external_thread_id, draft)
 
     def latest_draft(self, external_thread_id: str) -> DraftDocument | None:
         return self.draft_repository.latest_for_thread(external_thread_id)
+
+    @staticmethod
+    def _has_meaningful_draft(draft: DraftDocument) -> bool:
+        return bool(draft.subject.strip() or draft.body.strip())

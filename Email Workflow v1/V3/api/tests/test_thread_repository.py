@@ -209,3 +209,50 @@ def test_restore_threads_snapshot_restores_seen_review_and_draft() -> None:
     finally:
         session.close()
         engine.dispose()
+
+
+def test_append_outgoing_message_updates_thread_for_regeneration() -> None:
+    engine = create_engine(
+        "sqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+        class_=Session,
+    )
+    session = session_factory()
+
+    try:
+        repository = ThreadRepository(session)
+        repository.upsert_thread(_build_thread("first snippet"))
+        session.commit()
+
+        updated_thread = repository.append_outgoing_message(
+            external_thread_id="thread-1",
+            external_message_id="sent-1",
+            sender="owner@inter-op.ca",
+            recipients=["alice@example.com"],
+            subject="Re: Status update",
+            body="Thanks for the update. I replied.",
+            sent_at=datetime(2026, 4, 20, 12, 30, tzinfo=timezone.utc),
+        )
+        session.commit()
+
+        assert updated_thread.message_count == 2
+        assert updated_thread.latest_message_from_me is True
+        assert updated_thread.latest_message_from_external is False
+        assert updated_thread.waiting_on_us is False
+        assert updated_thread.analysis_status == "pending"
+        assert updated_thread.is_new is False
+        assert updated_thread.messages[-1].external_message_id == "sent-1"
+        assert updated_thread.messages[-1].cleaned_body == "Thanks for the update. I replied."
+        assert updated_thread.signature
+        assert "Thanks for the update. I replied." in updated_thread.combined_thread_text
+    finally:
+        session.close()
+        engine.dispose()

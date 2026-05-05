@@ -75,6 +75,11 @@ class _PassThroughThreadRepository:
         return None
 
 
+class _NoOpContactRepository:
+    def upsert_from_thread(self, **_kwargs) -> None:
+        return None
+
+
 def test_persist_threads_commits_after_each_thread() -> None:
     session = _CommitTrackingSession()
     service = GmailSyncService(
@@ -87,6 +92,7 @@ def test_persist_threads_commits_after_each_thread() -> None:
         queue_service=None,
         progress_store=_RecordingProgressStore(),
     )
+    service.contact_repository = _NoOpContactRepository()
 
     saved_threads = service._persist_threads_with_progress(
         run_id=1,

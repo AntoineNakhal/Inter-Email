@@ -41,6 +41,17 @@ class OpenAIProvider(AIProvider):
         self.settings = settings
 
     @staticmethod
+    def _today_block() -> str:
+        """Inject the current date so the AI never generates past-tense next actions."""
+        today = datetime.now(timezone.utc).strftime("%A, %B %d, %Y")
+        return (
+            f"TODAY: {today}. "
+            "When suggesting a next_action, never reference a date or deadline that has already passed. "
+            "If a deadline mentioned in the email is in the past, flag it as overdue in the next_action instead. "
+            "Use relative terms (today, tomorrow, this week) anchored to the date above.\n\n"
+        )
+
+    @staticmethod
     def _user_perspective_block(user_email: str | None) -> str:
         """
         Returns a short paragraph that tells the model whose inbox this is.
@@ -63,7 +74,8 @@ class OpenAIProvider(AIProvider):
         payload = self._chat_json(
             task="thread_analysis",
             system_prompt=(
-                self._user_perspective_block(request.user_email)
+                self._today_block()
+                + self._user_perspective_block(request.user_email)
                 + "You are analyzing one email thread for an internal operations queue. "
                 "Ignore email signatures, confidentiality footers, and quoted reply history. "
                 "Anchor the analysis primarily on the latest meaningful message, using earlier messages only as context. "
@@ -76,8 +88,11 @@ class OpenAIProvider(AIProvider):
                 f"{', '.join(category.value for category in TriageCategory)}. "
                 "Use only these urgency values: "
                 f"{', '.join(level.value for level in UrgencyLevel)}. "
+                "waiting_on_us must be true only when the latest message is FROM an external contact "
+                "AND they are clearly expecting a reply or action from the inbox owner. "
+                "Set it to false when the inbox owner sent the last message, or when no reply is expected. "
                 "Return strict JSON with keys: category, urgency, summary, current_status, "
-                "next_action, needs_action_today, should_draft_reply, "
+                "next_action, needs_action_today, waiting_on_us, should_draft_reply, "
                 "draft_needs_date, draft_date_reason, draft_needs_attachment, "
                 "draft_attachment_reason."
             ),
@@ -106,7 +121,8 @@ class OpenAIProvider(AIProvider):
         payload = self._chat_json(
             task="queue_summary",
             system_prompt=(
-                self._user_perspective_block(request.user_email)
+                self._today_block()
+                + self._user_perspective_block(request.user_email)
                 + "You are summarizing an internal operations email queue. "
                 "Write a concise executive_summary (2-3 sentences) of what needs attention today. "
                 "List the top 3-5 threads in top_priorities as short strings (subject: one-line reason). "
@@ -138,7 +154,8 @@ class OpenAIProvider(AIProvider):
         payload = self._chat_json(
             task="thread_verification",
             system_prompt=(
-                self._user_perspective_block(request.user_email)
+                self._today_block()
+                + self._user_perspective_block(request.user_email)
                 + "You are verifying the quality of an email-thread analysis for an internal operations queue. "
                 "Do not rewrite the analysis. Judge whether it is likely accurate and actionable based on the thread. "
                 "Pay particular attention to whether the analysis correctly identifies who SENT vs RECEIVED each message; "
@@ -283,6 +300,10 @@ class OpenAIProvider(AIProvider):
         )
         normalized["needs_action_today"] = self._normalize_bool(
             normalized.get("needs_action_today")
+        )
+        raw_wou = normalized.get("waiting_on_us")
+        normalized["waiting_on_us"] = (
+            self._normalize_bool(raw_wou) if raw_wou is not None else None
         )
         normalized["should_draft_reply"] = self._normalize_bool(
             normalized.get("should_draft_reply")

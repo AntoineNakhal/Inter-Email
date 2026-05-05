@@ -112,8 +112,9 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.FETCHING,
-                progress_percent=12,
                 status_message="Fetching recent Gmail threads.",
+                stage_unit_current=0,
+                stage_unit_total=0,
             )
             fetch_started_at = perf_counter()
             known_message_ids = self.thread_repository.get_known_message_ids()
@@ -134,9 +135,11 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.PERSISTING,
-                progress_percent=36,
                 status_message=f"Fetched {len(messages)} messages. Grouping threads.",
                 fetched_message_count=len(messages),
+                thread_count=0,
+                stage_unit_current=0,
+                stage_unit_total=len(messages),
             )
             grouping_started_at = perf_counter()
             grouped_threads = group_messages_by_thread(messages)
@@ -185,7 +188,6 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.ANALYZING,
-                progress_percent=52,
                 status_message=(
                     f"Analyzing {len(saved_threads)} threads with your local AI agent."
                     if self.runtime_settings.local_ai_enabled
@@ -194,6 +196,8 @@ class GmailSyncService:
                 fetched_message_count=len(messages),
                 thread_count=len(saved_threads),
                 ai_thread_count=ai_thread_count,
+                stage_unit_current=0,
+                stage_unit_total=len(saved_threads),
             )
             analysis_started_at = perf_counter()
             # Pull the connected mailbox owner so analysis prompts know
@@ -228,13 +232,14 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.SUMMARIZING,
-                progress_percent=90,
                 status_message="Building your queue summary.",
                 fetched_message_count=len(messages),
                 thread_count=len(analyzed_threads),
                 ai_thread_count=len(
                     [thread for thread in analyzed_threads if thread.included_in_ai]
                 ),
+                stage_unit_current=0,
+                stage_unit_total=1,
             )
             summary_started_at = perf_counter()
             queue_summary = self.queue_service.summarize_threads(analyzed_threads)
@@ -350,19 +355,18 @@ class GmailSyncService:
         ai_thread_count: int,
     ) -> None:
         if total <= 0:
-            progress_percent = 82
             status_message = "Thread analysis complete."
         else:
-            progress_percent = 52 + int((current / total) * 30)
             status_message = f"Analyzing threads ({current}/{total})."
         self.progress_store.update(
             run_id,
             stage=SyncStage.ANALYZING,
-            progress_percent=progress_percent,
             status_message=status_message,
             fetched_message_count=fetched_message_count,
             thread_count=thread_count,
             ai_thread_count=ai_thread_count,
+            stage_unit_current=current,
+            stage_unit_total=total,
         )
 
     def _persist_threads_with_progress(
@@ -380,15 +384,26 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.PERSISTING,
-                progress_percent=40,
                 status_message="No threads to save from the latest fetch.",
                 fetched_message_count=fetched_message_count,
                 thread_count=0,
                 ai_thread_count=0,
+                stage_unit_current=0,
+                stage_unit_total=0,
             )
             return []
 
         saved_threads = []
+        self.progress_store.update(
+            run_id,
+            stage=SyncStage.PERSISTING,
+            status_message=f"Saving thread 1 of {total_threads}.",
+            fetched_message_count=fetched_message_count,
+            thread_count=total_threads,
+            ai_thread_count=0,
+            stage_unit_current=0,
+            stage_unit_total=total_messages,
+        )
         for index, thread in enumerate(grouped_threads, start=1):
             self._raise_if_cancel_requested(run_id)
             thread_started_at = perf_counter()
@@ -403,14 +418,12 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.PERSISTING,
-                progress_percent=self._persistence_progress_percent(
-                    processed_messages,
-                    total_messages,
-                ),
                 status_message=f"Saving thread {index} of {total_threads}.",
                 fetched_message_count=fetched_message_count,
-                thread_count=index - 1,
+                thread_count=total_threads,
                 ai_thread_count=0,
+                stage_unit_current=processed_messages,
+                stage_unit_total=total_messages,
             )
 
             def on_message_saved(current_message: int, thread_message_total: int) -> None:
@@ -418,17 +431,15 @@ class GmailSyncService:
                 self.progress_store.update(
                     run_id,
                     stage=SyncStage.PERSISTING,
-                    progress_percent=self._persistence_progress_percent(
-                        overall_processed,
-                        total_messages,
-                    ),
                     status_message=(
                         f"Saving thread {index} of {total_threads} "
                         f"({current_message}/{thread_message_total} messages)."
                     ),
                     fetched_message_count=fetched_message_count,
-                    thread_count=index - 1,
+                    thread_count=total_threads,
                     ai_thread_count=0,
+                    stage_unit_current=overall_processed,
+                    stage_unit_total=total_messages,
                 )
 
             saved_thread = self.thread_repository.upsert_thread(
@@ -454,14 +465,12 @@ class GmailSyncService:
             self.progress_store.update(
                 run_id,
                 stage=SyncStage.PERSISTING,
-                progress_percent=self._persistence_progress_percent(
-                    processed_messages,
-                    total_messages,
-                ),
                 status_message=f"Saving threads ({index}/{total_threads}).",
                 fetched_message_count=fetched_message_count,
-                thread_count=index,
+                thread_count=total_threads,
                 ai_thread_count=0,
+                stage_unit_current=processed_messages,
+                stage_unit_total=total_messages,
             )
             elapsed = perf_counter() - thread_started_at
             log_method = logger.warning if elapsed >= 2.5 else logger.info
@@ -514,15 +523,6 @@ class GmailSyncService:
             if thread.analysis_status == AnalysisStatus.SKIPPED:
                 thread.analysis_status = AnalysisStatus.PENDING
         return grouped_threads
-
-    @staticmethod
-    def _persistence_progress_percent(
-        processed_messages: int,
-        total_messages: int,
-    ) -> int:
-        if total_messages <= 0:
-            return 40
-        return 36 + int((processed_messages / total_messages) * 22)
 
     def _raise_if_cancel_requested(self, run_id: int) -> None:
         if self.progress_store.is_cancel_requested(run_id):

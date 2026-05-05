@@ -35,6 +35,9 @@ class SyncRunSummary(BaseModel):
     source: str
     stage: SyncStage = SyncStage.QUEUED
     progress_percent: int = 0
+    stage_unit_current: int = 0
+    stage_unit_total: int = 0
+    eta_seconds: int | None = None
     status_message: str = ""
     fetched_message_count: int
     thread_count: int

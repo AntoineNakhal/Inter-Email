@@ -263,6 +263,76 @@ function QueueHealth({ threads }: { threads: EmailThread[] }) {
   );
 }
 
+function NewContactsLineChart({
+  points,
+}: {
+  points: { month: string; count: number }[];
+}) {
+  if (points.length === 0) {
+    return <p className="db-chart__empty">No data yet.</p>;
+  }
+
+  const width = 320;
+  const height = 160;
+  const paddingX = 14;
+  const paddingTop = 14;
+  const paddingBottom = 28;
+  const innerWidth = width - paddingX * 2;
+  const innerHeight = height - paddingTop - paddingBottom;
+  const max = Math.max(...points.map((point) => point.count), 1);
+  const denominator = Math.max(points.length - 1, 1);
+
+  const chartPoints = points.map((point, index) => {
+    const x = paddingX + (innerWidth * index) / denominator;
+    const y = paddingTop + innerHeight - (point.count / max) * innerHeight;
+    return { ...point, x, y };
+  });
+
+  const polylinePoints = chartPoints.map((point) => `${point.x},${point.y}`).join(" ");
+
+  return (
+    <div className="db-line-chart">
+      <svg
+        className="db-line-chart__svg"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="New emails over time"
+      >
+        <line
+          x1={paddingX}
+          y1={height - paddingBottom}
+          x2={width - paddingX}
+          y2={height - paddingBottom}
+          className="db-line-chart__axis"
+        />
+        <polyline
+          fill="none"
+          points={polylinePoints}
+          className="db-line-chart__path"
+        />
+        {chartPoints.map((point) => (
+          <circle
+            key={point.month}
+            cx={point.x}
+            cy={point.y}
+            r="3.5"
+            className="db-line-chart__point"
+          >
+            <title>{`${point.month}: ${point.count}`}</title>
+          </circle>
+        ))}
+      </svg>
+      <div className="db-line-chart__labels">
+        {points.map((point) => (
+          <span key={point.month} className="db-line-chart__label">
+            {point.month.slice(5)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 const TYPE_COLOR: Record<string, string> = {
@@ -403,30 +473,10 @@ export function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* New contacts per month */}
+                  {/* New contacts over time */}
                   <div className="db-chart">
-                    <p className="db-chart__title">New contacts / month</p>
-                    {contactStats.new_per_month.length > 0 ? (
-                      <div className="db-month-bars">
-                        {(() => {
-                          const max = Math.max(...contactStats.new_per_month.map((m) => m.count), 1);
-                          return contactStats.new_per_month.map((m) => (
-                            <div key={m.month} className="db-month-col">
-                              <div className="db-month-bar-wrap">
-                                <div
-                                  className="db-month-bar-fill"
-                                  style={{ height: `${(m.count / max) * 100}%`, background: "var(--accent)" }}
-                                  title={`${m.month}: ${m.count}`}
-                                />
-                              </div>
-                              <span className="db-month-label">{m.month.slice(5)}</span>
-                            </div>
-                          ));
-                        })()}
-                      </div>
-                    ) : (
-                      <p className="db-chart__empty">No data yet.</p>
-                    )}
+                    <p className="db-chart__title">New emails over time</p>
+                    <NewContactsLineChart points={contactStats.new_per_month} />
                   </div>
 
                   {/* Top contacts */}

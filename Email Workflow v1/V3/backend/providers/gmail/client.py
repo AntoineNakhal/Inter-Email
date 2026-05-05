@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import base64
+import email as email_lib
 import secrets
 from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any
 
 from backend.core.config import AppSettings
@@ -13,7 +16,10 @@ from backend.domain.gmail import GmailConnectionStatus
 from backend.domain.thread import InboundEmailMessage
 
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 
 
 class GmailReadonlyClient:
@@ -177,6 +183,58 @@ class GmailReadonlyClient:
         token_path = self.settings.resolved_gmail_token_path
         token_path.parent.mkdir(parents=True, exist_ok=True)
         token_path.write_text(flow.credentials.to_json(), encoding="utf-8")
+
+    def get_signature(self) -> str:
+        """Return the HTML signature of the default send-as address, or empty string."""
+        try:
+            service = self._build_service()
+            result = service.users().settings().sendAs().list(userId="me").execute()
+            send_as_list = result.get("sendAs", [])
+            default = next((s for s in send_as_list if s.get("isDefault")), None)
+            if default is None and send_as_list:
+                default = send_as_list[0]
+            return default.get("signature", "") if default else ""
+        except Exception:
+            return ""
+
+    def send_reply(
+        self,
+        thread_id: str,
+        to: str,
+        subject: str,
+        body: str,
+        signature_html: str = "",
+    ) -> str:
+        """Send an email reply in the given Gmail thread. Returns the sent message ID."""
+        service = self._build_service()
+        sender_email = self.get_profile_email() or "me"
+
+        # Build a plain-text + HTML multipart message.
+        msg = MIMEMultipart("alternative")
+        msg["To"] = to
+        msg["From"] = sender_email
+        msg["Subject"] = subject
+
+        # Plain text — strip signature HTML for the text part.
+        plain_body = body.strip()
+        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+
+        # HTML part — append signature if available.
+        body_html = plain_body.replace("\n", "<br>")
+        if signature_html:
+            full_html = f"<div>{body_html}</div><br><div class='gmail_signature'>{signature_html}</div>"
+        else:
+            full_html = f"<div>{body_html}</div>"
+        msg.attach(MIMEText(full_html, "html", "utf-8"))
+
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        sent = (
+            service.users()
+            .messages()
+            .send(userId="me", body={"raw": raw, "threadId": thread_id})
+            .execute()
+        )
+        return sent.get("id", "")
 
     def get_profile_email(self) -> str | None:
         service = self._build_service()

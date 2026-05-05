@@ -295,6 +295,9 @@ class ThreadRepository:
         model.analysis.current_status = analysis.current_status
         model.analysis.next_action = analysis.next_action
         model.analysis.needs_action_today = analysis.needs_action_today
+        # Let Claude override the heuristic waiting_on_us when it has an opinion.
+        if analysis.waiting_on_us is not None:
+            model.waiting_on_us = analysis.waiting_on_us
         model.analysis.should_draft_reply = analysis.should_draft_reply
         model.analysis.draft_needs_date = analysis.draft_needs_date
         model.analysis.draft_date_reason = analysis.draft_date_reason
@@ -356,6 +359,82 @@ class ThreadRepository:
             raise last_error
         raise RuntimeError("mark_seen retry loop ended unexpectedly")
 
+    def clear_draft(self, external_thread_id: str) -> None:
+        """Delete the stored draft for a thread after it has been sent."""
+        self._ensure_schema()
+        model = self._require_thread_model(external_thread_id)
+        model.drafts.clear()
+        self.session.flush()
+
+    def append_outgoing_message(
+        self,
+        external_thread_id: str,
+        external_message_id: str,
+        sender: str,
+        recipients: list[str],
+        subject: str,
+        body: str,
+        sent_at: datetime | None = None,
+    ) -> EmailThread:
+        self._ensure_schema()
+        model = self._require_thread_model(external_thread_id)
+        normalized_message_id = str(external_message_id or "").strip()
+        if not normalized_message_id:
+            raise ValueError("Outgoing message ID is required.")
+
+        message_model = self.session.scalar(
+            select(ThreadMessageModel).where(
+                ThreadMessageModel.external_message_id == normalized_message_id
+            )
+        )
+        if message_model is None:
+            message_model = ThreadMessageModel(external_message_id=normalized_message_id)
+            model.messages.append(message_model)
+        elif message_model.thread is not model:
+            previous_thread = message_model.thread
+            model.messages.append(message_model)
+            if previous_thread is not None and not previous_thread.messages:
+                self.session.delete(previous_thread)
+
+        normalized_body = body.strip()
+        effective_sent_at = sent_at or datetime.now(timezone.utc)
+        message_model.sender = sender
+        message_model.recipients_json = json.dumps(recipients, ensure_ascii=False)
+        message_model.subject = subject
+        message_model.sent_at = effective_sent_at
+        message_model.snippet = normalized_body[:240]
+        message_model.cleaned_body = normalized_body
+        message_model.label_ids_json = json.dumps(["SENT"], ensure_ascii=False)
+
+        model.subject = subject or model.subject
+        current_participants = set(_load_json_list(model.participants_json))
+        current_participants.add(sender)
+        current_participants.update(recipients)
+        model.participants_json = json.dumps(sorted(current_participants), ensure_ascii=False)
+        model.message_count = len(model.messages)
+        model.latest_message_date = effective_sent_at
+        model.latest_message_from_me = True
+        model.latest_message_from_external = False
+        model.latest_message_has_question = "?" in f"{subject}\n{normalized_body}"
+        model.latest_message_has_action_request = False
+        model.waiting_on_us = False
+        model.analysis_status = AnalysisStatus.PENDING.value
+        model.last_synced_at = datetime.now(timezone.utc)
+        model.last_analyzed_at = None
+        model.is_new = False
+
+        domain = self._to_domain(model)
+        model.combined_thread_text = "\n\n".join(
+            part.strip()
+            for part in [domain.combined_thread_text, normalized_body]
+            if part and part.strip()
+        )
+        refreshed_domain = self._to_domain(model)
+        model.signature = refreshed_domain.compute_signature()
+
+        self.session.flush()
+        return self.get_thread(external_thread_id) or self._to_domain(model)
+
     def acknowledge(self, external_thread_id: str) -> EmailThread:
         """Mark a thread as seen (new notification cleared). Separate from done."""
         self._ensure_schema()
@@ -363,6 +442,22 @@ class ThreadRepository:
         model.is_new = False
         self.session.flush()
         return self.get_thread(external_thread_id) or self._to_domain(model)
+
+    def acknowledge_batch(self, external_thread_ids: list[str]) -> int:
+        """Clear is_new for a specific set of threads."""
+        self._ensure_schema()
+        if not external_thread_ids:
+            return 0
+        models = self.session.scalars(
+            select(EmailThreadModel).where(
+                EmailThreadModel.external_thread_id.in_(external_thread_ids),
+                EmailThreadModel.is_new == True,  # noqa: E712
+            )
+        ).all()
+        for m in models:
+            m.is_new = False
+        self.session.flush()
+        return len(models)
 
     def acknowledge_all(self) -> int:
         """Clear is_new on all threads. Returns number of threads acknowledged."""

@@ -22,6 +22,9 @@ class SyncStatusResponse(BaseModel):
     source: str
     stage: str
     progress_percent: int
+    stage_unit_current: int
+    stage_unit_total: int
+    eta_seconds: int | None = None
     status_message: str
     fetched_message_count: int
     thread_count: int
@@ -39,6 +42,9 @@ class SyncStatusResponse(BaseModel):
             source=result.source,
             stage=result.stage.value,
             progress_percent=result.progress_percent,
+            stage_unit_current=result.stage_unit_current,
+            stage_unit_total=result.stage_unit_total,
+            eta_seconds=result.eta_seconds,
             status_message=result.status_message,
             fetched_message_count=result.fetched_message_count,
             thread_count=result.thread_count,
@@ -65,6 +71,9 @@ class SyncResponse(SyncStatusResponse):
             source=result.source,
             stage=result.stage.value,
             progress_percent=result.progress_percent,
+            stage_unit_current=result.stage_unit_current,
+            stage_unit_total=result.stage_unit_total,
+            eta_seconds=result.eta_seconds,
             status_message=result.status_message,
             fetched_message_count=result.fetched_message_count,
             thread_count=result.thread_count,

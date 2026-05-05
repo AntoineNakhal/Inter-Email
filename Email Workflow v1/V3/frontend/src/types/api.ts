@@ -74,6 +74,8 @@ export type EmailThread = {
   latest_message_date: string | null;
   security_status: string;
   sensitivity_markers: string[];
+  latest_message_from_me: boolean;
+  latest_message_from_external: boolean;
   waiting_on_us: boolean;
   resolved_or_closed: boolean;
   relevance_score: number | null;
@@ -115,6 +117,9 @@ export type SyncRunStatus = {
   source: string;
   stage: string;
   progress_percent: number;
+  stage_unit_current: number;
+  stage_unit_total: number;
+  eta_seconds: number | null;
   status_message: string;
   fetched_message_count: number;
   thread_count: number;

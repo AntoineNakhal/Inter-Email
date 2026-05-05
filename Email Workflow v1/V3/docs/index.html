@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inter-Email V3 — Documentation Home</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121933;
+    --panel-2: #182246;
+    --text: #eaf0ff;
+    --muted: #aeb8d6;
+    --accent: #6ea8fe;
+    --accent-2: #8ef0c5;
+    --accent-3: #c9a7ff;
+    --line: #2a376b;
+    --warn: #ffd479;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, #0b1020 0%, #111933 100%);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ── Starfield ── */
+  .stars {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    overflow: hidden;
+  }
+  .star {
+    position: absolute;
+    width: 2px; height: 2px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.6);
+    animation: twinkle var(--d, 3s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+  }
+  @keyframes twinkle {
+    0%,100% { opacity: 0.2; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.4); }
+  }
+
+  /* ── Layout ── */
+  .page {
+    position: relative; z-index: 1;
+    max-width: 960px; margin: 0 auto;
+    padding: 5rem 2rem 6rem;
+    display: flex; flex-direction: column; align-items: center; gap: 4rem;
+  }
+
+  /* ── Hero ── */
+  .hero { text-align: center; }
+
+  .logo {
+    display: inline-flex; align-items: center; gap: 12px;
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 16px; margin-bottom: 2rem;
+    background: rgba(110,168,254,0.06);
+  }
+  .logo-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.7)} }
+
+  h1 {
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    font-weight: 800; letter-spacing: -0.04em; line-height: 1.1;
+    background: linear-gradient(135deg, var(--text) 30%, var(--accent) 70%, var(--accent-2) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1.25rem;
+  }
+
+  .hero-desc {
+    font-size: 1.05rem; color: var(--muted);
+    max-width: 56ch; margin: 0 auto 2rem;
+    line-height: 1.7;
+  }
+
+  .chips {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    margin-bottom: 3rem;
+  }
+  .chip {
+    font-size: 0.75rem; font-weight: 600; padding: 4px 12px;
+    border-radius: 999px; border: 1px solid var(--line);
+    background: rgba(255,255,255,0.04); color: var(--muted);
+  }
+  .chip.blue  { border-color: rgba(110,168,254,.4); color: var(--accent); background: rgba(110,168,254,.08); }
+  .chip.green { border-color: rgba(142,240,197,.4); color: var(--accent-2); background: rgba(142,240,197,.08); }
+  .chip.purple{ border-color: rgba(201,167,255,.4); color: var(--accent-3); background: rgba(201,167,255,.08); }
+
+  /* ── Cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem; width: 100%;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 1.75rem;
+    text-decoration: none; color: inherit;
+    display: flex; flex-direction: column; gap: 0.75rem;
+    transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+    position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at 30% 20%, rgba(110,168,254,0.08), transparent 60%);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+  .card:hover::before { opacity: 1; }
+
+  .card--green:hover { border-color: var(--accent-2); }
+  .card--green::before { background: radial-gradient(circle at 30% 20%, rgba(142,240,197,0.08), transparent 60%); }
+  .card--purple:hover { border-color: var(--accent-3); }
+  .card--purple::before { background: radial-gradient(circle at 30% 20%, rgba(201,167,255,0.08), transparent 60%); }
+
+  .card-icon { font-size: 2rem; }
+  .card-label {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .card--green .card-label { color: var(--accent-2); }
+  .card--purple .card-label { color: var(--accent-3); }
+
+  .card-title { font-size: 1.2rem; font-weight: 700; color: var(--text); }
+  .card-desc { font-size: 0.88rem; color: var(--muted); line-height: 1.6; flex: 1; }
+  .card-arrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.8rem; font-weight: 600; color: var(--accent);
+    margin-top: 0.5rem;
+  }
+  .card--green .card-arrow { color: var(--accent-2); }
+  .card--purple .card-arrow { color: var(--accent-3); }
+
+  /* ── Stats strip ── */
+  .stats {
+    display: flex; gap: 2rem; flex-wrap: wrap; justify-content: center;
+    width: 100%; padding: 1.5rem 2rem;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 20px;
+  }
+  .stat { text-align: center; }
+  .stat-val {
+    font-size: 1.8rem; font-weight: 800; letter-spacing: -0.04em;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Feature list ── */
+  .features {
+    width: 100%;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem;
+  }
+  .feat {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 0.8rem 1rem; border-radius: 12px;
+    background: rgba(255,255,255,0.03); border: 1px solid var(--line);
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .feat-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Section heading ── */
+  .section-head { text-align: center; width: 100%; }
+  .section-head h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.4rem; }
+  .section-head p { color: var(--muted); font-size: 0.9rem; }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center; color: var(--muted);
+    font-size: 0.8rem; padding: 1rem 0 3rem;
+    position: relative; z-index: 1;
+  }
+
+  @media (max-width: 600px) {
+    .features { grid-template-columns: 1fr; }
+    .stats { gap: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Starfield -->
+<div class="stars" id="stars"></div>
+
+<div class="page">
+
+  <!-- ── Hero ── -->
+  <div class="hero">
+    <div class="logo">
+      <span class="logo-dot"></span>
+      Inter-Op Internal Tool
+    </div>
+    <h1>Inter-Email V3</h1>
+    <p class="hero-desc">
+      An AI-powered email triage and workflow tool. Connects to Gmail, analyzes threads with Claude,
+      surfaces prioritized next actions, and lets you draft and send replies — all from one clean interface.
+    </p>
+    <div class="chips">
+      <span class="chip blue">Claude Haiku</span>
+      <span class="chip">OpenAI Fallback</span>
+      <span class="chip">Ollama Local</span>
+      <span class="chip green">FastAPI</span>
+      <span class="chip">React 18</span>
+      <span class="chip">SQLite</span>
+      <span class="chip purple">Gmail API</span>
+    </div>
+  </div>
+
+  <!-- ── Stats ── -->
+  <div class="stats">
+    <div class="stat"><p class="stat-val">6</p><p class="stat-label">App pages</p></div>
+    <div class="stat"><p class="stat-val">20+</p><p class="stat-label">API endpoints</p></div>
+    <div class="stat"><p class="stat-val">3</p><p class="stat-label">AI providers</p></div>
+    <div class="stat"><p class="stat-val">8</p><p class="stat-label">DB tables</p></div>
+    <div class="stat"><p class="stat-val">100%</p><p class="stat-label">Optimistic UI</p></div>
+  </div>
+
+  <!-- ── Documentation links ── -->
+  <div style="width:100%">
+    <div class="section-head" style="margin-bottom:1.25rem">
+      <h2>Documentation</h2>
+      <p>Architecture specs, workflow diagrams, API reference, and feature inventory.</p>
+    </div>
+    <div class="cards">
+      <a href="inter_email_v_3_documentation.html" class="card">
+        <span class="card-icon">📐</span>
+        <span class="card-label">V3 Architecture</span>
+        <span class="card-title">Inter-Email V3 — Docs</span>
+        <span class="card-desc">Full architecture spec: layered design, sync flow diagram, AI provider layer, database schema, build status, risks, and the complete feature inventory built in this session.</span>
+        <span class="card-arrow">Open docs →</span>
+      </a>
+
+      <a href="inter_email_v_3_documentation.html#workflow" class="card card--green">
+        <span class="card-icon">▶️</span>
+        <span class="card-label">User Workflow</span>
+        <span class="card-title">Animated step-by-step</span>
+        <span class="card-desc">See the full user journey animated: Gmail connect → AI analysis → inbox sections → thread detail → draft & send → dashboard. Each step reveals on scroll.</span>
+        <span class="card-arrow">View workflow →</span>
+      </a>
+
+      <a href="inter_email_v_3_documentation.html#new-features" class="card card--purple">
+        <span class="card-icon">✨</span>
+        <span class="card-label">Feature Inventory</span>
+        <span class="card-title">What was built</span>
+        <span class="card-desc">Complete list of all features added: notification system, Seen/Done/Pin separation, Claude AI, draft & send, contacts table, dashboard charts, UI overhaul, and more.</span>
+        <span class="card-arrow">See features →</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- ── Key features ── -->
+  <div style="width:100%">
+    <div class="section-head" style="margin-bottom:1.25rem">
+      <h2>What's inside</h2>
+      <p>Everything built end-to-end in V3.</p>
+    </div>
+    <div class="features">
+      <div class="feat"><span class="feat-icon">📥</span>Gmail sync with dedup &amp; draft exclusion</div>
+      <div class="feat"><span class="feat-icon">🤖</span>Claude Haiku — 3-call AI pipeline per thread</div>
+      <div class="feat"><span class="feat-icon">📅</span>Today-aware prompts — no stale next actions</div>
+      <div class="feat"><span class="feat-icon">🔔</span>New email badges — per section &amp; nav dot</div>
+      <div class="feat"><span class="feat-icon">📌</span>Pin / Done / Seen — three separate states</div>
+      <div class="feat"><span class="feat-icon">📊</span>Dashboard with charts &amp; category spotlight</div>
+      <div class="feat"><span class="feat-icon">✍️</span>Draft wizard → editable → send via Gmail</div>
+      <div class="feat"><span class="feat-icon">✉️</span>Auto Gmail signature on send</div>
+      <div class="feat"><span class="feat-icon">👥</span>Contacts table — auto-classified by domain</div>
+      <div class="feat"><span class="feat-icon">🔍</span>Thread detail 2-column layout</div>
+      <div class="feat"><span class="feat-icon">⚡</span>Optimistic UI — every mutation instant</div>
+      <div class="feat"><span class="feat-icon">🔧</span>Provider-agnostic AI routing (Claude / OpenAI / Ollama)</div>
+    </div>
+  </div>
+
+</div>
+
+<footer>Inter-Op · Inter-Email V3 · May 2026</footer>
+
+<script>
+  // Generate starfield
+  const container = document.getElementById('stars');
+  for (let i = 0; i < 80; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top  = Math.random() * 100 + '%';
+    s.style.setProperty('--d', (2 + Math.random() * 4) + 's');
+    s.style.setProperty('--delay', (Math.random() * 4) + 's');
+    s.style.opacity = Math.random() * 0.6 + 0.1;
+    container.appendChild(s);
+  }
+</script>
+</body>
+</html>

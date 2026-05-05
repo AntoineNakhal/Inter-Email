@@ -10,6 +10,7 @@ import { useGmailConnectionStatus } from "../hooks/useApi";
 // and let CSS transition handle the slide. Vertical instead of
 // horizontal because the sidebar is a column.
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
+  { to: "/home", label: "Home" },
   { to: "/inbox", label: "Inbox" },
   { to: "/dashboard", label: "Dashboard" },
   { to: "/review", label: "Review" },
