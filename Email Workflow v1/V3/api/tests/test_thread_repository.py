@@ -15,6 +15,7 @@ from backend.domain.thread import (
 )
 from backend.persistence.models import Base
 from backend.persistence.models.thread import EmailThreadModel, ThreadMessageModel
+from backend.persistence.models.user import UserModel
 from backend.persistence.repositories.thread_repository import ThreadRepository
 
 
@@ -63,7 +64,8 @@ def test_upsert_thread_updates_existing_messages_without_duplicates() -> None:
     session = session_factory()
 
     try:
-        repository = ThreadRepository(session)
+        user_id = _create_user(session)
+        repository = ThreadRepository(session, user_id)
         repository.upsert_thread(_build_thread("first snippet"))
         session.commit()
 
@@ -101,7 +103,8 @@ def test_upsert_thread_reuses_existing_message_from_previous_thread_group() -> N
     session = session_factory()
 
     try:
-        repository = ThreadRepository(session)
+        user_id = _create_user(session)
+        repository = ThreadRepository(session, user_id)
         repository.upsert_thread(
             _build_thread(
                 "first grouping",
@@ -153,7 +156,8 @@ def test_restore_threads_snapshot_restores_seen_review_and_draft() -> None:
     session = session_factory()
 
     try:
-        repository = ThreadRepository(session)
+        user_id = _create_user(session)
+        repository = ThreadRepository(session, user_id)
         snapshot_thread = _build_thread(
             "snapshot snippet",
             thread_id="thread-snapshot",
@@ -230,7 +234,8 @@ def test_append_outgoing_message_updates_thread_for_regeneration() -> None:
     session = session_factory()
 
     try:
-        repository = ThreadRepository(session)
+        user_id = _create_user(session)
+        repository = ThreadRepository(session, user_id)
         repository.upsert_thread(_build_thread("first snippet"))
         session.commit()
 
@@ -258,3 +263,14 @@ def test_append_outgoing_message_updates_thread_for_regeneration() -> None:
     finally:
         session.close()
         engine.dispose()
+
+
+def _create_user(session: Session) -> int:
+    user = UserModel(
+        email="owner@example.com",
+        display_name="Owner",
+        role="admin",
+    )
+    session.add(user)
+    session.flush()
+    return user.id

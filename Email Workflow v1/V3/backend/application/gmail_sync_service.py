@@ -19,6 +19,7 @@ from backend.domain.thread import (
     RelevanceBucket,
     SecurityStatus,
 )
+from backend.persistence.repositories.eta_progress_repository import EtaProgressRepository
 from backend.persistence.repositories.contact_repository import ContactRepository
 from backend.persistence.repositories.sync_repository import SyncRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
@@ -46,6 +47,7 @@ class GmailSyncService:
         analysis_service: ThreadAnalysisService,
         queue_service: QueueService,
         progress_store: SyncProgressStore,
+        eta_progress_repository: EtaProgressRepository,
     ) -> None:
         self.session = session
         self.runtime_settings = runtime_settings
@@ -55,7 +57,14 @@ class GmailSyncService:
         self.analysis_service = analysis_service
         self.queue_service = queue_service
         self.progress_store = progress_store
-        self.contact_repository = ContactRepository(session)
+        self.eta_progress_repository = eta_progress_repository
+        self.contact_repository = (
+            ContactRepository(session, thread_repository.user_id)
+            if session is not None
+            and thread_repository is not None
+            and hasattr(thread_repository, "user_id")
+            else None
+        )
 
     def create_run(self, source: str) -> SyncRunSummary:
         mailbox = self.runtime_settings.gmail_mailbox_email.strip().lower()
@@ -73,7 +82,18 @@ class GmailSyncService:
 
         run = self.sync_repository.start_run(source, mailbox_account=mailbox)
         self.session.commit()
-        return self.progress_store.start(run.id, source)
+        summary = self.progress_store.start(run.id, source)
+        self.eta_progress_repository.update_sync_phase(
+            run_id=run.id,
+            stage=summary.stage,
+            status=summary.status,
+            eta_seconds=summary.eta_seconds,
+            progress_current=summary.stage_unit_current,
+            progress_total=summary.stage_unit_total,
+            status_message=summary.status_message,
+        )
+        self.session.commit()
+        return summary
 
     def get_run_status(self, run_id: int) -> SyncRunSummary | None:
         # When Arq is active the worker updates the DB but has its own
@@ -283,7 +303,10 @@ class GmailSyncService:
                 from backend.persistence.repositories.runtime_settings_repository import (
                     RuntimeSettingsRepository,
                 )
-                RuntimeSettingsRepository(self.session).update_gmail_history_id(
+                RuntimeSettingsRepository(
+                    self.session,
+                    self.thread_repository.user_id,
+                ).update_gmail_history_id(
                     new_history_id
                 )
                 self.session.commit()
@@ -343,13 +366,14 @@ class GmailSyncService:
             )
             analyzed_threads = self.analysis_service.analyze_threads_with_progress(
                 saved_threads,
-                progress_callback=lambda current, total, _: self._update_analysis_progress(
+                progress_callback=lambda current, total, thread: self._update_analysis_progress(
                     run_id=run_id,
                     current=current,
                     total=total,
                     fetched_message_count=len(messages),
                     thread_count=len(saved_threads),
                     ai_thread_count=ai_thread_count,
+                    external_thread_id=thread.external_thread_id,
                 ),
                 persist_callback=lambda _thread: self.session.commit(),
                 should_cancel=lambda: self.progress_store.is_cancel_requested(run_id),
@@ -398,6 +422,15 @@ class GmailSyncService:
             result.stage = SyncStage.COMPLETED
             result.progress_percent = 100
             result.completed_at = datetime.now(timezone.utc)
+            self.eta_progress_repository.update_sync_phase(
+                run_id=run_id,
+                stage=SyncStage.COMPLETED,
+                status=SyncStatus.COMPLETED,
+                eta_seconds=0,
+                progress_current=result.thread_count,
+                progress_total=result.thread_count,
+                status_message=result.status_message,
+            )
             self.session.commit()
             logger.info(
                 "Sync run %s completed in %.2fs",
@@ -424,6 +457,15 @@ class GmailSyncService:
                 "Inbox refresh cancelled. Restored the previous local inbox."
             )
             cancelled_run.completed_at = datetime.now(timezone.utc)
+            self.eta_progress_repository.update_sync_phase(
+                run_id=run_id,
+                stage=SyncStage.CANCELLED,
+                status=SyncStatus.CANCELLED,
+                eta_seconds=0,
+                progress_current=0,
+                progress_total=0,
+                status_message=cancelled_run.status_message,
+            )
             self.session.commit()
             logger.info("Sync run %s cancelled and previous snapshot restored", run_id)
             return self.progress_store.cancel(
@@ -446,6 +488,15 @@ class GmailSyncService:
                         thread_count=analyzed_thread_count or persisted_thread_count,
                         ai_thread_count=ai_thread_count,
                         error_message=str(exc),
+                    )
+                    self.eta_progress_repository.update_sync_phase(
+                        run_id=run_id,
+                        stage=SyncStage.FAILED,
+                        status=SyncStatus.FAILED,
+                        eta_seconds=0,
+                        progress_current=0,
+                        progress_total=0,
+                        status_message="Inbox refresh failed.",
                     )
                     self.session.commit()
                 else:
@@ -489,6 +540,7 @@ class GmailSyncService:
         fetched_message_count: int,
         thread_count: int,
         ai_thread_count: int,
+        external_thread_id: str | None = None,
     ) -> None:
         if total <= 0:
             status_message = "Thread analysis complete."
@@ -508,6 +560,15 @@ class GmailSyncService:
         # when Arq is active) sees live per-thread progress, not just stage transitions.
         if summary:
             self._persist_stage_progress(run_id, summary)
+            if external_thread_id:
+                self.eta_progress_repository.update_thread_analysis(
+                    run_id=run_id,
+                    external_thread_id=external_thread_id,
+                    eta_seconds=summary.eta_seconds,
+                    progress_current=current,
+                    progress_total=total,
+                    status="running" if current < total else "completed",
+                )
 
     def _persist_threads_with_progress(
         self,
@@ -589,15 +650,16 @@ class GmailSyncService:
             saved_threads.append(saved_thread)
 
             # Upsert contact personas from this thread's participants.
-            for message in thread.messages:
-                recipients = message.recipients if hasattr(message, "recipients") else []
-                self.contact_repository.upsert_from_thread(
-                    external_thread_id=thread.external_thread_id,
-                    sender_raw=message.sender or "",
-                    recipient_raws=recipients,
-                    thread_date=message.sent_at,
-                    ai_category=saved_thread.analysis.category.value if saved_thread.analysis else None,
-                )
+            if self.contact_repository is not None:
+                for message in thread.messages:
+                    recipients = message.recipients if hasattr(message, "recipients") else []
+                    self.contact_repository.upsert_from_thread(
+                        external_thread_id=thread.external_thread_id,
+                        sender_raw=message.sender or "",
+                        recipient_raws=recipients,
+                        thread_date=message.sent_at,
+                        ai_category=saved_thread.analysis.category.value if saved_thread.analysis else None,
+                    )
 
             self.session.commit()
             self._raise_if_cancel_requested(run_id)
@@ -713,7 +775,10 @@ class GmailSyncService:
         if not topic:
             return
 
-        settings_repo = RuntimeSettingsRepository(self.session)
+        settings_repo = RuntimeSettingsRepository(
+            self.session,
+            self.thread_repository.user_id,
+        )
         current = settings_repo.get()
         now = datetime.now(timezone.utc)
         expiry = current.gmail_watch_expiry
@@ -755,6 +820,15 @@ class GmailSyncService:
                 stage_unit_total=summary.stage_unit_total,
                 status_message=summary.status_message,
                 eta_seconds=summary.eta_seconds,
+            )
+            self.eta_progress_repository.update_sync_phase(
+                run_id=run_id,
+                stage=summary.stage,
+                status=summary.status,
+                eta_seconds=summary.eta_seconds,
+                progress_current=summary.stage_unit_current,
+                progress_total=summary.stage_unit_total,
+                status_message=summary.status_message,
             )
             self.session.commit()
         except Exception:

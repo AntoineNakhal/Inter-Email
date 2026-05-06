@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
+from dotenv import load_dotenv
 
 
 class AppSettings(BaseModel):
@@ -118,6 +119,23 @@ class AppSettings(BaseModel):
         "",
         alias="GMAIL_PUBSUB_VERIFICATION_TOKEN",
     )
+    auth_allowed_emails: str = Field("", alias="AUTH_ALLOWED_EMAILS")
+    auth_admin_emails: str = Field("", alias="AUTH_ADMIN_EMAILS")
+    auth_jwt_secret: str = Field("", alias="AUTH_JWT_SECRET")
+    auth_token_encryption_key: str = Field(
+        "",
+        alias="AUTH_TOKEN_ENCRYPTION_KEY",
+    )
+    auth_access_token_minutes: int = Field(
+        15,
+        alias="AUTH_ACCESS_TOKEN_MINUTES",
+    )
+    auth_refresh_token_days: int = Field(
+        30,
+        alias="AUTH_REFRESH_TOKEN_DAYS",
+    )
+    auth_cookie_domain: str = Field("", alias="AUTH_COOKIE_DOMAIN")
+    auth_cookie_secure: bool = Field(False, alias="AUTH_COOKIE_SECURE")
 
     app_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
 
@@ -138,6 +156,26 @@ class AppSettings(BaseModel):
         except (TypeError, ValueError):
             return 8000
         return max(1, parsed)
+
+    @field_validator(
+        "auth_access_token_minutes",
+        "auth_refresh_token_days",
+        mode="before",
+    )
+    @classmethod
+    def validate_positive_int(cls, value: int | str) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 1
+        return max(1, parsed)
+
+    @field_validator("auth_cookie_secure", mode="before")
+    @classmethod
+    def validate_bool(cls, value: bool | str) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
     @property
     def resolved_cache_dir(self) -> Path:
@@ -175,6 +213,14 @@ class AppSettings(BaseModel):
             seen.add(normalized)
             deduped.append(candidate)
         return deduped
+
+    @property
+    def parsed_auth_allowed_emails(self) -> set[str]:
+        return _parse_csv_emails(self.auth_allowed_emails)
+
+    @property
+    def parsed_auth_admin_emails(self) -> set[str]:
+        return _parse_csv_emails(self.auth_admin_emails)
 
     def provider_for_task(self, task: str) -> str:
         normalized = str(task or "").strip().lower()
@@ -227,6 +273,9 @@ class AppSettings(BaseModel):
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     """Build settings from environment variables once per process."""
+
+    project_root = Path(__file__).resolve().parents[2]
+    load_dotenv(project_root / ".env", override=False)
 
     raw_values = {
         "APP_ENV": os.getenv("APP_ENV", "local"),
@@ -298,5 +347,21 @@ def get_settings() -> AppSettings:
         "GMAIL_PUBSUB_VERIFICATION_TOKEN": os.getenv(
             "GMAIL_PUBSUB_VERIFICATION_TOKEN", ""
         ),
+        "AUTH_ALLOWED_EMAILS": os.getenv("AUTH_ALLOWED_EMAILS", ""),
+        "AUTH_ADMIN_EMAILS": os.getenv("AUTH_ADMIN_EMAILS", ""),
+        "AUTH_JWT_SECRET": os.getenv("AUTH_JWT_SECRET", ""),
+        "AUTH_TOKEN_ENCRYPTION_KEY": os.getenv("AUTH_TOKEN_ENCRYPTION_KEY", ""),
+        "AUTH_ACCESS_TOKEN_MINUTES": os.getenv("AUTH_ACCESS_TOKEN_MINUTES", "15"),
+        "AUTH_REFRESH_TOKEN_DAYS": os.getenv("AUTH_REFRESH_TOKEN_DAYS", "30"),
+        "AUTH_COOKIE_DOMAIN": os.getenv("AUTH_COOKIE_DOMAIN", ""),
+        "AUTH_COOKIE_SECURE": os.getenv("AUTH_COOKIE_SECURE", "false"),
     }
     return AppSettings.model_validate(raw_values)
+
+
+def _parse_csv_emails(raw: str) -> set[str]:
+    return {
+        part.strip().lower()
+        for part in str(raw or "").split(",")
+        if part.strip()
+    }

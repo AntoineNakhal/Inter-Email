@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import email as email_lib
 import logging
+import json
 import secrets
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -31,6 +33,9 @@ class HistoryExpiredError(Exception):
 
 
 SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
@@ -47,8 +52,16 @@ class GmailReadonlyClient:
         "received": "-in:sent -in:draft",
     }
 
-    def __init__(self, settings: AppSettings) -> None:
+    def __init__(
+        self,
+        settings: AppSettings,
+        *,
+        credentials_json: str | None = None,
+        persist_credentials: Callable[[str], None] | None = None,
+    ) -> None:
         self.settings = settings
+        self.credentials_json = credentials_json
+        self.persist_credentials = persist_credentials
 
     def list_recent_messages(
         self,
@@ -134,7 +147,11 @@ class GmailReadonlyClient:
 
     def get_connection_status(self, connect_url: str | None = None) -> GmailConnectionStatus:
         credentials_path = self.settings.resolved_gmail_credentials_path
-        token_path = self._resolve_existing_token_path() or self.settings.resolved_gmail_token_path
+        token_path = (
+            "database"
+            if self.credentials_json
+            else self._resolve_existing_token_path() or self.settings.resolved_gmail_token_path
+        )
         status = GmailConnectionStatus(
             credentials_configured=credentials_path.exists(),
             connected=False,
@@ -188,16 +205,22 @@ class GmailReadonlyClient:
         state: str,
         code: str,
         code_verifier: str,
-    ) -> None:
+    ) -> str:
         flow = self._build_flow(
             redirect_uri=redirect_uri,
             state=state,
             code_verifier=code_verifier,
         )
         flow.fetch_token(code=code)
-        token_path = self.settings.resolved_gmail_token_path
-        token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(flow.credentials.to_json(), encoding="utf-8")
+        credentials_json = flow.credentials.to_json()
+        self.credentials_json = credentials_json
+        if self.persist_credentials is not None:
+            self.persist_credentials(credentials_json)
+        else:
+            token_path = self.settings.resolved_gmail_token_path
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            token_path.write_text(credentials_json, encoding="utf-8")
+        return credentials_json
 
     def get_signature(self) -> str:
         """Return the HTML signature of the default send-as address, or empty string."""
@@ -482,18 +505,30 @@ class GmailReadonlyClient:
                 f"Expected: {credentials_path}"
             )
 
-        token_path = self._resolve_existing_token_path()
-        if token_path is None:
-            token_path = self.settings.resolved_gmail_token_path
+        token_path = None
+        if self.credentials_json:
+            creds = Credentials.from_authorized_user_info(
+                json.loads(self.credentials_json),
+                SCOPES,
+            )
+        else:
+            token_path = self._resolve_existing_token_path()
+            if token_path is None:
+                token_path = self.settings.resolved_gmail_token_path
 
-        if not token_path.exists():
-            return None
+            if not token_path.exists():
+                return None
 
-        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
         if refresh_if_needed and creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
             if persist:
-                token_path.write_text(creds.to_json(), encoding="utf-8")
+                refreshed_json = creds.to_json()
+                self.credentials_json = refreshed_json
+                if self.persist_credentials is not None:
+                    self.persist_credentials(refreshed_json)
+                elif token_path is not None:
+                    token_path.write_text(refreshed_json, encoding="utf-8")
         return creds
 
     def _resolve_existing_token_path(self):

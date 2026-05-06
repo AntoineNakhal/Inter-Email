@@ -92,12 +92,27 @@ class _ConnectedGmailClient(_StubGmailClient):
 class _StubRuntimeSettingsService:
     def __init__(self, gmail_mailbox_email: str) -> None:
         self.gmail_mailbox_email = gmail_mailbox_email
+        self.gmail_mailbox_name = ""
+        self.gmail_history_id = ""
+        self.watch_cleared = 0
 
     def get(self) -> RuntimeSettings:
         return RuntimeSettings(gmail_mailbox_email=self.gmail_mailbox_email)
 
     def set_gmail_mailbox_email(self, gmail_mailbox_email: str) -> RuntimeSettings:
         self.gmail_mailbox_email = gmail_mailbox_email
+        return self.get()
+
+    def set_gmail_mailbox_name(self, gmail_mailbox_name: str) -> RuntimeSettings:
+        self.gmail_mailbox_name = gmail_mailbox_name
+        return self.get()
+
+    def update_gmail_history_id(self, gmail_history_id: str) -> RuntimeSettings:
+        self.gmail_history_id = gmail_history_id
+        return self.get()
+
+    def clear_gmail_watch(self) -> RuntimeSettings:
+        self.watch_cleared += 1
         return self.get()
 
 
@@ -172,7 +187,7 @@ def test_build_query_uses_custom_lookback_days() -> None:
         lookback_days=30,
     )
 
-    assert query.startswith("-in:sent after:")
+    assert query.startswith("-in:sent -in:draft after:")
     assert query.endswith("2026/03/25")
 
 
@@ -183,4 +198,4 @@ def test_build_query_clamps_invalid_lookback_days() -> None:
         lookback_days=0,
     )
 
-    assert query == "in:anywhere after:2026/04/23"
+    assert query == "in:anywhere -in:draft after:2026/04/23"

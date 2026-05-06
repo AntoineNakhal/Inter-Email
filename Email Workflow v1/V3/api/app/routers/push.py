@@ -1,22 +1,4 @@
-"""Gmail Pub/Sub push notification webhook.
-
-Google Cloud Pub/Sub calls this endpoint when a Gmail watch detects changes
-for the connected account. The handler validates the request, decodes the
-notification, and fires an incremental sync in the background.
-
-Push endpoint URL (configure in Pub/Sub subscription):
-    https://<your-api>/api/v1/gmail/push?token=<GMAIL_PUBSUB_VERIFICATION_TOKEN>
-
-Pub/Sub acknowledges delivery on any 2xx response. We return 204 immediately
-and do the actual sync in a BackgroundTask so we never time out Google's
-acknowledgement window.
-
-Security model:
-    A shared secret token (GMAIL_PUBSUB_VERIFICATION_TOKEN) is appended to
-    the push URL. We validate it with a constant-time comparison. This is the
-    standard lightweight approach for Pub/Sub push authentication when you
-    don't need the full OAuth JWT verification path.
-"""
+"""Gmail Pub/Sub push notification webhook."""
 
 from __future__ import annotations
 
@@ -26,17 +8,21 @@ import logging
 import secrets
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
-from api.app.dependencies.services import ServiceBundle, build_service_bundle, get_service_bundle
+from api.app.dependencies.db import get_db_session
+from api.app.dependencies.services import build_service_bundle_for_user_id
 from api.app.schemas.push import GmailPushData, PubSubPushPayload
 from backend.core.config import get_settings
 from backend.core.database import get_session_factory
+from backend.persistence.repositories.sync_repository import SyncRepository
+from backend.persistence.repositories.user_repository import UserRepository
 
 
 async def _enqueue_push_sync_job(run_id: int, source: str, max_results: int) -> None:
-    """Enqueue a push-triggered sync via Arq when Redis is configured."""
     import arq
     from backend.jobs.worker import get_redis_settings
+
     redis = await arq.create_pool(get_redis_settings())
     await redis.enqueue_job("run_sync", run_id, source, max_results, 7)
     await redis.close()
@@ -47,16 +33,13 @@ logger = logging.getLogger(__name__)
 
 
 def _run_push_sync_job(run_id: int, source: str, max_results: int) -> None:
-    """Background function: mirrors _run_sync_job in sync.py but for push-triggered runs.
-
-    Opens its own DB session (the request-scoped session will already be
-    closed by the time this runs) and calls sync_recent_threads with the
-    default lookback window as a fallback for the bootstrap path.
-    """
     session_factory = get_session_factory()
     session = session_factory()
     try:
-        services = build_service_bundle(session)
+        run_model = SyncRepository(session).get_run_model(run_id)
+        if run_model is None:
+            raise ValueError(f"Sync run `{run_id}` was not found.")
+        services = build_service_bundle_for_user_id(session, run_model.user_id)
         services.sync_service.sync_recent_threads(
             run_id=run_id,
             source=source,
@@ -72,36 +55,20 @@ def _run_push_sync_job(run_id: int, source: str, max_results: int) -> None:
         session.close()
 
 
-@router.post(
-    "/gmail/push",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Gmail Pub/Sub push notification",
-    description=(
-        "Receives push notifications from Google Cloud Pub/Sub when Gmail "
-        "detects changes for the connected account. Triggers an incremental sync."
-    ),
-)
+@router.post("/gmail/push", status_code=status.HTTP_204_NO_CONTENT)
 async def gmail_push_notification(
     payload: PubSubPushPayload,
     background_tasks: BackgroundTasks,
     token: str = Query(default="", description="Shared verification token"),
-    services: ServiceBundle = Depends(get_service_bundle),
+    session: Session = Depends(get_db_session),
 ) -> None:
     settings = get_settings()
-
-    # -----------------------------------------------------------------
-    # Guard: push not configured
-    # -----------------------------------------------------------------
     expected_token = settings.gmail_pubsub_verification_token.strip()
     if not expected_token:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Push notifications are not configured on this server.",
         )
-
-    # -----------------------------------------------------------------
-    # Validate the shared secret (constant-time to prevent timing attacks)
-    # -----------------------------------------------------------------
     if not secrets.compare_digest(token, expected_token):
         logger.warning("Gmail push webhook received invalid token.")
         raise HTTPException(
@@ -109,20 +76,13 @@ async def gmail_push_notification(
             detail="Invalid verification token.",
         )
 
-    # -----------------------------------------------------------------
-    # Decode and parse the Pub/Sub message payload
-    # -----------------------------------------------------------------
     try:
-        # Google base64url-encodes the JSON; add padding before decoding.
         data_bytes = base64.urlsafe_b64decode(
             payload.message.data + "==" * (4 - len(payload.message.data) % 4)
         )
         notification = GmailPushData.model_validate(json.loads(data_bytes))
     except Exception as exc:
-        # Acknowledge malformed payloads to prevent Pub/Sub retry storms.
-        logger.warning(
-            "Gmail push: failed to decode Pub/Sub message data: %s", exc
-        )
+        logger.warning("Gmail push: failed to decode Pub/Sub message data: %s", exc)
         return
 
     logger.info(
@@ -131,66 +91,42 @@ async def gmail_push_notification(
         notification.historyId,
     )
 
-    # -----------------------------------------------------------------
-    # Verify the notification is for our connected mailbox
-    # -----------------------------------------------------------------
-    connected_mailbox = services.settings.gmail_thread_source  # proxy for "configured"
-    # We check the actual stored mailbox from runtime_settings via the service bundle.
-    stored_mailbox = (
-        services.runtime_settings_service.get().gmail_mailbox_email.strip().lower()
-    )
-    if (
-        notification.emailAddress
-        and stored_mailbox
-        and notification.emailAddress.strip().lower() != stored_mailbox
-    ):
+    user_model = UserRepository(session).get_model_by_email(notification.emailAddress)
+    if user_model is None:
         logger.warning(
-            "Push notification for %r but connected mailbox is %r — ignoring.",
+            "Push notification for %r but no matching authenticated user exists.",
             notification.emailAddress,
-            stored_mailbox,
         )
-        return  # acknowledge to Pub/Sub, no sync needed
+        return
 
-    # -----------------------------------------------------------------
-    # Coalesce: skip if a sync is already in flight
-    # -----------------------------------------------------------------
+    services = build_service_bundle_for_user_id(session, user_model.id)
     running = services.sync_service.get_running_run()
     if running is not None:
         logger.info(
-            "Push notification coalesced — sync run %s already in progress.",
+            "Push notification coalesced - sync run %s already in progress.",
             running.run_id,
         )
         return
 
-    # -----------------------------------------------------------------
-    # Create a new run and fire the sync in the background
-    # -----------------------------------------------------------------
     source = settings.gmail_thread_source
     max_results = settings.gmail_max_results
-
     try:
         run = services.sync_service.create_run(source)
     except RuntimeError as exc:
-        # Per-account lock: another run was just created between our check and now.
         logger.info("Push-triggered sync skipped: %s", exc)
         return
 
-    if get_settings().redis_url:
+    if settings.redis_url:
         await _enqueue_push_sync_job(run.run_id, source, max_results)
         logger.info(
-            "Push notification accepted — enqueued sync run %s via Arq for %r.",
+            "Push notification accepted - enqueued sync run %s via Arq for %r.",
             run.run_id,
             notification.emailAddress,
         )
     else:
-        background_tasks.add_task(
-            _run_push_sync_job,
-            run.run_id,
-            source,
-            max_results,
-        )
+        background_tasks.add_task(_run_push_sync_job, run.run_id, source, max_results)
         logger.info(
-            "Push notification accepted — started sync run %s via BackgroundTasks for %r.",
+            "Push notification accepted - started sync run %s via BackgroundTasks for %r.",
             run.run_id,
             notification.emailAddress,
         )

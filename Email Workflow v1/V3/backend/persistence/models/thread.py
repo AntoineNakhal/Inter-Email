@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.persistence.models.base import Base, TimestampMixin, utc_now
@@ -12,9 +20,13 @@ from backend.persistence.models.base import Base, TimestampMixin, utc_now
 
 class EmailThreadModel(Base, TimestampMixin):
     __tablename__ = "email_threads"
+    __table_args__ = (
+        UniqueConstraint("user_id", "external_thread_id", name="uq_email_threads_user_external_thread_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    external_thread_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    external_thread_id: Mapped[str] = mapped_column(String(255), index=True)
     subject: Mapped[str] = mapped_column(String(500), default="")
     participants_json: Mapped[str] = mapped_column(Text, default="[]")
     message_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -41,6 +53,8 @@ class EmailThreadModel(Base, TimestampMixin):
         default=utc_now,
     )
     last_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["UserModel"] = relationship(back_populates="threads")
 
     messages: Mapped[list["ThreadMessageModel"]] = relationship(
         back_populates="thread",
@@ -71,10 +85,14 @@ class EmailThreadModel(Base, TimestampMixin):
 
 class ThreadMessageModel(Base, TimestampMixin):
     __tablename__ = "thread_messages"
+    __table_args__ = (
+        UniqueConstraint("user_id", "external_message_id", name="uq_thread_messages_user_external_message_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     thread_id: Mapped[int] = mapped_column(ForeignKey("email_threads.id"), index=True)
-    external_message_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    external_message_id: Mapped[str] = mapped_column(String(255), index=True)
     sender: Mapped[str] = mapped_column(String(500), default="")
     recipients_json: Mapped[str] = mapped_column(Text, default="[]")
     subject: Mapped[str] = mapped_column(String(500), default="")

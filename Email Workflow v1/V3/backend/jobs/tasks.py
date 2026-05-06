@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 
 from backend.core.database import get_session_factory
-from api.app.dependencies.services import build_service_bundle
+from api.app.dependencies.services import build_service_bundle_for_user_id
+from backend.persistence.repositories.sync_repository import SyncRepository
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,10 @@ async def run_sync(
     session_factory = get_session_factory()
     session = session_factory()
     try:
-        services = build_service_bundle(session)
+        run_model = SyncRepository(session).get_run_model(run_id)
+        if run_model is None:
+            raise ValueError(f"Sync run `{run_id}` was not found.")
+        services = build_service_bundle_for_user_id(session, run_model.user_id)
         # The API created this run in its own in-memory progress_store.
         # The worker has a separate empty store — register the run here so
         # every progress_store.update() call returns a valid summary and

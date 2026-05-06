@@ -13,12 +13,14 @@ from backend.persistence.models.thread import EmailThreadModel
 class DraftRepository:
     """Repository for generated draft responses."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
 
     def save(self, external_thread_id: str, draft: DraftDocument) -> DraftDocument:
         thread = self.session.scalar(
             select(EmailThreadModel).where(
+                EmailThreadModel.user_id == self.user_id,
                 EmailThreadModel.external_thread_id == external_thread_id
             )
         )
@@ -48,7 +50,10 @@ class DraftRepository:
         query = (
             select(DraftModel)
             .join(EmailThreadModel, DraftModel.thread_id == EmailThreadModel.id)
-            .where(EmailThreadModel.external_thread_id == external_thread_id)
+            .where(
+                EmailThreadModel.user_id == self.user_id,
+                EmailThreadModel.external_thread_id == external_thread_id,
+            )
             .order_by(DraftModel.created_at.desc())
         )
         model = self.session.scalar(query)

@@ -63,6 +63,9 @@ class _TrackingRuntimeSettingsService:
     def __init__(self, current_email: str = "") -> None:
         self._current_email = current_email
         self.set_calls: list[str] = []
+        self.display_name_calls: list[str] = []
+        self.history_ids: list[str] = []
+        self.watch_cleared = 0
 
     def get(self) -> RuntimeSettings:
         return RuntimeSettings(gmail_mailbox_email=self._current_email)
@@ -70,6 +73,15 @@ class _TrackingRuntimeSettingsService:
     def set_gmail_mailbox_email(self, email: str) -> None:
         self._current_email = email
         self.set_calls.append(email)
+
+    def set_gmail_mailbox_name(self, gmail_mailbox_name: str) -> None:
+        self.display_name_calls.append(gmail_mailbox_name)
+
+    def update_gmail_history_id(self, gmail_history_id: str) -> None:
+        self.history_ids.append(gmail_history_id)
+
+    def clear_gmail_watch(self) -> None:
+        self.watch_cleared += 1
 
 
 class _TrackingSession:

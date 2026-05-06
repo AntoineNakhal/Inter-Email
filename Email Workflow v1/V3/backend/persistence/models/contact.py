@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.persistence.models.base import Base
@@ -12,9 +12,13 @@ from backend.persistence.models.base import Base
 
 class ContactModel(Base):
     __tablename__ = "contacts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "email", name="uq_contacts_user_email"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(256), default="")
     contact_type: Mapped[str] = mapped_column(
         String(32), default="external", nullable=False
@@ -33,6 +37,7 @@ class ContactModel(Base):
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+    user: Mapped["UserModel"] = relationship(back_populates="contacts")
     thread_links: Mapped[list[ContactThreadModel]] = relationship(
         "ContactThreadModel", back_populates="contact", cascade="all, delete-orphan"
     )

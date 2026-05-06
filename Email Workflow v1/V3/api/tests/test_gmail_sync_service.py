@@ -41,6 +41,7 @@ def test_local_ai_mode_sends_every_fetched_thread_to_ai() -> None:
         analysis_service=None,
         queue_service=None,
         progress_store=None,
+        eta_progress_repository=_NoOpEtaProgressRepository(),
     )
 
     threads = service._apply_runtime_ai_strategy([_thread("thread-1"), _thread("thread-2")])
@@ -66,6 +67,8 @@ class _RecordingProgressStore:
 
 
 class _PassThroughThreadRepository:
+    user_id = 1
+
     def upsert_thread(self, thread: EmailThread, message_progress_callback=None) -> EmailThread:
         if message_progress_callback is not None:
             message_progress_callback(len(thread.messages), len(thread.messages))
@@ -80,6 +83,17 @@ class _NoOpContactRepository:
         return None
 
 
+class _NoOpEtaProgressRepository:
+    def update_sync_phase(self, **_kwargs) -> None:
+        return None
+
+    def update_thread_analysis(self, **_kwargs) -> None:
+        return None
+
+    def clear_for_run(self, _run_id: int) -> None:
+        return None
+
+
 def test_persist_threads_commits_after_each_thread() -> None:
     session = _CommitTrackingSession()
     service = GmailSyncService(
@@ -91,6 +105,7 @@ def test_persist_threads_commits_after_each_thread() -> None:
         analysis_service=None,
         queue_service=None,
         progress_store=_RecordingProgressStore(),
+        eta_progress_repository=_NoOpEtaProgressRepository(),
     )
     service.contact_repository = _NoOpContactRepository()
 

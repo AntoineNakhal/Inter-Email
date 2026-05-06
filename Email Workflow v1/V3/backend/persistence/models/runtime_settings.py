@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.persistence.models.base import Base, TimestampMixin
 
@@ -13,7 +13,12 @@ from backend.persistence.models.base import Base, TimestampMixin
 class RuntimeSettingsModel(Base, TimestampMixin):
     __tablename__ = "runtime_settings"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        unique=True,
+        index=True,
+    )
     ai_mode: Mapped[str] = mapped_column(String(32), default="openai")
     local_ai_force_all_threads: Mapped[bool] = mapped_column(Boolean, default=False)
     local_ai_model: Mapped[str] = mapped_column(String(255), default="")
@@ -30,3 +35,5 @@ class RuntimeSettingsModel(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     local_ai_max_threads: Mapped[int] = mapped_column(Integer, default=50)
+
+    user: Mapped["UserModel"] = relationship(back_populates="settings")

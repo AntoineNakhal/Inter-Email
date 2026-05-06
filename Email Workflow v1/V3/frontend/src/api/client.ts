@@ -14,6 +14,7 @@ const API_ROOT =
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_ROOT}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
@@ -22,7 +23,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const detail = await response.text();
+    const raw = await response.text();
+    let detail = raw;
+    try {
+      const parsed = JSON.parse(raw) as { detail?: string };
+      if (parsed?.detail) {
+        detail = parsed.detail;
+      }
+    } catch {
+      // Non-JSON error body; keep the raw text.
+    }
     throw new Error(detail || `Request failed with ${response.status}`);
   }
 

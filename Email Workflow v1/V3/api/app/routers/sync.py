@@ -6,11 +6,12 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
-from api.app.dependencies.services import build_service_bundle, get_service_bundle
+from api.app.dependencies.services import build_service_bundle_for_user_id, get_service_bundle
 from api.app.dependencies.services import ServiceBundle
 from api.app.schemas.sync import SyncRequest, SyncStatusResponse
 from backend.core.config import get_settings
 from backend.core.database import get_session_factory
+from backend.persistence.repositories.sync_repository import SyncRepository
 
 
 router = APIRouter()
@@ -22,7 +23,10 @@ def _run_sync_job_inline(run_id: int, source: str, max_results: int, lookback_da
     session_factory = get_session_factory()
     session = session_factory()
     try:
-        services = build_service_bundle(session)
+        run_model = SyncRepository(session).get_run_model(run_id)
+        if run_model is None:
+            raise ValueError(f"Sync run `{run_id}` was not found.")
+        services = build_service_bundle_for_user_id(session, run_model.user_id)
         services.sync_service.sync_recent_threads(
             run_id=run_id,
             source=source,

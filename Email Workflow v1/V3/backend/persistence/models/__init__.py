@@ -7,6 +7,7 @@ This matters for both init_database() (create_all) and Alembic autogenerate.
 from backend.persistence.models.base import Base
 from backend.persistence.models.contact import ContactModel, ContactThreadModel
 from backend.persistence.models.draft import DraftModel
+from backend.persistence.models.eta_progress import EtaProgressModel
 from backend.persistence.models.review import ReviewDecisionModel
 from backend.persistence.models.runtime_settings import RuntimeSettingsModel
 from backend.persistence.models.sync_run import SyncRunModel
@@ -16,6 +17,7 @@ from backend.persistence.models.thread import (
     ThreadMessageModel,
     ThreadStateModel,
 )
+from backend.persistence.models.user import UserModel, UserSessionModel
 
 __all__ = [
     "Base",
@@ -23,10 +25,13 @@ __all__ = [
     "ContactThreadModel",
     "DraftModel",
     "EmailThreadModel",
+    "EtaProgressModel",
     "ReviewDecisionModel",
     "RuntimeSettingsModel",
     "SyncRunModel",
     "ThreadAnalysisModel",
     "ThreadMessageModel",
     "ThreadStateModel",
+    "UserModel",
+    "UserSessionModel",
 ]

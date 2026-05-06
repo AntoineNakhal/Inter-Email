@@ -81,8 +81,9 @@ def _should_upgrade_to_partner(current_type: str, ai_category: str | None) -> bo
 class ContactRepository:
     """Upsert-centric repository — contacts are created/updated from thread data."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
         self._schema_checked = False
 
     def _ensure_schema(self) -> None:
@@ -147,7 +148,10 @@ class ContactRepository:
         ai_category: str | None,
     ) -> None:
         model = self.session.scalar(
-            select(ContactModel).where(ContactModel.email == email)
+            select(ContactModel).where(
+                ContactModel.user_id == self.user_id,
+                ContactModel.email == email,
+            )
         )
 
         detected_type = detect_contact_type(email)
@@ -157,6 +161,7 @@ class ContactRepository:
 
         if model is None:
             model = ContactModel(
+                user_id=self.user_id,
                 email=email,
                 display_name=self._clean_display_name(display_name),
                 contact_type=detected_type,
@@ -212,14 +217,19 @@ class ContactRepository:
     def list_contacts(self) -> list[Contact]:
         self._ensure_schema()
         models = self.session.scalars(
-            select(ContactModel).order_by(ContactModel.thread_count.desc())
+            select(ContactModel)
+            .where(ContactModel.user_id == self.user_id)
+            .order_by(ContactModel.thread_count.desc())
         ).all()
         return [self._to_domain(m) for m in models]
 
     def get_contact(self, email: str) -> Contact | None:
         self._ensure_schema()
         model = self.session.scalar(
-            select(ContactModel).where(ContactModel.email == email)
+            select(ContactModel).where(
+                ContactModel.user_id == self.user_id,
+                ContactModel.email == email,
+            )
         )
         return self._to_domain(model) if model else None
 
@@ -227,7 +237,10 @@ class ContactRepository:
         """Manually override a contact's type — locks it against auto-detection."""
         self._ensure_schema()
         model = self.session.scalar(
-            select(ContactModel).where(ContactModel.email == email)
+            select(ContactModel).where(
+                ContactModel.user_id == self.user_id,
+                ContactModel.email == email,
+            )
         )
         if model is None:
             return None
@@ -240,13 +253,16 @@ class ContactRepository:
         self._ensure_schema()
         cutoff = self._range_cutoff(range_key)
 
-        total_query = select(func.count(ContactModel.id))
+        total_query = select(func.count(ContactModel.id)).where(
+            ContactModel.user_id == self.user_id
+        )
         if cutoff is not None:
             total_query = total_query.where(ContactModel.last_seen_at >= cutoff)
         total = self.session.scalar(total_query) or 0
 
         by_type_query = (
             select(ContactModel.contact_type, func.count(ContactModel.id))
+            .where(ContactModel.user_id == self.user_id)
             .group_by(ContactModel.contact_type)
         )
         if cutoff is not None:
@@ -254,21 +270,24 @@ class ContactRepository:
         by_type_rows = self.session.execute(by_type_query).all()
         by_type = {row[0]: row[1] for row in by_type_rows}
 
-        new_per_month_query = (
-            select(
-                func.strftime("%Y-%m", ContactModel.first_seen_at).label("month"),
-                func.count(ContactModel.id).label("cnt"),
+        contact_models = self.session.scalars(
+            select(ContactModel).where(
+                ContactModel.user_id == self.user_id,
+                ContactModel.first_seen_at.is_not(None),
             )
-            .where(ContactModel.first_seen_at.is_not(None))
-            .group_by("month")
-            .order_by("month")
-        )
-        if cutoff is not None:
-            new_per_month_query = new_per_month_query.where(
-                ContactModel.first_seen_at >= cutoff
-            )
-        new_per_month_rows = self.session.execute(new_per_month_query).all()
-        new_per_month = [{"month": r[0], "count": r[1]} for r in new_per_month_rows]
+        ).all()
+        new_per_month_counts: dict[str, int] = {}
+        for model in contact_models:
+            if model.first_seen_at is None:
+                continue
+            if cutoff is not None and model.first_seen_at < cutoff:
+                continue
+            month = model.first_seen_at.strftime("%Y-%m")
+            new_per_month_counts[month] = new_per_month_counts.get(month, 0) + 1
+        new_per_month = [
+            {"month": month, "count": count}
+            for month, count in sorted(new_per_month_counts.items())
+        ]
 
         top_query = (
             select(
@@ -278,6 +297,7 @@ class ContactRepository:
                 ContactModel.organization,
                 ContactModel.thread_count,
             )
+            .where(ContactModel.user_id == self.user_id)
             .order_by(ContactModel.thread_count.desc())
             .limit(10)
         )

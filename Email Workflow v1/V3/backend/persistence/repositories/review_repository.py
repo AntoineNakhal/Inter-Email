@@ -16,12 +16,14 @@ from backend.persistence.models.thread import EmailThreadModel
 class ReviewRepository:
     """Repository for saving internal review decisions."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
 
     def save(self, external_thread_id: str, review: ReviewDecision) -> ReviewDecision:
         thread = self.session.scalar(
             select(EmailThreadModel).where(
+                EmailThreadModel.user_id == self.user_id,
                 EmailThreadModel.external_thread_id == external_thread_id
             )
         )

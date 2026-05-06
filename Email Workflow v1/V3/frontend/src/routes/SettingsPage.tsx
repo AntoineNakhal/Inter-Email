@@ -155,6 +155,9 @@ export function SettingsPage() {
   const searchParams = new URLSearchParams(location.search);
   const gmailResult = searchParams.get("gmail");
   const gmailMessage = searchParams.get("message");
+  const authResult = searchParams.get("auth");
+  const isAuthRequired =
+    error instanceof Error && error.message.toLowerCase().includes("authentication required");
   const [formState, setFormState] = useState<RuntimeSettingsUpdate | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<RuntimeSettingsUpdate | null>(
     null,
@@ -418,8 +421,44 @@ export function SettingsPage() {
   const gmailSummary = gmailStatus?.connected
     ? "This is the mailbox the app will sync and analyze."
     : gmailStatus?.credentials_configured
-      ? "Connect a mailbox to start syncing."
+      ? isAuthRequired
+        ? "Sign in with Google first, then the same account will be used for Gmail sync."
+        : "Connect a mailbox to start syncing."
       : "Add your Gmail OAuth credentials to enable the connection.";
+
+  const gmailSection = (
+    <div className="sp-section">
+      <div className="sp-section__head">
+        <div>
+          <p className="sp-label">Gmail</p>
+          <p className="sp-section__title">
+            {gmailStatus?.connected ? gmailStatus.email_address ?? "Connected" : "Not connected"}
+          </p>
+        </div>
+        <span className={`pill ${gmailStatus?.connected ? "tone-positive" : "tone-watch"}`}>
+          {gmailStatus?.connected ? "Connected" : isAuthRequired ? "Sign in first" : "Needs connection"}
+        </span>
+      </div>
+      <p className="sp-hint">{gmailSummary}</p>
+      {gmailStatus?.connect_url && gmailStatus.credentials_configured ? (
+        <div>
+          <a className="sp-connect-btn" href={gmailStatus.connect_url}>
+            {gmailStatus.connected ? "Reconnect Gmail" : isAuthRequired ? "Sign in with Google" : "Connect Gmail"}
+          </a>
+        </div>
+      ) : null}
+      {((!gmailStatus?.connected && gmailStatus?.error_message) || !gmailStatus?.credentials_configured) ? (
+        <details className="sp-details">
+          <summary>Connection details</summary>
+          <div className="sp-details__body">
+            {gmailStatus?.error_message ? <p>{gmailStatus.error_message}</p> : null}
+            <p className="sp-path">Credentials: {gmailStatus?.credentials_path ?? "unknown"}</p>
+            <p className="sp-path">Token: {gmailStatus?.token_path ?? "unknown"}</p>
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
 
   return (
     <section className="page stack sp-page">
@@ -439,6 +478,12 @@ export function SettingsPage() {
       {gmailResult === "connected" ? (
         <div className="sp-banner sp-banner--ok">Gmail connection updated successfully.</div>
       ) : null}
+      {authResult === "connected" ? (
+        <div className="sp-banner sp-banner--ok">Signed in successfully. Gmail is now tied to this account.</div>
+      ) : null}
+      {authResult === "error" ? (
+        <div className="sp-banner sp-banner--err">{gmailMessage ?? "The Google sign-in flow failed."}</div>
+      ) : null}
       {gmailResult === "error" ? (
         <div className="sp-banner sp-banner--err">{gmailMessage ?? "The Gmail connection flow failed."}</div>
       ) : null}
@@ -451,40 +496,27 @@ export function SettingsPage() {
         </div>
       ) : null}
 
-      {data && formState ? (
+      {isAuthRequired ? (
         <div className="sp-body">
-
+          {gmailSection}
+          <div className="sp-divider" />
           <div className="sp-section">
             <div className="sp-section__head">
               <div>
-                <p className="sp-label">Gmail</p>
-                <p className="sp-section__title">
-                  {gmailStatus?.connected ? gmailStatus.email_address ?? "Connected" : "Not connected"}
-                </p>
+                <p className="sp-label">Workspace</p>
+                <p className="sp-section__title">Authentication required</p>
               </div>
-              <span className={`pill ${gmailStatus?.connected ? "tone-positive" : "tone-watch"}`}>
-                {gmailStatus?.connected ? "Connected" : "Needs connection"}
-              </span>
+              <span className="pill tone-watch">Locked</span>
             </div>
-            <p className="sp-hint">{gmailSummary}</p>
-            {gmailStatus?.connect_url && gmailStatus.credentials_configured ? (
-              <div>
-                <a className="sp-connect-btn" href={gmailStatus.connect_url}>
-                  {gmailStatus.connected ? "Reconnect Gmail" : "Connect Gmail"}
-                </a>
-              </div>
-            ) : null}
-            {((!gmailStatus?.connected && gmailStatus?.error_message) || !gmailStatus?.credentials_configured) ? (
-              <details className="sp-details">
-                <summary>Connection details</summary>
-                <div className="sp-details__body">
-                  {gmailStatus?.error_message ? <p>{gmailStatus.error_message}</p> : null}
-                  <p className="sp-path">Credentials: {gmailStatus?.credentials_path ?? "unknown"}</p>
-                  <p className="sp-path">Token: {gmailStatus?.token_path ?? "unknown"}</p>
-                </div>
-              </details>
-            ) : null}
+            <p className="sp-hint">
+              Sign in with your allowlisted Google account to unlock per-user settings, threads, sync, and ETA progress.
+            </p>
           </div>
+        </div>
+      ) : data && formState ? (
+        <div className="sp-body">
+
+          {gmailSection}
 
           <div className="sp-divider" />
 
@@ -584,6 +616,10 @@ export function SettingsPage() {
             </div>
           </details>
 
+        </div>
+      ) : !isLoading ? (
+        <div className="sp-body">
+          {gmailSection}
         </div>
       ) : null}
     </section>

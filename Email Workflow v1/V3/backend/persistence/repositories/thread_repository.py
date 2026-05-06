@@ -33,8 +33,9 @@ from backend.persistence.models.thread import (
 class ThreadRepository:
     """Repository for thread, analysis, and seen-state persistence."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
 
     def get_threads_with_stale_analysis(self, expected_provider: str) -> list[EmailThread]:
         """Return threads whose analysis was produced by a different provider.
@@ -47,7 +48,10 @@ class ThreadRepository:
         query = (
             select(EmailThreadModel)
             .join(ThreadAnalysisModel, isouter=False)
-            .where(ThreadAnalysisModel.provider_name != expected_provider)
+            .where(
+                EmailThreadModel.user_id == self.user_id,
+                ThreadAnalysisModel.provider_name != expected_provider,
+            )
             .options(
                 selectinload(EmailThreadModel.messages),
                 selectinload(EmailThreadModel.analysis),
@@ -68,7 +72,9 @@ class ThreadRepository:
         """
 
         rows = self.session.scalars(
-            select(ThreadMessageModel.external_message_id)
+            select(ThreadMessageModel.external_message_id).where(
+                ThreadMessageModel.user_id == self.user_id
+            )
         ).all()
         return {str(mid) for mid in rows if mid}
 
@@ -76,6 +82,7 @@ class ThreadRepository:
 
         query = (
             select(EmailThreadModel)
+            .where(EmailThreadModel.user_id == self.user_id)
             .options(
                 selectinload(EmailThreadModel.messages),
                 selectinload(EmailThreadModel.analysis),
@@ -92,7 +99,10 @@ class ThreadRepository:
 
         query = (
             select(EmailThreadModel)
-            .where(EmailThreadModel.external_thread_id == external_thread_id)
+            .where(
+                EmailThreadModel.user_id == self.user_id,
+                EmailThreadModel.external_thread_id == external_thread_id,
+            )
             .options(
                 selectinload(EmailThreadModel.messages),
                 selectinload(EmailThreadModel.analysis),
@@ -112,11 +122,15 @@ class ThreadRepository:
 
         model = self.session.scalar(
             select(EmailThreadModel).where(
+                EmailThreadModel.user_id == self.user_id,
                 EmailThreadModel.external_thread_id == thread.external_thread_id
             )
         )
         if model is None:
-            model = EmailThreadModel(external_thread_id=thread.external_thread_id)
+            model = EmailThreadModel(
+                user_id=self.user_id,
+                external_thread_id=thread.external_thread_id,
+            )
             self.session.add(model)
 
         previous_signature = model.signature
@@ -193,6 +207,7 @@ class ThreadRepository:
             message_model = existing_messages.pop(message_id, None)
             if message_model is None:
                 message_model = ThreadMessageModel(
+                    user_id=self.user_id,
                     external_message_id=message_id,
                 )
                 model.messages.append(message_model)
@@ -247,6 +262,7 @@ class ThreadRepository:
 
         models = self.session.scalars(
             select(EmailThreadModel).where(
+                EmailThreadModel.user_id == self.user_id,
                 EmailThreadModel.external_thread_id.in_(normalized_ids)
             )
         ).all()
@@ -256,7 +272,9 @@ class ThreadRepository:
 
     def clear_all(self) -> None:
 
-        models = self.session.scalars(select(EmailThreadModel)).all()
+        models = self.session.scalars(
+            select(EmailThreadModel).where(EmailThreadModel.user_id == self.user_id)
+        ).all()
         for model in models:
             self.session.delete(model)
         self.session.flush()
@@ -386,11 +404,15 @@ class ThreadRepository:
 
         message_model = self.session.scalar(
             select(ThreadMessageModel).where(
+                ThreadMessageModel.user_id == self.user_id,
                 ThreadMessageModel.external_message_id == normalized_message_id
             )
         )
         if message_model is None:
-            message_model = ThreadMessageModel(external_message_id=normalized_message_id)
+            message_model = ThreadMessageModel(
+                user_id=self.user_id,
+                external_message_id=normalized_message_id,
+            )
             model.messages.append(message_model)
         elif message_model.thread is not model:
             previous_thread = message_model.thread
@@ -452,6 +474,7 @@ class ThreadRepository:
             return 0
         models = self.session.scalars(
             select(EmailThreadModel).where(
+                EmailThreadModel.user_id == self.user_id,
                 EmailThreadModel.external_thread_id.in_(external_thread_ids),
                 EmailThreadModel.is_new == True,  # noqa: E712
             )
@@ -465,7 +488,10 @@ class ThreadRepository:
         """Clear is_new on all threads. Returns number of threads acknowledged."""
 
         models = self.session.scalars(
-            select(EmailThreadModel).where(EmailThreadModel.is_new == True)  # noqa: E712
+            select(EmailThreadModel).where(  # noqa: E712
+                EmailThreadModel.user_id == self.user_id,
+                EmailThreadModel.is_new == True,
+            )
         ).all()
         for m in models:
             m.is_new = False
@@ -485,6 +511,7 @@ class ThreadRepository:
 
         model = self.session.scalar(
             select(EmailThreadModel).where(
+                EmailThreadModel.user_id == self.user_id,
                 EmailThreadModel.external_thread_id == external_thread_id
             )
         )
@@ -501,6 +528,7 @@ class ThreadRepository:
             return {}
         models = self.session.scalars(
             select(ThreadMessageModel).where(
+                ThreadMessageModel.user_id == self.user_id,
                 ThreadMessageModel.external_message_id.in_(external_message_ids)
             )
         ).all()

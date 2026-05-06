@@ -10,12 +10,11 @@ from backend.persistence.models.runtime_settings import RuntimeSettingsModel
 
 
 class RuntimeSettingsRepository:
-    """Loads and updates the singleton runtime settings row."""
+    """Loads and updates per-user runtime settings rows."""
 
-    SINGLETON_ID = 1
-
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
 
     def get(self) -> RuntimeSettings:
         model = self._get_or_create()
@@ -73,11 +72,11 @@ class RuntimeSettingsRepository:
     def _get_or_create(self) -> RuntimeSettingsModel:
         model = self.session.scalar(
             select(RuntimeSettingsModel).where(
-                RuntimeSettingsModel.id == self.SINGLETON_ID
+                RuntimeSettingsModel.user_id == self.user_id
             )
         )
         if model is None:
-            model = RuntimeSettingsModel(id=self.SINGLETON_ID)
+            model = RuntimeSettingsModel(user_id=self.user_id)
             self.session.add(model)
             self.session.flush()
         return model

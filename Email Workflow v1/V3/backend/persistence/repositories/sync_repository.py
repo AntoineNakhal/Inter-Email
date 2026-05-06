@@ -24,11 +24,15 @@ _STALE_RUN_THRESHOLD = timedelta(hours=2)
 class SyncRepository:
     """Repository for workflow run metadata."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, user_id: int | None = None) -> None:
         self.session = session
+        self.user_id = user_id
 
     def start_run(self, source: str, mailbox_account: str = "") -> SyncRunModel:
+        if self.user_id is None:
+            raise ValueError("user_id is required to create a sync run.")
         model = SyncRunModel(
+            user_id=self.user_id,
             status=SyncStatus.RUNNING.value,
             source=source,
             mailbox_account=mailbox_account.strip().lower(),
@@ -46,15 +50,13 @@ class SyncRepository:
         account = mailbox_account.strip().lower()
         if not account:
             return None
-        return self.session.scalar(
-            select(SyncRunModel)
-            .where(
-                SyncRunModel.mailbox_account == account,
-                SyncRunModel.status == SyncStatus.RUNNING.value,
-            )
-            .order_by(SyncRunModel.id.desc())
-            .limit(1)
+        query = select(SyncRunModel).where(
+            SyncRunModel.mailbox_account == account,
+            SyncRunModel.status == SyncStatus.RUNNING.value,
         )
+        if self.user_id is not None:
+            query = query.where(SyncRunModel.user_id == self.user_id)
+        return self.session.scalar(query.order_by(SyncRunModel.id.desc()).limit(1))
 
     def update_progress(
         self,
@@ -72,7 +74,7 @@ class SyncRepository:
         Called at each stage transition so a restarted process can read the
         last-known state from the DB instead of showing a stale "running" row.
         """
-        model = self.session.get(SyncRunModel, run_id)
+        model = self.get_run_model(run_id)
         if model is None or model.status != SyncStatus.RUNNING.value:
             return
         model.progress_json = json.dumps(
@@ -116,20 +118,27 @@ class SyncRepository:
         return len(stale)
 
     def get_run_model(self, run_id: int) -> SyncRunModel | None:
-        return self.session.get(SyncRunModel, run_id)
+        query = select(SyncRunModel).where(SyncRunModel.id == run_id)
+        if self.user_id is not None:
+            query = query.where(SyncRunModel.user_id == self.user_id)
+        return self.session.scalar(query)
 
     def get_run(self, run_id: int) -> SyncRunSummary | None:
         model = self.get_run_model(run_id)
         return self._to_summary(model) if model else None
 
     def get_latest_run(self) -> SyncRunSummary | None:
-        model = self.session.scalar(
-            select(SyncRunModel).order_by(SyncRunModel.id.desc()).limit(1)
-        )
+        query = select(SyncRunModel)
+        if self.user_id is not None:
+            query = query.where(SyncRunModel.user_id == self.user_id)
+        model = self.session.scalar(query.order_by(SyncRunModel.id.desc()).limit(1))
         return self._to_summary(model) if model else None
 
     def delete_all(self) -> None:
-        models = self.session.scalars(select(SyncRunModel)).all()
+        query = select(SyncRunModel)
+        if self.user_id is not None:
+            query = query.where(SyncRunModel.user_id == self.user_id)
+        models = self.session.scalars(query).all()
         for model in models:
             self.session.delete(model)
         self.session.flush()

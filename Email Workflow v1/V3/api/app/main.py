@@ -8,10 +8,11 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.app.routers import contacts, drafts, gmail, health, push, review, settings as settings_router, sync, threads
-from api.app.dependencies.services import build_service_bundle
+from api.app.routers import auth, contacts, drafts, gmail, health, push, review, settings as settings_router, sync, threads
+from api.app.dependencies.services import build_service_bundle_for_user_id
 from backend.core.config import get_settings
 from backend.core.database import get_session_factory, init_database
+from backend.persistence.repositories.user_repository import UserRepository
 
 
 logger = logging.getLogger(__name__)
@@ -32,15 +33,18 @@ async def lifespan(_: FastAPI):
         repo.interrupt_stale_runs()
         session.commit()
 
-        # Ensure a Gmail Pub/Sub watch is registered so new emails trigger
-        # push notifications and background sync runs.
-        try:
-            services = build_service_bundle(session)
-            topic = services.settings.gmail_pubsub_topic
-            if topic:
-                services.sync_service.ensure_watch(topic)
-        except Exception:
-            logger.warning("Failed to register Gmail watch on startup", exc_info=True)
+        topic = settings.gmail_pubsub_topic
+        if topic:
+            for user in UserRepository(session).list_connected_users():
+                try:
+                    services = build_service_bundle_for_user_id(session, user.id)
+                    services.sync_service.ensure_watch(topic)
+                except Exception:
+                    logger.warning(
+                        "Failed to register Gmail watch on startup for user %s",
+                        user.email,
+                        exc_info=True,
+                    )
 
     yield
 
@@ -64,6 +68,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(sync.router, prefix="/api/v1", tags=["sync"])
     app.include_router(threads.router, prefix="/api/v1", tags=["threads"])
     app.include_router(review.router, prefix="/api/v1", tags=["review"])
