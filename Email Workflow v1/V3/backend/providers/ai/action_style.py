@@ -5,7 +5,7 @@ from __future__ import annotations
 from email.utils import parseaddr
 
 from backend.core.email_text import normalize_email_text
-from backend.domain.thread import EmailThread
+from backend.domain.thread import EmailThread, RelevanceBucket
 
 
 GENERIC_ACTION_PREFIXES = (
@@ -17,6 +17,31 @@ GENERIC_ACTION_PREFIXES = (
     "follow up today",
     "follow up shortly",
     "review the thread and decide the next owner",
+)
+
+AUTOMATED_SENDER_HINTS = (
+    "no-reply",
+    "noreply",
+    "do-not-reply",
+    "donotreply",
+    "mailer-daemon",
+    "postmaster",
+    "notifications",
+    "notification",
+    "alerts",
+    "alert",
+    "calendar-notification",
+)
+
+AUTOMATED_CONTENT_HINTS = (
+    "automated message",
+    "automatic reply",
+    "notification",
+    "newsletter",
+    "digest",
+    "system alert",
+    "monitoring alert",
+    "calendar notification",
 )
 
 
@@ -33,6 +58,36 @@ def fit_next_action_to_thread(raw_action: str, thread: EmailThread) -> str:
     if _is_too_generic(lowered):
         return suggested
 
+    return normalized
+
+
+def fit_needs_next_action_to_thread(raw_flag: object, thread: EmailThread) -> bool:
+    requested = bool(raw_flag)
+    if thread.resolved_or_closed:
+        return False
+    if thread.waiting_on_us:
+        return True
+    if thread.latest_message_from_me:
+        return False
+    if _looks_like_automated_no_action(thread):
+        return False
+    if thread.relevance_bucket in {RelevanceBucket.NOISE, RelevanceBucket.MAYBE}:
+        return False
+    if thread.latest_message_from_external and (
+        thread.latest_message_has_question or thread.latest_message_has_action_request
+    ):
+        return True
+    return requested
+
+
+def clear_non_action_fields(normalized: dict[str, object]) -> dict[str, object]:
+    normalized["next_action"] = ""
+    normalized["needs_action_today"] = False
+    normalized["should_draft_reply"] = False
+    normalized["draft_needs_date"] = False
+    normalized["draft_date_reason"] = None
+    normalized["draft_needs_attachment"] = False
+    normalized["draft_attachment_reason"] = None
     return normalized
 
 
@@ -138,6 +193,30 @@ def _is_too_generic(lowered: str) -> bool:
             "receipt",
         )
     )
+
+
+def _looks_like_automated_no_action(thread: EmailThread) -> bool:
+    if thread.latest_message_has_question or thread.latest_message_has_action_request:
+        return False
+    latest_message = thread.messages[-1] if thread.messages else None
+    sender = latest_message.sender if latest_message else ""
+    _, sender_email = parseaddr(sender)
+    sender_email = sender_email.lower()
+    if any(hint in sender_email for hint in AUTOMATED_SENDER_HINTS):
+        return True
+
+    latest_text = normalize_email_text(
+        "\n".join(
+            part
+            for part in [
+                latest_message.subject if latest_message else thread.subject,
+                latest_message.snippet if latest_message else "",
+                latest_message.cleaned_body if latest_message else thread.combined_thread_text,
+            ]
+            if part
+        )
+    ).lower()
+    return any(hint in latest_text for hint in AUTOMATED_CONTENT_HINTS)
 
 
 def _first_name(raw_value: str) -> str:

@@ -3146,6 +3146,7 @@ pre {
   text-decoration: none;
   cursor: pointer;
   transition: border-color 120ms;
+  width: max-content;
 }
 
 .sp-connect-btn:hover {
@@ -3385,6 +3386,13 @@ pre {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.home-focus__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .home-list {

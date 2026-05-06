@@ -20,6 +20,7 @@ class SettingsSummaryResponse(BaseModel):
     local_ai_force_all_threads: bool
     local_ai_model: str
     local_ai_agent_prompt: str
+    local_ai_max_threads: int = 50
     ollama_base_url: str
     ollama_model_thread_analysis: str
     runtime_settings_updated_at: datetime | None = None
@@ -30,3 +31,4 @@ class RuntimeSettingsUpdateRequest(BaseModel):
     local_ai_force_all_threads: bool = False
     local_ai_model: str = ""
     local_ai_agent_prompt: str = ""
+    local_ai_max_threads: int = 50

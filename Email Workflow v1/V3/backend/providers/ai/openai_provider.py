@@ -27,7 +27,11 @@ from backend.domain.thread import (
     UrgencyLevel,
 )
 from backend.providers.ai.analysis_style import fit_current_status_to_thread
-from backend.providers.ai.action_style import fit_next_action_to_thread
+from backend.providers.ai.action_style import (
+    clear_non_action_fields,
+    fit_needs_next_action_to_thread,
+    fit_next_action_to_thread,
+)
 from backend.providers.ai.base import AIProvider, AIProviderError
 from backend.providers.ai.summary_style import fit_summary_to_thread
 
@@ -91,8 +95,11 @@ class OpenAIProvider(AIProvider):
                 "waiting_on_us must be true only when the latest message is FROM an external contact "
                 "AND they are clearly expecting a reply or action from the inbox owner. "
                 "Set it to false when the inbox owner sent the last message, or when no reply is expected. "
+                "Set needs_next_action to true only when the inbox owner genuinely has a concrete follow-up to do. "
+                "For newsletters, alerts, FYIs, automated notifications, receipts, and monitor-only threads, "
+                "set needs_next_action to false and leave next_action empty. "
                 "Return strict JSON with keys: category, urgency, summary, current_status, "
-                "next_action, needs_action_today, waiting_on_us, should_draft_reply, "
+                "needs_next_action, next_action, needs_action_today, waiting_on_us, should_draft_reply, "
                 "draft_needs_date, draft_date_reason, draft_needs_attachment, "
                 "draft_attachment_reason."
             ),
@@ -189,11 +196,20 @@ class OpenAIProvider(AIProvider):
             task="draft_reply",
             system_prompt=(
                 self._user_perspective_block(request.user_email)
-                + "Draft a professional reply email for an Inter-Op workflow. "
-                "Write the draft FROM the user (the inbox owner). Do not address the user as a third party. "
+                + "Draft a professional reply email for an Inter-Op workflow.\n"
+                "The payload contains two critical fields:\n"
+                "  - 'author': the person WRITING this reply (the inbox owner). "
+                "The greeting must NEVER address this person.\n"
+                "  - 'recipients': the people to ADDRESS in the greeting (the other party). "
+                "Start the body with 'Hi [recipient name],' or similar.\n"
+                "Write the draft FROM the author TO the recipients — never the other way around. "
                 "Do not repeat the sender's full message, signature, or confidentiality notice. "
                 "Acknowledge briefly, answer the actual ask, and move the conversation forward. "
                 "Keep the draft concise unless the request clearly needs more detail. "
+                "IMPORTANT — do NOT include a sign-off or signature block (no 'Best regards', "
+                "no name, no company name) at the end of the body. "
+                "The email client appends the real signature automatically. "
+                "End the body after the last content sentence. "
                 "If user_instructions are present, treat them as the highest-priority drafting requirements "
                 "and change the draft accordingly. "
                 "If selected_date or attachment_names are present, incorporate them when relevant. "
@@ -294,9 +310,17 @@ class OpenAIProvider(AIProvider):
             self._normalize_text(normalized.get("current_status")),
             thread,
         )
-        normalized["next_action"] = fit_next_action_to_thread(
-            self._normalize_text(normalized.get("next_action")),
+        normalized["needs_next_action"] = fit_needs_next_action_to_thread(
+            normalized.get("needs_next_action"),
             thread,
+        )
+        normalized["next_action"] = (
+            fit_next_action_to_thread(
+                self._normalize_text(normalized.get("next_action")),
+                thread,
+            )
+            if normalized["needs_next_action"]
+            else ""
         )
         normalized["needs_action_today"] = self._normalize_bool(
             normalized.get("needs_action_today")
@@ -320,6 +344,12 @@ class OpenAIProvider(AIProvider):
         normalized["draft_attachment_reason"] = self._normalize_optional_text(
             normalized.get("draft_attachment_reason")
         )
+        if normalized["should_draft_reply"]:
+            normalized["needs_next_action"] = True
+        if not normalized["needs_next_action"]:
+            return clear_non_action_fields(normalized)
+        if not normalized["waiting_on_us"]:
+            normalized["should_draft_reply"] = False
         return normalized
 
     def _normalize_queue_summary_payload(
@@ -486,6 +516,9 @@ class OpenAIProvider(AIProvider):
                     "urgency": thread.analysis.urgency.value if thread.analysis else None,
                     "summary": thread.analysis.summary if thread.analysis else None,
                     "next_action": thread.analysis.next_action if thread.analysis else None,
+                    "needs_next_action": (
+                        thread.analysis.needs_next_action if thread.analysis else False
+                    ),
                     "needs_action_today": (
                         thread.analysis.needs_action_today if thread.analysis else False
                     ),
@@ -593,9 +626,40 @@ class OpenAIProvider(AIProvider):
         thread = request.thread
         analysis = thread.analysis
         latest_message = thread.messages[-1] if thread.messages else None
+
+        # Separate who is writing the reply from who should receive it.
+        # This is the most important context distinction for the draft agent —
+        # without it the model can flip the direction and address the inbox
+        # owner in the greeting instead of the external party.
+        author_email = (request.user_email or "").strip().lower()
+        recipients = [
+            p for p in thread.participants[:12]
+            if p.strip().lower() != author_email
+        ]
+        # Fallback: if we couldn't separate anyone out (e.g., no user_email
+        # set), send all participants so the AI has at least something to work
+        # with. The system prompt's perspective block still anchors direction.
+        if not recipients:
+            recipients = thread.participants[:12]
+
+        # Build a human-readable author label. Prefer the stored display name
+        # (e.g. "Antoine Nakhal") over the raw email so the AI never has to
+        # infer or guess the first name from an address prefix like "a.nakhal".
+        author_label = (
+            f"{request.user_name} <{request.user_email}>"
+            if request.user_name and request.user_email
+            else request.user_name or request.user_email or "inbox owner"
+        )
+
         return {
+            # These two top-level fields are explicitly referenced in the
+            # system prompt so the model knows exactly who is writing and
+            # who to address — no ambiguity from a flat participant list.
+            "author": author_label,
+            "recipients": recipients,
             "drafting_priority": [
                 "Follow user_instructions first when they are provided.",
+                "Address the reply TO 'recipients', NOT to 'author'.",
                 "Do not repeat the sender's message, signature, or confidentiality notice.",
                 "Keep the reply concise and move the conversation forward.",
             ],
@@ -607,7 +671,6 @@ class OpenAIProvider(AIProvider):
             "thread": {
                 "thread_id": thread.external_thread_id,
                 "subject": thread.subject,
-                "participants": thread.participants[:12],
                 "latest_message": (
                     {
                         "sender": latest_message.sender,
@@ -627,6 +690,9 @@ class OpenAIProvider(AIProvider):
                     "summary": analysis.summary if analysis else None,
                     "current_status": analysis.current_status if analysis else None,
                     "next_action": analysis.next_action if analysis else None,
+                    "needs_next_action": (
+                        analysis.needs_next_action if analysis else None
+                    ),
                     "needs_action_today": (
                         analysis.needs_action_today if analysis else None
                     ),
@@ -672,6 +738,7 @@ class OpenAIProvider(AIProvider):
                 "summary": request.analysis.summary,
                 "current_status": request.analysis.current_status,
                 "next_action": request.analysis.next_action,
+                "needs_next_action": request.analysis.needs_next_action,
                 "needs_action_today": request.analysis.needs_action_today,
                 "should_draft_reply": request.analysis.should_draft_reply,
                 "draft_needs_date": request.analysis.draft_needs_date,

@@ -442,8 +442,9 @@ def _build_thread(group: dict[str, object]) -> EmailThread:
 
 def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
     recipients = [addr for _, addr in getaddresses([message.to_address]) if addr]
+    is_forwarded = bool(re.match(r"^(?:fw|fwd)\s*:", message.subject.strip(), re.IGNORECASE))
     cleaned_snippet = clean_email_snippet(message.snippet)
-    cleaned_body = clean_email_body(message.body_text)
+    cleaned_body = clean_email_body(message.body_text, is_forwarded=is_forwarded)
     return ThreadMessage(
         external_message_id=message.external_message_id,
         sender=message.from_address,
@@ -453,6 +454,7 @@ def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
         snippet=cleaned_snippet[:500],
         cleaned_body=cleaned_body[:4000],
         label_ids=message.label_ids,
+        is_forwarded=is_forwarded,
     )
 
 

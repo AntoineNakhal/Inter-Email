@@ -74,7 +74,9 @@ function ThreadMiniRow({ thread }: { thread: EmailThread }) {
       />
       <span className="db-mini-row__subject">{thread.subject || "Untitled"}</span>
       <span className="db-mini-row__action">
-        {thread.analysis?.next_action ?? "Review thread"}
+        {thread.analysis?.needs_next_action
+          ? thread.analysis.next_action
+          : "No action needed right now."}
       </span>
     </Link>
   );
@@ -108,7 +110,9 @@ function CategorySpotlightRow({
                 <span className="db-chip__subject">{t.subject || "Untitled"}</span>
               </span>
               <span className="db-chip__action">
-                {t.analysis?.next_action ?? "Review thread"}
+                {t.analysis?.needs_next_action
+                  ? t.analysis.next_action
+                  : "No action needed right now."}
               </span>
             </Link>
           );

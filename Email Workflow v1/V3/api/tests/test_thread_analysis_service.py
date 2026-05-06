@@ -43,6 +43,7 @@ class _StubProviderRouter:
                 summary="Fresh summary",
                 current_status="Waiting on us",
                 next_action="Reply to the customer.",
+                needs_next_action=True,
                 analyzed_at=datetime(2026, 4, 20, 12, 10, tzinfo=timezone.utc),
             )
 
@@ -120,6 +121,7 @@ def test_analyze_threads_reuses_cached_analysis_without_provider_call() -> None:
             summary="Cached summary",
             current_status="Waiting on us",
             next_action="Reply to the customer.",
+            needs_next_action=True,
             accuracy_percent=88,
             verification_summary="Verifier accepted the cached analysis.",
             verifier_provider_name="heuristic",

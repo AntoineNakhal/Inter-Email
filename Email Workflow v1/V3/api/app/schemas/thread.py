@@ -18,6 +18,7 @@ class ThreadMessageResponse(BaseModel):
     sent_at: datetime | None = None
     snippet: str = ""
     cleaned_body: str = ""
+    is_forwarded: bool = False
 
 
 class ThreadAnalysisResponse(BaseModel):
@@ -26,6 +27,7 @@ class ThreadAnalysisResponse(BaseModel):
     summary: str
     current_status: str
     next_action: str
+    needs_next_action: bool
     needs_action_today: bool
     should_draft_reply: bool
     draft_needs_date: bool
@@ -133,6 +135,7 @@ class ThreadResponse(BaseModel):
                     sent_at=message.sent_at,
                     snippet=message.snippet,
                     cleaned_body=message.cleaned_body,
+                    is_forwarded=message.is_forwarded,
                 )
                 for message in thread.messages
             ],
@@ -143,6 +146,7 @@ class ThreadResponse(BaseModel):
                     summary=thread.analysis.summary,
                     current_status=thread.analysis.current_status,
                     next_action=thread.analysis.next_action,
+                    needs_next_action=thread.analysis.needs_next_action,
                     needs_action_today=thread.analysis.needs_action_today,
                     should_draft_reply=thread.analysis.should_draft_reply,
                     draft_needs_date=thread.analysis.draft_needs_date,

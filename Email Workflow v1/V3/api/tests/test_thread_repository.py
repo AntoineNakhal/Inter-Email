@@ -165,6 +165,7 @@ def test_restore_threads_snapshot_restores_seen_review_and_draft() -> None:
             summary="Snapshot summary",
             current_status="Waiting on us",
             next_action="Reply to the customer.",
+            needs_next_action=True,
         )
         snapshot_thread.seen_state = SeenState(
             seen=True,
@@ -206,6 +207,7 @@ def test_restore_threads_snapshot_restores_seen_review_and_draft() -> None:
         assert restored.latest_draft.subject == "Re: Status update"
         assert restored.analysis is not None
         assert restored.analysis.summary == "Snapshot summary"
+        assert restored.analysis.needs_next_action is True
     finally:
         session.close()
         engine.dispose()

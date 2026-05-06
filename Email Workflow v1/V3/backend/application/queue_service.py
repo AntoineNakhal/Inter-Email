@@ -58,6 +58,7 @@ class QueueService:
             else 0.0
         )
         return (
+            0 if analysis and analysis.needs_next_action else 1,
             0 if analysis and analysis.needs_action_today else 1,
             0 if thread.waiting_on_us else 1,
             0 if not thread.resolved_or_closed else 1,

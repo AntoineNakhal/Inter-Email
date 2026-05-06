@@ -30,6 +30,9 @@ class LocalInboxAgent(BaseOllamaAgent):
             "Ignore email signatures, confidentiality notices, and quoted reply history. "
             "Anchor your analysis on the latest meaningful message and only use older messages as supporting context. "
             "If the email is very short, keep the summary shorter than the email itself. "
+            "Set needs_next_action to true only when the inbox owner truly has a concrete follow-up to do. "
+            "For newsletters, alerts, FYIs, automated notifications, receipts, and monitor-only threads, "
+            "set needs_next_action to false and leave next_action empty. "
             "Make the next_action specific to the latest message and avoid generic actions "
             "like 'prepare and send a reply today'. "
             "Make the current_status exact and concrete, not vague. "
@@ -38,6 +41,6 @@ class LocalInboxAgent(BaseOllamaAgent):
             "Use only these urgency values: "
             f"{', '.join(level.value for level in UrgencyLevel)}. "
             "Return strict JSON with keys: category, urgency, summary, current_status, "
-            "next_action, needs_action_today, should_draft_reply, draft_needs_date, "
+            "needs_next_action, next_action, needs_action_today, should_draft_reply, draft_needs_date, "
             "draft_date_reason, draft_needs_attachment, draft_attachment_reason."
         )

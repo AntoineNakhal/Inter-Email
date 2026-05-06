@@ -98,6 +98,27 @@ class AppSettings(BaseModel):
         "claude-haiku-4-5-20251001",
         alias="ANTHROPIC_MODEL_CRM",
     )
+    # ------------------------------------------------------------------
+    # Gmail Pub/Sub push notifications
+    # ------------------------------------------------------------------
+    # Full Pub/Sub topic resource name that receives Gmail push events.
+    # Example: projects/my-gcp-project/topics/gmail-notifications
+    # Leave empty to disable push notifications (polling only).
+    # Redis URL for the Arq background worker.
+    # Leave empty to run sync jobs in-process via FastAPI BackgroundTasks (dev default).
+    # Set to redis://redis:6379 in docker-compose to use the real worker.
+    redis_url: str = Field("", alias="REDIS_URL")
+
+    gmail_pubsub_topic: str = Field("", alias="GMAIL_PUBSUB_TOPIC")
+    # Secret token appended to the push endpoint URL for request validation.
+    # Configure the Pub/Sub push subscription URL as:
+    #   https://<your-api>/api/v1/gmail/push?token=<this-value>
+    # Leave empty to disable the push endpoint entirely (returns 404).
+    gmail_pubsub_verification_token: str = Field(
+        "",
+        alias="GMAIL_PUBSUB_VERIFICATION_TOKEN",
+    )
+
     app_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
 
     @field_validator("gmail_max_results", mode="before")
@@ -271,6 +292,11 @@ def get_settings() -> AppSettings:
         "ANTHROPIC_MODEL_CRM": os.getenv(
             "ANTHROPIC_MODEL_CRM",
             "claude-haiku-4-5-20251001",
+        ),
+        "REDIS_URL": os.getenv("REDIS_URL", ""),
+        "GMAIL_PUBSUB_TOPIC": os.getenv("GMAIL_PUBSUB_TOPIC", ""),
+        "GMAIL_PUBSUB_VERIFICATION_TOKEN": os.getenv(
+            "GMAIL_PUBSUB_VERIFICATION_TOKEN", ""
         ),
     }
     return AppSettings.model_validate(raw_values)

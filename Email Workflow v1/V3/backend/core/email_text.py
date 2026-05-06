@@ -39,6 +39,14 @@ QUOTED_HISTORY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^-+\s*original message\s*-+$", re.IGNORECASE),
 )
 
+# Matches the Gmail "---------- Forwarded message ---------" separator.
+# When this line is present the content that follows IS the email — it must
+# never be treated as quoted history and stripped.
+FORWARDED_SEPARATOR_RE = re.compile(
+    r"^-{3,}\s*forwarded message\s*-{3,}$",
+    re.IGNORECASE,
+)
+
 SIGNATURE_SIGNOFF_RE = re.compile(
     r"^(?:best|best regards|kind regards|regards|warm regards|thanks|thank you|cheers|sincerely|cordially)[,!.\s]*$",
     re.IGNORECASE,
@@ -89,16 +97,20 @@ def clean_email_snippet(value: str | None) -> str:
     return clean_email_body(value)
 
 
-def clean_email_body(value: str | None) -> str:
-    """Drop reply history, legal footers, and common signature blocks."""
+def clean_email_body(value: str | None, is_forwarded: bool = False) -> str:
+    """Drop reply history, legal footers, and common signature blocks.
 
+    When ``is_forwarded`` is True the quoted-history stripping step is skipped
+    because the forwarded headers (From:, Subject:, etc.) ARE the content the
+    user wants to read — not noise to discard.
+    """
     normalized = normalize_email_text(value)
     if not normalized:
         return ""
 
     normalized = _truncate_inline_footer(normalized)
     lines = normalized.split("\n")
-    trimmed = _strip_quoted_history(lines)
+    trimmed = lines if is_forwarded else _strip_quoted_history(lines)
     trimmed = _strip_footer(trimmed)
     trimmed = _strip_signature(trimmed)
     cleaned = "\n".join(trimmed)
@@ -109,10 +121,15 @@ def clean_email_body(value: str | None) -> str:
 
 def _strip_quoted_history(lines: list[str]) -> list[str]:
     kept: list[str] = []
-    for raw_line in lines:
+    for index, raw_line in enumerate(lines):
         line = raw_line.rstrip()
         lowered = line.strip().lower()
         has_visible_content = any(item.strip() for item in kept)
+        # A forwarded-message separator means everything from here on IS the
+        # main content — keep the separator and all remaining lines as-is.
+        if FORWARDED_SEPARATOR_RE.match(lowered):
+            kept.extend(raw_line.rstrip() for raw_line in lines[index:])
+            break
         if has_visible_content and any(
             pattern.match(lowered) for pattern in QUOTED_HISTORY_PATTERNS
         ):

@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from api.app.dependencies.services import build_service_bundle, get_service_bundle
 from api.app.dependencies.services import ServiceBundle
 from api.app.schemas.sync import SyncRequest, SyncStatusResponse
+from backend.core.config import get_settings
 from backend.core.database import get_session_factory
 
 
@@ -16,7 +17,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _run_sync_job(run_id: int, source: str, max_results: int, lookback_days: int) -> None:
+def _run_sync_job_inline(run_id: int, source: str, max_results: int, lookback_days: int) -> None:
+    """Fallback: run the sync in-process via FastAPI BackgroundTasks (no Redis)."""
     session_factory = get_session_factory()
     session = session_factory()
     try:
@@ -27,10 +29,22 @@ def _run_sync_job(run_id: int, source: str, max_results: int, lookback_days: int
             max_results=max_results,
             lookback_days=lookback_days,
         )
+        topic = services.settings.gmail_pubsub_topic
+        if topic:
+            services.sync_service.ensure_watch(topic)
     except Exception:
         logger.exception("Gmail sync failed")
     finally:
         session.close()
+
+
+async def _enqueue_sync_job(run_id: int, source: str, max_results: int, lookback_days: int) -> None:
+    """Enqueue the sync job via Arq when Redis is configured."""
+    import arq
+    from backend.jobs.worker import get_redis_settings
+    redis = await arq.create_pool(get_redis_settings())
+    await redis.enqueue_job("run_sync", run_id, source, max_results, lookback_days)
+    await redis.close()
 
 
 @router.post(
@@ -38,7 +52,7 @@ def _run_sync_job(run_id: int, source: str, max_results: int, lookback_days: int
     response_model=SyncStatusResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def run_sync(
+async def run_sync(
     payload: SyncRequest,
     background_tasks: BackgroundTasks,
     services: ServiceBundle = Depends(get_service_bundle),
@@ -51,13 +65,22 @@ def run_sync(
     max_results = payload.max_results or services.settings.gmail_max_results
     lookback_days = payload.lookback_days
     run = services.sync_service.create_run(source)
-    background_tasks.add_task(
-        _run_sync_job,
-        run.run_id,
-        source,
-        max_results,
-        lookback_days,
-    )
+
+    if get_settings().redis_url:
+        # Worker process is available — enqueue via Arq for full process isolation.
+        await _enqueue_sync_job(run.run_id, source, max_results, lookback_days)
+        logger.info("Sync run %s enqueued via Arq", run.run_id)
+    else:
+        # No Redis — fall back to in-process BackgroundTasks (local dev default).
+        background_tasks.add_task(
+            _run_sync_job_inline,
+            run.run_id,
+            source,
+            max_results,
+            lookback_days,
+        )
+        logger.info("Sync run %s started via BackgroundTasks (no Redis)", run.run_id)
+
     return SyncStatusResponse.from_domain(run)
 
 

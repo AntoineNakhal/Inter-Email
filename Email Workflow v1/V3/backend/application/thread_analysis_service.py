@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -23,6 +24,10 @@ from backend.providers.ai.router import AIProviderRouter
 
 
 logger = logging.getLogger(__name__)
+
+# Maximum wall-clock seconds to wait for a single AI provider call.
+# Prevents a hung API connection from blocking the entire sync indefinitely.
+_AI_TIMEOUT_SECONDS = 60
 
 
 class ThreadAnalysisService:
@@ -78,6 +83,7 @@ class ThreadAnalysisService:
                     summary="Sensitive or classified thread held for manual review.",
                     current_status="Manual review required outside the AI workflow.",
                     next_action="Review the thread manually in the secure process.",
+                    needs_next_action=True,
                     needs_action_today=True,
                     should_draft_reply=False,
                     accuracy_percent=100,
@@ -185,11 +191,34 @@ class ThreadAnalysisService:
             else self.provider_router.fallback_provider()
         )
         try:
-            return provider.analyze_thread(request)
+            return self._call_with_timeout(provider.analyze_thread, request, thread)
         except AIProviderError:
             fallback = self.provider_router.fallback_provider().analyze_thread(request)
             fallback.used_fallback = True
             return fallback
+
+    def _call_with_timeout(self, fn, request, thread: EmailThread):
+        """Run *fn(request)* in a worker thread, raising AIProviderError on timeout.
+
+        Using a ThreadPoolExecutor isolates the blocking HTTP call so Python's
+        timeout machinery can interrupt the wait without killing the main thread.
+        The underlying connection will be cleaned up when the worker finishes
+        (or the process exits).
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(fn, request)
+            try:
+                return future.result(timeout=_AI_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    "AI analysis timed out after %ss for thread %s — falling back.",
+                    _AI_TIMEOUT_SECONDS,
+                    thread.external_thread_id,
+                )
+                raise AIProviderError(
+                    f"Analysis timed out after {_AI_TIMEOUT_SECONDS}s for thread "
+                    f"{thread.external_thread_id}"
+                )
 
     def _should_reuse_verification(
         self,

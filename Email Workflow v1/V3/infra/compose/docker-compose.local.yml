@@ -1,14 +1,63 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: interemailv3
+      POSTGRES_PASSWORD: interemailv3
+      POSTGRES_DB: interemailv3
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interemailv3"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   api:
     build:
       context: ../..
       dockerfile: infra/docker/api.Dockerfile
     env_file:
       - ../../.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+psycopg://interemailv3:interemailv3@postgres:5432/interemailv3
     ports:
       - "8000:8000"
     volumes:
       - ../../data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+psycopg://interemailv3:interemailv3@postgres:5432/interemailv3
+    command: arq backend.jobs.worker.WorkerSettings
+    volumes:
+      - ../../data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     build:
@@ -20,3 +69,6 @@ services:
       - "5173:5173"
     depends_on:
       - api
+
+volumes:
+  postgres_data:

@@ -2,12 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY alembic.ini pyproject.toml README.md ./
 COPY backend ./backend
 COPY api ./api
 COPY data ./data
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir -e ".[postgres]"
 
 EXPOSE 8000
 

@@ -46,6 +46,7 @@ def get_settings_summary(
         local_ai_force_all_threads=runtime_settings.local_ai_force_all_threads,
         local_ai_model=runtime_settings.local_ai_model,
         local_ai_agent_prompt=runtime_settings.local_ai_agent_prompt,
+        local_ai_max_threads=runtime_settings.local_ai_max_threads,
         ollama_base_url=settings.ollama_base_url,
         ollama_model_thread_analysis=settings.ollama_model_thread_analysis,
         runtime_settings_updated_at=runtime_settings.updated_at,
@@ -71,6 +72,7 @@ def update_settings_summary(
         local_ai_force_all_threads=payload.local_ai_force_all_threads,
         local_ai_model=payload.local_ai_model,
         local_ai_agent_prompt=payload.local_ai_agent_prompt,
+        local_ai_max_threads=payload.local_ai_max_threads,
     )
     services.session.commit()
 
@@ -87,6 +89,7 @@ def update_settings_summary(
         local_ai_force_all_threads=runtime_settings.local_ai_force_all_threads,
         local_ai_model=runtime_settings.local_ai_model,
         local_ai_agent_prompt=runtime_settings.local_ai_agent_prompt,
+        local_ai_max_threads=runtime_settings.local_ai_max_threads,
         ollama_base_url=settings.ollama_base_url,
         ollama_model_thread_analysis=settings.ollama_model_thread_analysis,
         runtime_settings_updated_at=runtime_settings.updated_at,

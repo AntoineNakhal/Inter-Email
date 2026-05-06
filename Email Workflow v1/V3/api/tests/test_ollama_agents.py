@@ -87,6 +87,7 @@ def test_ollama_provider_builds_draft_payload_with_user_context() -> None:
                     summary="Mohammad is asking for confirmation that the message was received.",
                     current_status="Waiting on Inter-Op to confirm receipt to Mohammad.",
                     next_action="Reply to Mohammad confirming you received this.",
+                    needs_next_action=True,
                     should_draft_reply=True,
                 ),
             ),

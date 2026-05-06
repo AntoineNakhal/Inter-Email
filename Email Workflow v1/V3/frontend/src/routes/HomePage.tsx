@@ -1,4 +1,5 @@
 import {
+  faArrowLeft,
   faArrowRight,
   faArrowUpRightFromSquare,
   faSquareCheck,
@@ -72,7 +73,7 @@ function focusCandidates(threads: EmailThread[]): EmailThread[] {
     .filter(
       (thread) =>
         isOpenWork(thread) &&
-        Boolean(thread.analysis?.next_action?.trim()) &&
+        Boolean(thread.analysis?.needs_next_action) &&
         (
           Boolean(thread.analysis?.needs_action_today) ||
           Boolean(thread.waiting_on_us) ||
@@ -88,7 +89,7 @@ function quickWins(threads: EmailThread[]): EmailThread[] {
     .filter(
       (thread) =>
         isOpenWork(thread) &&
-        Boolean(thread.analysis?.next_action?.trim()) &&
+        Boolean(thread.analysis?.needs_next_action) &&
         (
           Boolean(thread.analysis?.should_draft_reply) ||
           thread.message_count <= 2 ||
@@ -158,14 +159,18 @@ function ActionRow({
         </div>
         <span className="home-row__subject">{thread.subject || "Untitled thread"}</span>
         <span className="home-row__action">
-          {thread.analysis?.next_action ?? "Review the thread."}
+          {thread.analysis?.needs_next_action
+            ? thread.analysis.next_action
+            : "No action needed right now."}
         </span>
       </Link>
       <div className="home-row__actions">
         {showDraft ? (
           <DraftComposer
             thread={thread}
-            recommended={Boolean(thread.analysis?.should_draft_reply)}
+            recommended={Boolean(
+              thread.analysis?.needs_next_action && thread.analysis?.should_draft_reply,
+            )}
             iconOnly
           />
         ) : null}
@@ -196,6 +201,7 @@ export function HomePage() {
   const [focusIndex, setFocusIndex] = useState(0);
 
   const actionableThreads = useMemo(() => focusCandidates(threads), [threads]);
+  const hasMultipleFocusThreads = actionableThreads.length > 1;
   const activeFocusThreadId = actionableThreads[focusIndex]?.thread_id ?? null;
   const quickWinThreads = useMemo(
     () =>
@@ -229,6 +235,15 @@ export function HomePage() {
 
   const focusSeenMutation = useSeenMutation(activeFocus?.thread_id ?? "");
   const focusPinMutation = usePinMutation(activeFocus?.thread_id ?? "");
+
+  const cycleFocus = (direction: -1 | 1) => {
+    setFocusIndex((current) => {
+      if (!hasMultipleFocusThreads) {
+        return 0;
+      }
+      return (current + direction + actionableThreads.length) % actionableThreads.length;
+    });
+  };
 
   return (
     <section className="page home-page">
@@ -313,14 +328,19 @@ export function HomePage() {
                     <div className="home-focus__block home-focus__block--accent">
                       <p className="home-focus__label">Next action</p>
                       <p className="home-focus__value home-focus__value--strong">
-                        {activeFocus.analysis?.next_action || "Open the thread and decide the next step."}
+                        {activeFocus.analysis?.needs_next_action
+                          ? activeFocus.analysis.next_action
+                          : "No action needed right now."}
                       </p>
                     </div>
 
                     <div className="home-focus__actions">
                       <DraftComposer
                         thread={activeFocus}
-                        recommended={Boolean(activeFocus.analysis?.should_draft_reply)}
+                        recommended={Boolean(
+                          activeFocus.analysis?.needs_next_action &&
+                            activeFocus.analysis?.should_draft_reply,
+                        )}
                       />
                       <button
                         className="button button--ghost"
@@ -338,21 +358,26 @@ export function HomePage() {
                         <FontAwesomeIcon icon={faThumbtack} />
                         {activeFocus.seen_state?.pinned ? "Unpin" : "Pin"}
                       </button>
-                      <button
-                        className="button button--ghost"
-                        type="button"
-                        onClick={() =>
-                          setFocusIndex((current) =>
-                            actionableThreads.length
-                              ? Math.min(current + 1, actionableThreads.length - 1)
-                              : 0,
-                          )
-                        }
-                        disabled={focusIndex >= actionableThreads.length - 1}
-                      >
-                        Next priority
-                        <FontAwesomeIcon icon={faArrowRight} />
-                      </button>
+                      {hasMultipleFocusThreads ? (
+                        <div className="home-focus__nav" aria-label="Today focus navigation">
+                          <button
+                            className="button button--ghost"
+                            type="button"
+                            onClick={() => cycleFocus(-1)}
+                          >
+                            <FontAwesomeIcon icon={faArrowLeft} />
+                            Previous
+                          </button>
+                          <button
+                            className="button button--ghost"
+                            type="button"
+                            onClick={() => cycleFocus(1)}
+                          >
+                            Next priority
+                            <FontAwesomeIcon icon={faArrowRight} />
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </>
                 ) : (
@@ -381,7 +406,10 @@ export function HomePage() {
                       <ActionRow
                         key={thread.thread_id}
                         thread={thread}
-                        showDraft={Boolean(thread.analysis?.should_draft_reply)}
+                        showDraft={Boolean(
+                          thread.analysis?.needs_next_action &&
+                            thread.analysis?.should_draft_reply,
+                        )}
                       />
                     ))}
                   </div>

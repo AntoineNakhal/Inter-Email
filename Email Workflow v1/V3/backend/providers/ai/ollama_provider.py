@@ -30,7 +30,11 @@ from backend.domain.thread import (
     UrgencyLevel,
 )
 from backend.providers.ai.analysis_style import fit_current_status_to_thread
-from backend.providers.ai.action_style import fit_next_action_to_thread
+from backend.providers.ai.action_style import (
+    clear_non_action_fields,
+    fit_needs_next_action_to_thread,
+    fit_next_action_to_thread,
+)
 from backend.providers.ai.agents.ollama import (
     LocalCRMAgent,
     LocalDraftAgent,
@@ -329,6 +333,7 @@ class OllamaProvider(AIProvider):
                     "urgency": analysis.urgency.value if analysis else None,
                     "summary": analysis.summary if analysis else None,
                     "next_action": analysis.next_action if analysis else None,
+                    "needs_next_action": analysis.needs_next_action if analysis else None,
                 },
             }
         }
@@ -374,6 +379,9 @@ class OllamaProvider(AIProvider):
                     "summary": analysis.summary if analysis else None,
                     "current_status": analysis.current_status if analysis else None,
                     "next_action": analysis.next_action if analysis else None,
+                    "needs_next_action": (
+                        analysis.needs_next_action if analysis else None
+                    ),
                     "needs_action_today": (
                         analysis.needs_action_today if analysis else None
                     ),
@@ -398,6 +406,7 @@ class OllamaProvider(AIProvider):
                 "summary": request.analysis.summary,
                 "current_status": request.analysis.current_status,
                 "next_action": request.analysis.next_action,
+                "needs_next_action": request.analysis.needs_next_action,
                 "needs_action_today": request.analysis.needs_action_today,
                 "should_draft_reply": request.analysis.should_draft_reply,
                 "draft_needs_date": request.analysis.draft_needs_date,
@@ -424,9 +433,17 @@ class OllamaProvider(AIProvider):
             self._normalize_text(normalized.get("current_status")),
             thread,
         )
-        normalized["next_action"] = fit_next_action_to_thread(
-            self._normalize_text(normalized.get("next_action")),
+        normalized["needs_next_action"] = fit_needs_next_action_to_thread(
+            normalized.get("needs_next_action"),
             thread,
+        )
+        normalized["next_action"] = (
+            fit_next_action_to_thread(
+                self._normalize_text(normalized.get("next_action")),
+                thread,
+            )
+            if normalized["needs_next_action"]
+            else ""
         )
         normalized["needs_action_today"] = self._normalize_bool(
             normalized.get("needs_action_today")
@@ -446,6 +463,12 @@ class OllamaProvider(AIProvider):
         normalized["draft_attachment_reason"] = self._normalize_optional_text(
             normalized.get("draft_attachment_reason")
         )
+        if normalized["should_draft_reply"]:
+            normalized["needs_next_action"] = True
+        if not normalized["needs_next_action"]:
+            return clear_non_action_fields(normalized)
+        if not thread.waiting_on_us:
+            normalized["should_draft_reply"] = False
         return normalized
 
     def _normalize_queue_summary_payload(

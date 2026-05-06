@@ -82,6 +82,7 @@ class ThreadMessageModel(Base, TimestampMixin):
     snippet: Mapped[str] = mapped_column(Text, default="")
     cleaned_body: Mapped[str] = mapped_column(Text, default="")
     label_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    is_forwarded: Mapped[bool] = mapped_column(Boolean, default=False)
 
     thread: Mapped["EmailThreadModel"] = relationship(back_populates="messages")
 
@@ -100,6 +101,7 @@ class ThreadAnalysisModel(Base, TimestampMixin):
     summary: Mapped[str] = mapped_column(Text, default="")
     current_status: Mapped[str] = mapped_column(Text, default="")
     next_action: Mapped[str] = mapped_column(Text, default="")
+    needs_next_action: Mapped[bool] = mapped_column(Boolean, default=False)
     needs_action_today: Mapped[bool] = mapped_column(Boolean, default=False)
     should_draft_reply: Mapped[bool] = mapped_column(Boolean, default=False)
     draft_needs_date: Mapped[bool] = mapped_column(Boolean, default=False)

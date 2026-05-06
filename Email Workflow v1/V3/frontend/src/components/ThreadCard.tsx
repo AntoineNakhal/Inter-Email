@@ -33,7 +33,9 @@ export function ThreadCard({ thread }: { thread: EmailThread }) {
   const acknowledgeThreadMutation = useAcknowledgeThreadMutation(thread.thread_id);
   const tone = statusTone(thread);
   const label = statusLabel(thread);
-  const nextAction = thread.analysis?.next_action || "Open to review.";
+  const nextAction = thread.analysis?.needs_next_action
+    ? thread.analysis.next_action
+    : "No action needed right now.";
   const urgency = thread.analysis?.urgency;
 
   return (

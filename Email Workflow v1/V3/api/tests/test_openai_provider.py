@@ -13,7 +13,8 @@ def test_openai_provider_normalizes_unknown_thread_category(monkeypatch) -> None
             "urgency": "medium",
             "summary": "Website health alert notification.",
             "current_status": "Monitoring the issue.",
-            "next_action": "Review the alert and decide whether escalation is needed.",
+            "needs_next_action": False,
+            "next_action": "",
             "needs_action_today": False,
             "should_draft_reply": False,
             "draft_needs_date": False,
@@ -48,6 +49,7 @@ def test_openai_provider_keeps_summary_short_for_tiny_email(monkeypatch) -> None
                 "workflow details beyond the meeting access itself."
             ),
             "current_status": "Meeting link received.",
+            "needs_next_action": False,
             "next_action": "Open the link when the meeting starts.",
             "needs_action_today": False,
             "should_draft_reply": False,
@@ -76,6 +78,8 @@ def test_openai_provider_keeps_summary_short_for_tiny_email(monkeypatch) -> None
     )
 
     assert result.summary == "Candidate sent the Google Meet link."
+    assert result.needs_next_action is False
+    assert result.next_action == ""
 
 
 def test_openai_provider_makes_generic_next_action_specific(monkeypatch) -> None:
@@ -87,6 +91,7 @@ def test_openai_provider_makes_generic_next_action_specific(monkeypatch) -> None
             "urgency": "high",
             "summary": "Hi Antoine, did you receive this?",
             "current_status": "Waiting for Antoine to reply.",
+            "needs_next_action": True,
             "next_action": "Prepare and send a reply today.",
             "needs_action_today": True,
             "should_draft_reply": True,
@@ -119,5 +124,6 @@ def test_openai_provider_makes_generic_next_action_specific(monkeypatch) -> None
         result.summary
         == "Mohammad is asking for confirmation that the message was received."
     )
+    assert result.needs_next_action is True
     assert result.current_status == "Waiting on Inter-Op to confirm receipt to Mohammad."
     assert result.next_action == "Reply to Mohammad confirming you received this."

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.domain.runtime_settings import AIMode, RuntimeSettings
@@ -28,6 +28,7 @@ class RuntimeSettingsRepository:
         local_ai_force_all_threads: bool,
         local_ai_model: str,
         local_ai_agent_prompt: str,
+        local_ai_max_threads: int = 50,
     ) -> RuntimeSettings:
         model = self._get_or_create()
         model.ai_mode = AIMode(ai_mode).value
@@ -36,6 +37,7 @@ class RuntimeSettingsRepository:
         )
         model.local_ai_model = str(local_ai_model or "").strip()
         model.local_ai_agent_prompt = str(local_ai_agent_prompt or "").strip()
+        model.local_ai_max_threads = max(0, int(local_ai_max_threads))
         self.session.flush()
         return self._to_domain(model)
 
@@ -45,8 +47,30 @@ class RuntimeSettingsRepository:
         self.session.flush()
         return self._to_domain(model)
 
+    def update_gmail_mailbox_name(self, gmail_mailbox_name: str) -> RuntimeSettings:
+        model = self._get_or_create()
+        model.gmail_mailbox_name = str(gmail_mailbox_name or "").strip()
+        self.session.flush()
+        return self._to_domain(model)
+
+    def update_gmail_history_id(self, gmail_history_id: str) -> RuntimeSettings:
+        model = self._get_or_create()
+        model.gmail_history_id = str(gmail_history_id or "").strip()
+        self.session.flush()
+        return self._to_domain(model)
+
+    def update_gmail_watch(
+        self,
+        resource_id: str,
+        expiry: "datetime | None",
+    ) -> RuntimeSettings:
+        model = self._get_or_create()
+        model.gmail_watch_resource_id = str(resource_id or "").strip()
+        model.gmail_watch_expiry = expiry
+        self.session.flush()
+        return self._to_domain(model)
+
     def _get_or_create(self) -> RuntimeSettingsModel:
-        self._ensure_schema()
         model = self.session.scalar(
             select(RuntimeSettingsModel).where(
                 RuntimeSettingsModel.id == self.SINGLETON_ID
@@ -58,28 +82,6 @@ class RuntimeSettingsRepository:
             self.session.flush()
         return model
 
-    def _ensure_schema(self) -> None:
-        bind = self.session.get_bind()
-        if bind is None:
-            return
-
-        inspector = inspect(bind)
-        if not inspector.has_table(RuntimeSettingsModel.__tablename__):
-            return
-
-        column_names = {
-            column["name"]
-            for column in inspector.get_columns(RuntimeSettingsModel.__tablename__)
-        }
-        if "gmail_mailbox_email" not in column_names:
-            self.session.execute(
-                text(
-                    "ALTER TABLE runtime_settings "
-                    "ADD COLUMN gmail_mailbox_email VARCHAR(255) DEFAULT ''"
-                )
-            )
-            self.session.flush()
-
     @staticmethod
     def _to_domain(model: RuntimeSettingsModel) -> RuntimeSettings:
         return RuntimeSettings(
@@ -88,5 +90,10 @@ class RuntimeSettingsRepository:
             local_ai_model=model.local_ai_model,
             local_ai_agent_prompt=model.local_ai_agent_prompt,
             gmail_mailbox_email=model.gmail_mailbox_email,
+            gmail_mailbox_name=model.gmail_mailbox_name,
+            gmail_history_id=model.gmail_history_id,
+            gmail_watch_resource_id=model.gmail_watch_resource_id,
+            gmail_watch_expiry=model.gmail_watch_expiry,
+            local_ai_max_threads=model.local_ai_max_threads,
             updated_at=model.updated_at,
         )

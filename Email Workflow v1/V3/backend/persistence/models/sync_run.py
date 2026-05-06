@@ -16,9 +16,14 @@ class SyncRunModel(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     status: Mapped[str] = mapped_column(String(32), default="running")
     source: Mapped[str] = mapped_column(String(32), default="anywhere")
+    # Gmail address that owns this run — enforces single-active-run-per-account.
+    mailbox_account: Mapped[str] = mapped_column(String(255), default="")
     fetched_message_count: Mapped[int] = mapped_column(Integer, default=0)
     thread_count: Mapped[int] = mapped_column(Integer, default=0)
     ai_thread_count: Mapped[int] = mapped_column(Integer, default=0)
     queue_summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    # JSON snapshot written at each stage transition (stage, percent, unit counts,
+    # status_message). Allows a restarted process to surface last-known state.
+    progress_json: Mapped[str] = mapped_column(Text, default="{}")
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_message: Mapped[str | None] = mapped_column(Text)

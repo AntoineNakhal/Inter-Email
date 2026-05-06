@@ -132,5 +132,14 @@ class GmailConnectionService:
                 self.progress_store.clear()
 
         self.runtime_settings_service.set_gmail_mailbox_email(next_mailbox_email)
+        # Persist the display name so drafts are signed with the real name,
+        # not a hallucinated version inferred from the email address prefix.
+        if status.display_name:
+            self.runtime_settings_service.set_gmail_mailbox_name(status.display_name)
+        # A different account's history cursor and watch are meaningless — clear
+        # both so the next sync bootstraps from a full fetch and registers a
+        # fresh watch for the new account.
+        self.runtime_settings_service.update_gmail_history_id("")
+        self.runtime_settings_service.clear_gmail_watch()
         if self.session is not None:
             self.session.commit()

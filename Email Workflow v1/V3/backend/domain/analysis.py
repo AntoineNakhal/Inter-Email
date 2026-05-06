@@ -34,6 +34,9 @@ class DraftReplyRequest(BaseModel):
     attachment_names: list[str] = Field(default_factory=list)
     user_instructions: str = ""
     user_email: str | None = None
+    # Explicit display name for the draft signature (e.g. "Antoine Nakhal").
+    # When set, providers use this directly instead of inferring from user_email.
+    user_name: str | None = None
 
 
 class ThreadVerificationRequest(BaseModel):

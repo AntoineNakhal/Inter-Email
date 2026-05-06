@@ -76,77 +76,6 @@ const SYNC_LOOKBACK_OPTIONS = [
 // SOURCE OF TRUTH: how long each stage typically takes. If you measure
 // new real-world timings, change ONLY this map — the % ranges below are
 // derived from it, so they can never drift out of sync.
-const STAGE_PROGRESS_DURATIONS_MS: Record<string, number> = {
-  queued: 1200,
-  fetching: 5200,
-  persisting: 4800,
-  analyzing: 20000,
-  summarizing: 2600,
-};
-
-// The order in which stages run. Used to compute cumulative % ranges.
-const STAGE_ORDER: ReadonlyArray<string> = [
-  "queued",
-  "fetching",
-  "persisting",
-  "analyzing",
-  "summarizing",
-];
-
-/**
- * Derive `{ floor, cap }` ranges for each stage from its duration share.
- * Each stage's width is proportional to its duration / total duration, so
- * the % bar tracks elapsed time. A small gap is inserted between stages
- * (visual signal of stage transition) and before 100 (so completion is
- * its own visible jump).
- */
-function buildStageProgressRanges(
-  order: ReadonlyArray<string>,
-  durations: Record<string, number>,
-  options: { interStageGap?: number; completionGap?: number } = {},
-): Record<string, StageProgressRange> {
-  const interStageGap = options.interStageGap ?? 1;
-  const completionGap = options.completionGap ?? 3;
-  const totalDuration = order.reduce(
-    (sum, stage) => sum + (durations[stage] ?? 0),
-    0,
-  );
-  const usableBudget = Math.max(
-    0,
-    100 - completionGap - interStageGap * Math.max(0, order.length - 1),
-  );
-
-  const ranges: Record<string, StageProgressRange> = {};
-  let cursor = 0;
-  for (let i = 0; i < order.length; i += 1) {
-    const stage = order[i];
-    const share =
-      totalDuration > 0
-        ? (durations[stage] ?? 0) / totalDuration
-        : 1 / order.length;
-    const width = Math.round(share * usableBudget);
-    const floor = cursor;
-    const cap = Math.min(100 - completionGap, floor + width);
-    ranges[stage] = { floor, cap };
-    cursor = cap + interStageGap;
-  }
-
-  ranges.completed = { floor: 100, cap: 100 };
-  ranges.failed = { floor: 100, cap: 100 };
-  return ranges;
-}
-
-const STAGE_PROGRESS_RANGES: Record<string, StageProgressRange> = {
-  queued: { floor: 2, cap: 11 },
-  fetching: { floor: 12, cap: 35 },
-  persisting: { floor: 36, cap: 51 },
-  analyzing: { floor: 52, cap: 89 },
-  summarizing: { floor: 90, cap: 99 },
-  completed: { floor: 100, cap: 100 },
-  cancelled: { floor: 100, cap: 100 },
-  failed: { floor: 100, cap: 100 },
-};
-
 function isPinned(thread: EmailThread): boolean {
   return Boolean(thread.seen_state?.pinned);
 }
@@ -183,106 +112,6 @@ function formatEta(ms: number): string {
   return seconds === 0
     ? `~${minutes}m left`
     : `~${minutes}m ${seconds}s left`;
-}
-
-function parseStageUnits(statusMessage: string): { current: number; total: number } | null {
-  const analysisMatch = statusMessage.match(/\((\d+)\/(\d+)\)/);
-  if (analysisMatch) {
-    const current = Number(analysisMatch[1]);
-    const total = Number(analysisMatch[2]);
-    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-      return { current, total };
-    }
-  }
-
-  const persistingMatch = statusMessage.match(/Saving thread\s+(\d+)\s+of\s+(\d+)/i);
-  if (persistingMatch) {
-    const current = Number(persistingMatch[1]);
-    const total = Number(persistingMatch[2]);
-    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-      return { current: Math.max(0, current - 1), total };
-    }
-  }
-
-  const persistedBatchMatch = statusMessage.match(/Saving threads\s+\((\d+)\/(\d+)\)/i);
-  if (persistedBatchMatch) {
-    const current = Number(persistedBatchMatch[1]);
-    const total = Number(persistedBatchMatch[2]);
-    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-      return { current, total };
-    }
-  }
-
-  return null;
-}
-
-function estimateRemainingMs(
-  status: SyncRunStatus | null,
-  stageStartedAt: number | null,
-  observedMetrics: ObservedStageMetrics | null = null,
-): number | null {
-  if (!status || status.status !== "running") {
-    return null;
-  }
-
-  const elapsed = stageStartedAt ? Math.max(0, Date.now() - stageStartedAt) : 0;
-  const currentStageDuration =
-    STAGE_PROGRESS_DURATIONS_MS[status.stage] ?? 0;
-
-  const currentStageIndex = STAGE_ORDER.indexOf(status.stage);
-  const remainingFutureStagesMs =
-    currentStageIndex === -1
-      ? 0
-      : STAGE_ORDER.slice(currentStageIndex + 1).reduce(
-          (sum, stage) => sum + (STAGE_PROGRESS_DURATIONS_MS[stage] ?? 0),
-          0,
-        );
-
-  let remainingCurrentStageMs = Math.max(0, currentStageDuration - elapsed);
-
-  if (
-    observedMetrics &&
-    observedMetrics.stageKey === `${status.run_id}:${status.stage}` &&
-    observedMetrics.total > 0
-  ) {
-    const msPerUnit =
-      observedMetrics.msPerUnit ??
-      currentStageDuration / Math.max(observedMetrics.total, 1);
-    const currentUnitElapsed = Math.max(
-      0,
-      Date.now() - observedMetrics.unitStartedAt,
-    );
-    const remainingCurrentUnitMs =
-      observedMetrics.current >= observedMetrics.total
-        ? 0
-        : Math.max(0, msPerUnit - currentUnitElapsed);
-    const remainingFullUnitsMs =
-      Math.max(0, observedMetrics.total - observedMetrics.current - 1) *
-      msPerUnit;
-    remainingCurrentStageMs = remainingCurrentUnitMs + remainingFullUnitsMs;
-  } else if (status.stage === "analyzing" && status.thread_count > 0) {
-    remainingCurrentStageMs = currentStageDuration;
-  } else if (status.stage === "persisting" && status.thread_count > 0) {
-    remainingCurrentStageMs = Math.max(
-      0,
-      ((currentStageDuration * 0.8) * Math.max(0, status.thread_count - 1)) /
-        Math.max(status.thread_count, 1),
-    );
-  } else if (status.stage === "fetching") {
-    const range = STAGE_PROGRESS_RANGES.fetching;
-    const stageSpan = Math.max(1, range.cap - range.floor);
-    const normalizedProgress = Math.min(
-      1,
-      Math.max(0, (status.progress_percent - range.floor) / stageSpan),
-    );
-    remainingCurrentStageMs =
-      normalizedProgress > 0
-        ? ((1 - normalizedProgress) * elapsed) / normalizedProgress
-        : remainingCurrentStageMs;
-  }
-
-  const totalRemainingMs = remainingCurrentStageMs + remainingFutureStagesMs;
-  return totalRemainingMs > 0 ? totalRemainingMs : null;
 }
 
 function sectionedThreads(threads: EmailThread[]): InboxSection[] {
@@ -360,7 +189,7 @@ function topPriorityThreads(threads: EmailThread[]): EmailThread[] {
       (thread) =>
         !thread.resolved_or_closed &&
         !isSeen(thread) &&
-        Boolean(thread.analysis?.next_action?.trim()) &&
+        Boolean(thread.analysis?.needs_next_action) &&
         (
           Boolean(thread.analysis?.needs_action_today) ||
           thread.analysis?.urgency === "high" ||
@@ -414,7 +243,14 @@ function PriorityQueueModal({
           <div className="pq-header__actions">
             {activeThread && (
               <>
-                <DraftComposer thread={activeThread} recommended={Boolean(activeThread.analysis?.should_draft_reply)} iconOnly />
+                <DraftComposer
+                  thread={activeThread}
+                  recommended={Boolean(
+                    activeThread.analysis?.needs_next_action &&
+                      activeThread.analysis?.should_draft_reply,
+                  )}
+                  iconOnly
+                />
                 <button
                   className={`td-action-btn ${activeThread.seen_state?.seen ? "td-action-btn--active" : ""}`}
                   onClick={() => seenMutation.mutate(!(activeThread.seen_state?.seen ?? false))}
@@ -454,7 +290,9 @@ function PriorityQueueModal({
               <div className="pq-block pq-block--accent">
                 <p className="pq-label">Next action</p>
                 <p className="pq-value pq-value--strong">
-                  {activeThread.analysis?.next_action ?? "Open the thread and decide the next step."}
+                  {activeThread.analysis?.needs_next_action
+                    ? activeThread.analysis.next_action
+                    : "No action needed right now."}
                 </p>
               </div>
 
@@ -495,44 +333,6 @@ function PriorityQueueModal({
       </div>
     </div>
   );
-}
-
-function fakeProgressTarget(status: SyncRunStatus | null): number {
-  return status ? Math.max(1, status.progress_percent) : 0;
-}
-
-function visualStageDurationMs(status: SyncRunStatus): number {
-  const base = STAGE_PROGRESS_DURATIONS_MS[status.stage] ?? 2600;
-  const parsedUnits = parseStageUnits(status.status_message);
-
-  if (parsedUnits) {
-    const perUnitMs =
-      status.stage === "analyzing"
-        ? 900
-        : status.stage === "persisting"
-          ? 320
-          : 0;
-    if (perUnitMs > 0) {
-      return Math.max(base, parsedUnits.total * perUnitMs);
-    }
-  }
-
-  if (status.stage === "analyzing") {
-    return Math.max(base, Math.max(status.thread_count, 1) * 900);
-  }
-
-  if (status.stage === "persisting") {
-    return Math.max(
-      base,
-      Math.max(status.thread_count, status.fetched_message_count, 1) * 320,
-    );
-  }
-
-  if (status.stage === "fetching") {
-    return Math.max(base, Math.max(status.fetched_message_count, 1) * 110);
-  }
-
-  return base;
 }
 
 function normalizedUrgency(thread: EmailThread): string {

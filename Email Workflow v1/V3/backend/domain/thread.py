@@ -71,6 +71,7 @@ class ThreadMessage(BaseModel):
     snippet: str = ""
     cleaned_body: str = ""
     label_ids: list[str] = Field(default_factory=list)
+    is_forwarded: bool = False
 
 
 class ThreadAnalysis(BaseModel):
@@ -81,6 +82,7 @@ class ThreadAnalysis(BaseModel):
     summary: str = ""
     current_status: str = ""
     next_action: str = ""
+    needs_next_action: bool = False
     needs_action_today: bool = False
     waiting_on_us: bool | None = None  # None = defer to heuristic
     should_draft_reply: bool = False

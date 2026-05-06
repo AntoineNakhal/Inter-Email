@@ -1,3 +1,17 @@
+/**
+ * AUTO-GENERATED — do not edit by hand.
+ *
+ * Regenerate from the OpenAPI schema:
+ *   cd frontend && npm install && npm run generate:types
+ *
+ * CI will fail (`npm run check:types-drift`) if this file is out of sync with
+ * shared/openapi/openapi.json. Commit the updated file after regenerating.
+ *
+ * NOTE: This file currently contains hand-written types. Running
+ * `npm run generate:types` will replace them with the openapi-typescript
+ * format. Update any imports in the frontend that reference these types.
+ */
+
 export type ThreadMessage = {
   message_id: string;
   sender: string;
@@ -14,6 +28,7 @@ export type ThreadAnalysis = {
   summary: string;
   current_status: string;
   next_action: string;
+  needs_next_action: boolean;
   needs_action_today: boolean;
   should_draft_reply: boolean;
   draft_needs_date: boolean;

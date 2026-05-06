@@ -16,6 +16,9 @@ class LocalDraftAgent(BaseOllamaAgent):
         return (
             "Return strict JSON with keys: subject, body. "
             "Do not restate the sender's email, signature, or confidentiality footer. "
+            "Do NOT include a sign-off or signature block (no 'Best regards', no name, "
+            "no company) — the email client appends the real signature automatically. "
+            "End the body after the last content sentence. "
             "Acknowledge briefly, answer the real ask, and keep the reply concise. "
             "If user_instructions are provided, treat them as highest-priority drafting requirements "
             "and visibly change the draft to match them. "

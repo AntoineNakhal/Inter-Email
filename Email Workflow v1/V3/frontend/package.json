@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "npm run generate:types && tsc -b && vite build",
+    "preview": "vite preview",
+    "generate:types": "openapi-typescript ../../shared/openapi/openapi.json -o src/types/api.ts",
+    "check:types-drift": "node scripts/check_types_drift.mjs"
   },
   "dependencies": {
     "@fortawesome/free-regular-svg-icons": "^7.2.0",
@@ -21,6 +23,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "openapi-typescript": "^7.4.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }

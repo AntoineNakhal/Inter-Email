@@ -211,7 +211,13 @@ export function ThreadDetailPage() {
             >
               <FontAwesomeIcon icon={faWandMagicSparkles} style={analyzeMutation.isPending ? { animation: "spin 1s linear infinite" } : undefined} />
             </button>
-            <DraftComposer thread={thread} recommended={Boolean(thread.analysis?.should_draft_reply)} iconOnly />
+            <DraftComposer
+              thread={thread}
+              recommended={Boolean(
+                thread.analysis?.needs_next_action && thread.analysis?.should_draft_reply,
+              )}
+              iconOnly
+            />
             <a
               className="td-action-btn"
               href={gmailThreadUrl(thread.thread_id)}
@@ -298,7 +304,9 @@ export function ThreadDetailPage() {
           <div className="td-analysis__block td-analysis__block--accent">
             <p className="td-analysis__label">Next action</p>
             <p className="td-analysis__value td-analysis__value--strong">
-              {thread.analysis?.next_action ?? "Open the conversation and decide the next step."}
+              {thread.analysis?.needs_next_action
+                ? thread.analysis.next_action
+                : "No action needed right now."}
             </p>
           </div>
 

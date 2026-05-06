@@ -179,7 +179,7 @@ function patchThreadSeen(
     // Marking done clears "act today" immediately — no need to wait for
     // the server round-trip. Undo Done doesn't restore it; the next sync will.
     analysis: thread.analysis && seen
-      ? { ...thread.analysis, needs_action_today: false }
+      ? { ...thread.analysis, needs_action_today: false, needs_next_action: false }
       : thread.analysis,
   };
 }

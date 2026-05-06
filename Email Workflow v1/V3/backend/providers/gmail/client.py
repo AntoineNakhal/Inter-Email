@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import email as email_lib
+import logging
 import secrets
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -14,6 +15,19 @@ from backend.core.config import AppSettings
 from backend.core.email_text import clean_email_body, clean_email_snippet
 from backend.domain.gmail import GmailConnectionStatus
 from backend.domain.thread import InboundEmailMessage
+
+
+logger = logging.getLogger(__name__)
+
+
+class HistoryExpiredError(Exception):
+    """The stored Gmail historyId is too old; fall back to a full fetch.
+
+    Gmail retains history for approximately 7 days. If the last sync ran more
+    than 7 days ago, or the historyId was never stored, this error is raised
+    and the caller should perform a full rolling-window fetch to re-bootstrap
+    the cursor.
+    """
 
 
 SCOPES = [
@@ -141,6 +155,7 @@ class GmailReadonlyClient:
 
             status.connected = True
             status.email_address = self.get_profile_email()
+            status.display_name = self.get_profile_name()
             return status
         except Exception as exc:
             status.error_message = str(exc)
@@ -241,6 +256,220 @@ class GmailReadonlyClient:
         profile = service.users().getProfile(userId="me").execute()
         email_address = str(profile.get("emailAddress") or "").strip()
         return email_address or None
+
+    def get_current_history_id(self) -> str:
+        """Return the current historyId for the connected account.
+
+        This is the value to persist after a full-fetch bootstrap so the next
+        sync can use the incremental history path. The users.getProfile endpoint
+        is the cheapest way to get it — no message data is transferred.
+        """
+        service = self._build_service()
+        profile = service.users().getProfile(userId="me").execute()
+        return str(profile.get("historyId") or "")
+
+    # ------------------------------------------------------------------
+    # Label-based source filters for the history path.
+    # mirrors the query strings in QUERY_BY_SOURCE for the polling path.
+    # ------------------------------------------------------------------
+    _HISTORY_EXCLUDE_LABELS: frozenset[str] = frozenset({"DRAFT", "TRASH", "SPAM"})
+    _HISTORY_SOURCE_REQUIRE: dict[str, frozenset[str]] = {
+        "sent": frozenset({"SENT"}),
+        "received": frozenset({"INBOX"}),
+    }
+
+    def list_messages_since_history(
+        self,
+        start_history_id: str,
+        source: str = "anywhere",
+        max_results: int | None = None,
+    ) -> tuple[list[InboundEmailMessage], str, set[str]]:
+        """Return only messages changed since *start_history_id*.
+
+        Uses the Gmail users.history.list API, which is far cheaper than a
+        full rolling-window fetch for accounts that sync frequently.
+
+        Returns:
+            messages:          full InboundEmailMessage objects for added /
+                               modified messages (source-filtered, no drafts).
+            new_history_id:    the latest historyId to persist after this run.
+            deleted_thread_ids: Gmail thread IDs where at least one message was
+                               permanently deleted. Callers use this to clean up
+                               local threads that no longer exist in Gmail.
+
+        Raises:
+            HistoryExpiredError: start_history_id is too old (> ~7 days) or
+                                 otherwise invalid. The caller should fall back
+                                 to list_recent_messages() and re-bootstrap.
+        """
+        service = self._build_service()
+        limit = max_results or self.settings.gmail_max_results
+        source_normalized = (source or "anywhere").strip().lower()
+
+        added_thread_ids: set[str] = set()
+        deleted_thread_ids: set[str] = set()
+        new_history_id = start_history_id  # overwritten once we get a response
+        total_history_records = 0
+        next_page_token: str | None = None
+
+        try:
+            while True:
+                request_kwargs: dict[str, Any] = {
+                    "userId": "me",
+                    "startHistoryId": start_history_id,
+                    "historyTypes": ["messageAdded", "messageDeleted"],
+                }
+                if next_page_token:
+                    request_kwargs["pageToken"] = next_page_token
+
+                response = service.users().history().list(**request_kwargs).execute()
+
+                # historyId is present even when the history array is empty.
+                if response.get("historyId"):
+                    new_history_id = str(response["historyId"])
+
+                for record in response.get("history", []):
+                    for added in record.get("messagesAdded", []):
+                        msg = added.get("message", {})
+                        label_ids: list[str] = msg.get("labelIds") or []
+                        # Skip messages excluded globally (drafts, trash, spam).
+                        if self._HISTORY_EXCLUDE_LABELS & set(label_ids):
+                            continue
+                        # Apply source filter via label presence.
+                        required = self._HISTORY_SOURCE_REQUIRE.get(source_normalized)
+                        if required and not (required & set(label_ids)):
+                            continue
+                        thread_id = msg.get("threadId")
+                        if thread_id:
+                            added_thread_ids.add(thread_id)
+
+                    for deleted in record.get("messagesDeleted", []):
+                        msg = deleted.get("message", {})
+                        thread_id = msg.get("threadId")
+                        if thread_id:
+                            deleted_thread_ids.add(thread_id)
+
+                total_history_records += len(response.get("history", []))
+                next_page_token = response.get("nextPageToken")
+                if not next_page_token or total_history_records >= limit:
+                    break
+
+        except HistoryExpiredError:
+            raise
+        except Exception as exc:
+            err_lower = str(exc).lower()
+            if (
+                "404" in err_lower
+                or "invalid history" in err_lower
+                or "starthistoryid" in err_lower
+                or "start_history" in err_lower
+            ):
+                raise HistoryExpiredError(
+                    f"Gmail historyId {start_history_id!r} has expired or is invalid."
+                ) from exc
+            raise
+
+        logger.info(
+            "history.list returned %s records — added threads: %s, deleted threads: %s",
+            total_history_records,
+            len(added_thread_ids),
+            len(deleted_thread_ids),
+        )
+
+        # For threads with deletions that also had additions (e.g., a SEND
+        # triggered a deletion of a draft version), the addition wins — we
+        # re-fetch the thread and get its current state. For deletion-only
+        # threads we still re-fetch; if Gmail returns 404, the thread is gone.
+        threads_to_fetch = added_thread_ids | deleted_thread_ids
+
+        messages: list[InboundEmailMessage] = []
+        seen_message_ids: set[str] = set()
+
+        for thread_id in threads_to_fetch:
+            try:
+                raw_thread = (
+                    service.users()
+                    .threads()
+                    .get(userId="me", id=thread_id, format="full")
+                    .execute()
+                )
+                for raw_message in raw_thread.get("messages", []):
+                    self._append_unique_message(messages, seen_message_ids, raw_message)
+            except Exception as exc:
+                if "404" in str(exc):
+                    logger.debug(
+                        "Thread %s not found in Gmail (fully deleted).", thread_id
+                    )
+                else:
+                    logger.warning(
+                        "Failed to fetch thread %s during incremental sync: %s",
+                        thread_id,
+                        exc,
+                    )
+
+        return messages, new_history_id, deleted_thread_ids
+
+    def register_watch(self, topic: str) -> tuple[str, "datetime"]:
+        """Register a Pub/Sub push watch on this Gmail account.
+
+        Calls users.watch() and returns (resource_id, expiry_utc).
+        The caller should persist both values and call this again before
+        expiry_utc (Gmail guarantees at most 7 days per watch).
+
+        Args:
+            topic: full Pub/Sub topic name, e.g.
+                   "projects/my-project/topics/gmail-notifications"
+
+        Returns:
+            resource_id: opaque watch ID used to call stop_watch() later.
+            expiry_utc:  UTC datetime when the watch expires.
+        """
+        from datetime import datetime, timezone
+
+        service = self._build_service()
+        response = service.users().watch(
+            userId="me",
+            body={
+                "topicName": topic,
+                # Listen for all inbox and sent changes.
+                "labelIds": ["INBOX", "SENT"],
+            },
+        ).execute()
+
+        resource_id = str(response.get("id") or "")
+        # Gmail returns expiration as a Unix timestamp in milliseconds.
+        expiry_ms = int(response.get("expiration") or 0)
+        expiry_utc = (
+            datetime.fromtimestamp(expiry_ms / 1000, tz=timezone.utc)
+            if expiry_ms
+            else datetime.now(timezone.utc)
+        )
+        return resource_id, expiry_utc
+
+    def stop_watch(self) -> None:
+        """Stop all push notifications for this Gmail account.
+
+        Calls users.stop(). Safe to call even if no watch is active.
+        """
+        try:
+            service = self._build_service()
+            service.users().stop(userId="me").execute()
+        except Exception as exc:
+            logger.warning("users.stop() failed (may be no active watch): %s", exc)
+
+    def get_profile_name(self) -> str | None:
+        """Return the display name of the default send-as address, or None."""
+        try:
+            service = self._build_service()
+            result = service.users().settings().sendAs().list(userId="me").execute()
+            send_as_list = result.get("sendAs", [])
+            default = next((s for s in send_as_list if s.get("isDefault")), None)
+            if default is None and send_as_list:
+                default = send_as_list[0]
+            name = str(default.get("displayName") or "").strip() if default else ""
+            return name or None
+        except Exception:
+            return None
 
     def _load_credentials(self, refresh_if_needed: bool, persist: bool):
         from google.auth.transport.requests import Request
@@ -351,6 +580,13 @@ class GmailReadonlyClient:
         messages.append(normalized)
 
     def _extract_text(self, payload: dict[str, Any]) -> str:
+        """Recursively extract the plain-text body from a Gmail payload.
+
+        Forwarded emails use nested multipart structures (e.g. multipart/mixed
+        wrapping multipart/alternative wrapping text/plain). A single-level
+        scan silently returns "" for those messages — this recursive version
+        walks the full tree until it finds a text/plain part with data.
+        """
         body = payload.get("body", {})
         data = body.get("data")
         if data:
@@ -358,8 +594,16 @@ class GmailReadonlyClient:
 
         for part in payload.get("parts", []) or []:
             mime_type = part.get("mimeType", "")
-            if mime_type == "text/plain" and part.get("body", {}).get("data"):
-                return self._decode_base64(part["body"]["data"])
+            if mime_type == "text/plain":
+                part_data = part.get("body", {}).get("data")
+                if part_data:
+                    return self._decode_base64(part_data)
+            elif mime_type.startswith("multipart/"):
+                # Recurse into nested multipart containers (e.g. multipart/alternative
+                # inside multipart/mixed, which is the standard Fwd: structure).
+                nested = self._extract_text(part)
+                if nested:
+                    return nested
         return ""
 
     @staticmethod

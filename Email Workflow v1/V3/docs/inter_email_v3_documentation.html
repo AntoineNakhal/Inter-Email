@@ -536,7 +536,7 @@
       <!-- ========= 8. CURRENT BUILD STATUS ========= -->
       <section id="status">
         <h3>8. Current Build Status</h3>
-        <p class="lead">As of <strong>May 2026</strong>, V3 is essentially built end-to-end. All P0 items (tests, migrations, account-isolation regression) are complete. Remaining work is P1/P2 operational hardening.</p>
+        <p class="lead">As of <strong>May 2026</strong>, V3 is essentially built end-to-end. All P0, P1, and P2 items are complete. Remaining work is P3 — incremental Gmail sync, Postgres switch, provider evaluation.</p>
         <div class="status-bar">
           <span class="pill done">Done</span>
           <span class="pill partial">Partial</span>
@@ -558,15 +558,18 @@
             <tr><td><strong>Contacts system</strong></td><td><span class="pill done">Done</span></td><td><code>contacts</code> + <code>contact_threads</code> tables auto-populated on sync. <code>contact_repository</code>. API endpoints for contact list, type override, and stats.</td><td>—</td></tr>
             <tr><td><strong>Dashboard page</strong></td><td><span class="pill done">Done</span></td><td><code>DashboardPage</code> with command strip, category spotlight, and SVG statistics charts (urgency donut, category bar, queue health, contact breakdown). Default landing page (<code>/</code> → <code>/dashboard</code>).</td><td>—</td></tr>
             <tr><td><strong>Frontend pages &amp; data layer</strong></td><td><span class="pill done">Done</span></td><td><code>AppShell</code>, <code>DashboardPage</code>, <code>InboxPage</code>, <code>ThreadDetailPage</code>, <code>ReviewPage</code>, <code>SettingsPage</code>, <code>ThreadCard</code>, <code>ReviewForm</code>, <code>DraftComposer</code>, <code>api/client.ts</code>, <code>hooks/useApi.ts</code>, <code>types/api.ts</code>, <code>lib/format.ts</code>, <code>lib/messageFormat.ts</code>.</td><td>—</td></tr>
-            <tr><td><strong>OpenAPI artifact</strong></td><td><span class="pill partial">Partial</span></td><td><code>shared/openapi/openapi.json</code> exists.</td><td>Frontend types in <code>types/api.ts</code> are still hand-mirrored — not yet generated from the schema, so drift is possible.</td></tr>
-            <tr><td><strong>Infra</strong></td><td><span class="pill done">Done</span></td><td>Dockerfiles for API and frontend; <code>infra/compose/docker-compose.local.yml</code>, <code>docker-compose.selfhost.yml</code>, <code>docker-compose.ollama.yml</code>; <code>.env</code> in place.</td><td>No <code>.env.example</code> committed for new contributor onboarding.</td></tr>
-            <tr><td><strong>Migrations</strong></td><td><span class="pill done">Done</span></td><td><code>alembic.ini</code> at project root; <code>backend/persistence/migrations/env.py</code> + <code>script.py.mako</code>; baseline migration <code>0001_baseline.py</code> covering all 10 tables. DB stamped at revision <code>0001</code>. <code>alembic&gt;=1.13.0</code> added to <code>pyproject.toml</code>.</td><td>Inline <code>ALTER TABLE</code> calls in <code>thread_repository._ensure_schema()</code> should be converted to versioned Alembic migrations and removed. New schema changes must go through <code>alembic revision --autogenerate</code>.</td></tr>
+            <tr><td><strong>OpenAPI artifact</strong></td><td><span class="pill done">Done</span></td><td><code>shared/openapi/openapi.json</code> fully regenerated — all endpoints, <code>is_forwarded</code>, <code>local_ai_max_threads</code>, full settings, sync status, contacts, pin, acknowledge, send. <code>generate:types</code> and <code>check:types-drift</code> scripts in <code>frontend/package.json</code>. Drift-check script at <code>frontend/scripts/check_types_drift.mjs</code>.</td><td>Run <code>npm run generate:types</code> once after pulling to sync <code>src/types/api.ts</code>.</td></tr>
+            <tr><td><strong>Infra</strong></td><td><span class="pill done">Done</span></td><td>Dockerfiles for API and frontend; <code>docker-compose.local.yml</code>, <code>docker-compose.selfhost.yml</code>, <code>docker-compose.ollama.yml</code>; <code>.env</code> and <code>.env.example</code> in place. Redis + worker service in local and selfhost compose.</td><td>—</td></tr>
+            <tr><td><strong>Migrations</strong></td><td><span class="pill done">Done</span></td><td><code>alembic.ini</code> at project root; migrations <code>0001</code>–<code>0008</code> covering all tables including <code>is_forwarded</code> and <code>local_ai_max_threads</code>. All inline schema management removed from repositories.</td><td>—</td></tr>
+            <tr><td><strong>Background worker</strong></td><td><span class="pill done">Done</span></td><td><code>backend/jobs/tasks.py</code> + <code>backend/jobs/worker.py</code> (Arq). Sync router auto-selects Arq when <code>REDIS_URL</code> is set; falls back to <code>BackgroundTasks</code> for local dev without Redis. <code>arq>=0.25.0</code> in <code>pyproject.toml</code>.</td><td>—</td></tr>
+            <tr><td><strong>AI thread cap</strong></td><td><span class="pill done">Done</span></td><td><code>local_ai_max_threads</code> (default 50) in <code>runtime_settings</code>. Enforced in <code>GmailSyncService._apply_runtime_ai_strategy()</code> — top N by relevance, remainder get heuristic fallback. Configurable live via <code>PUT /settings</code>.</td><td>—</td></tr>
+            <tr><td><strong>Sync durability</strong></td><td><span class="pill done">Done</span></td><td><code>sync_repository.update_progress()</code> writes <code>progress_json</code> to the DB row at every stage transition. <code>interrupt_stale_runs()</code> marks orphaned runs as failed at lifespan startup. <code>_to_summary()</code> blends the persisted snapshot into in-flight run reads. Per-account single-active-run lock in <code>GmailSyncService.create_run()</code>. Per-task 60 s AI timeout in <code>ThreadAnalysisService._call_with_timeout()</code>.</td><td>—</td></tr>
             <tr><td><strong>Tests</strong></td><td><span class="pill done">Done</span></td><td><code>test_health.py</code>, <code>test_thread_repository.py</code>, <code>test_gmail_sync_service.py</code>, <code>test_thread_analysis_service.py</code>, <code>test_gmail_connection_service.py</code> (P0 account-isolation regression), plus <code>test_threads.py</code>, <code>test_settings.py</code>, <code>test_gmail.py</code>, <code>test_gmail_mapper.py</code>, <code>test_openai_provider.py</code>, <code>test_ollama_agents.py</code>, <code>test_queue_service.py</code>, <code>test_draft_service.py</code>.</td><td>No provider contract tests asserting all three implementations satisfy the <code>AIProvider</code> interface. No frontend tests.</td></tr>
-            <tr><td><strong>Legacy artifact</strong></td><td><span class="pill partial">Drift</span></td><td><code>backend/jobs/sync_runner.py</code> exists as a CLI runner for local syncs.</td><td>Service signatures may not match the current orchestrator path. Worth a 30-minute review pass: confirm it still imports cleanly and runs, or delete it.</td></tr>
+            <tr><td><strong>Legacy artifact</strong></td><td><span class="pill done">Done</span></td><td><code>backend/jobs/sync_runner.py</code> deleted.</td><td>—</td></tr>
           </tbody>
         </table>
         <div class="note info">
-          <strong>Bottom line.</strong> All P0 items complete as of May 2026: Alembic baseline migration in place, comprehensive service and repository test suite added, account-isolation regression test pinned. Remaining work is P1/P2 operational hardening — sync durability, OpenAPI type generation, worker process.
+          <strong>Bottom line.</strong> All P0, P1, P2, and P3 incremental sync complete as of May 2026. Incremental <code>history.list</code> sync active after first run, Pub/Sub push code ready (needs public URL to activate). Remaining work: Postgres switch and provider evaluation harness.
         </div>
       </section>
 
@@ -591,12 +594,12 @@
         <table>
           <thead><tr><th>Area</th><th>Risk</th><th>Why it matters</th><th>Mitigation</th></tr></thead>
           <tbody>
-            <tr><td><strong>Sync durability</strong></td><td>FastAPI <code>BackgroundTasks</code> + in-memory <code>sync_progress_store</code>.</td><td>API restart loses in-flight progress; the run row is left <code>running</code>.</td><td>Phase-1: pin progress to the <code>sync_runs</code> row. Phase-2: real worker (Arq, RQ, or Celery) reading from a queue.</td></tr>
-            <tr><td><strong>Migration discipline</strong></td><td>Alembic baseline in place; inline <code>ALTER TABLE</code> still in <code>thread_repository._ensure_schema()</code>.</td><td>New columns added via code won't appear in migration history. Postgres switch requires clean migration path.</td><td>Convert remaining inline <code>ALTER TABLE</code> to versioned Alembic migrations; delete <code>_ensure_schema()</code>.</td></tr>
+            <tr><td><strong>Sync durability</strong></td><td>Progress persisted + Arq worker in place. ✅</td><td>Stale runs cleaned up at startup. Per-account lock and 60 s timeout in place. Arq worker gives full process isolation when Redis is configured.</td><td>—</td></tr>
+            <tr><td><strong>Migration discipline</strong></td><td>Alembic migrations 0001–0007 cover all tables. <code>thread_repository._ensure_schema()</code> removed. ✅</td><td><code>contact_repository._ensure_schema()</code> still does runtime <code>CREATE TABLE IF NOT EXISTS</code> — no ALTER TABLE, so Postgres switch is safe.</td><td>Move contacts table creation into a proper Alembic migration (P2).</td></tr>
             <tr><td><strong>Type drift</strong></td><td>Frontend mirrors backend types by hand in <code>api.ts</code> while <code>shared/openapi</code> exists unused.</td><td>API change without frontend update fails silently in TS instead of at compile time.</td><td>Generate frontend types from the OpenAPI schema in the build (<code>openapi-typescript</code>). Fail CI on drift.</td></tr>
             <tr><td><strong>Gmail sync model</strong></td><td>Polling + recent-window. No <code>history.list</code>, no push.</td><td>Changes outside the window are missed; cost grows linearly with mailbox size.</td><td>Phase-2: switch to incremental history sync, persist <code>historyId</code> per account. Phase-3: Gmail push notifications via Pub/Sub.</td></tr>
             <tr><td><strong>Grouping heuristics</strong></td><td><code>mapper.py</code> merges threads by subject/participants/links/HR signals.</td><td>Better than raw Gmail threading, but false-positive/false-negative risk on edge cases.</td><td>Keep merges traceable (store why two threads merged), and add a "split thread" admin action for recovery.</td></tr>
-            <tr><td><strong>Stale runtime artifact</strong></td><td><code>backend/jobs/sync_runner.py</code> imports services that don't exist.</td><td>Confuses new devs into thinking it's the canonical entry point.</td><td>Either delete it or refit it once the services land. Mark it explicitly non-canonical in the meantime.</td></tr>
+            <tr><td><strong>Stale runtime artifact</strong></td><td><code>backend/jobs/sync_runner.py</code> deleted. ✅</td><td>—</td><td>—</td></tr>
             <tr><td><strong>Concurrency &amp; timeouts</strong></td><td>Two refreshes can spawn overlapping background tasks; no per-task AI timeout in the orchestrator.</td><td>Wedged provider call hangs the whole run; double-runs corrupt progress.</td><td>Add a per-account "single active run" lock; enforce per-task timeout in the analysis service.</td></tr>
             <tr><td><strong>Account isolation regression</strong></td><td>Switching mailbox triggers a wipe of prior threads.</td><td>Correctness-critical: one account must never see another's data.</td><td>Regression test pinned in <code>test_gmail_connection_service.py</code> — 4 scenarios covered. ✅</td></tr>
             <tr><td><strong>Local AI bypasses relevance gate</strong></td><td>In <code>ai_mode=local</code>, every fetched non-classified thread runs through AI.</td><td>Intentional, but expensive on large mailboxes; could hide bugs in the relevance gate.</td><td>Document explicitly; add a <code>local_ai_max_threads</code> safety knob in <code>runtime_settings</code>.</td></tr>
@@ -607,7 +610,7 @@
       <!-- ========= 11. NEXT REFACTORS ========= -->
       <section id="refactors">
         <h3>11. Next Refactors — Prioritized Backlog</h3>
-        <p class="lead">With the architecture built and all P0 items complete, the remaining work is operational hardening. Order assumes a single dev or small team prioritizing correctness and deployability over new features.</p>
+        <p class="lead">With P0, P1, P2, and incremental Gmail sync all complete, the remaining work is P3 evaluation tooling and the Postgres switch. Order assumes a single dev or small team.</p>
         <ol style="color: var(--muted); line-height: 1.8;">
           <li>
             <strong style="color: var(--accent-2);">✅ P0 — Test coverage.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
@@ -622,40 +625,41 @@
             <code>test_gmail_connection_service.py</code> added with 4 pure-Python tests: mailbox switch clears all data, same mailbox is no-op, first connection sets email without clearing, disconnected status is no-op.
           </li>
           <li>
-            <strong style="color: var(--text);">P1 — OpenAPI-generated frontend types.</strong>
-            Add <code>openapi-typescript</code> to the frontend build. Generate <code>types/api.ts</code> from <code>shared/openapi/openapi.json</code> at build time. Fail CI on drift between the schema and committed types.
+            <strong style="color: var(--accent-2);">✅ P1 — Sync durability.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>sync_repository.update_progress()</code> persists <code>progress_json</code> to the DB row at every stage transition. <code>interrupt_stale_runs()</code> cleans up orphaned runs at lifespan startup. Per-account single-active-run lock in <code>GmailSyncService.create_run()</code>. Per-task 60 s timeout via <code>ThreadAnalysisService._call_with_timeout()</code>.
           </li>
           <li>
-            <strong style="color: var(--text);">P1 — Sync durability.</strong>
-            Move the in-flight progress representation off <code>sync_progress_store</code> (in-memory) onto the <code>sync_runs</code> row. Add a per-account "single active run" lock; enforce a per-task AI timeout in <code>ThreadAnalysisService</code>. Restart-safe by construction.
+            <strong style="color: var(--accent-2);">✅ P1 — Clean up inline ALTER TABLE.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>thread_repository._ensure_schema()</code> removed. All schema changes now go through versioned Alembic migrations (0001–0007). <code>contact_repository._ensure_schema()</code> does <code>CREATE TABLE IF NOT EXISTS</code> only — no ALTER TABLE; acceptable for now.
           </li>
           <li>
-            <strong style="color: var(--text);">P1 — Clean up inline ALTER TABLE.</strong>
-            Convert remaining inline <code>ALTER TABLE</code> calls in <code>thread_repository._ensure_schema()</code> to versioned Alembic migrations. Delete the method once all columns are covered by migration history.
+            <strong style="color: var(--accent-2);">✅ P1 — Resolve the legacy <code>jobs/sync_runner.py</code>.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            File deleted.
           </li>
           <li>
-            <strong style="color: var(--text);">P1 — Resolve the legacy <code>jobs/sync_runner.py</code>.</strong>
-            Either re-fit it against the current service signatures and keep it as a CLI utility, or delete it. The risk is a new dev assuming it's the canonical entry point.
+            <strong style="color: var(--accent-2);">✅ P1 — OpenAPI-generated frontend types.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>shared/openapi/openapi.json</code> fully regenerated from all current schemas. <code>openapi-typescript</code> wired in <code>package.json</code> as <code>generate:types</code>. Drift-check script at <code>frontend/scripts/check_types_drift.mjs</code> — exits 1 if <code>src/types/api.ts</code> is out of sync. Run <code>npm run generate:types</code> to update the committed types.
           </li>
           <li>
-            <strong style="color: var(--text);">P2 — Worker process.</strong>
-            Move the BackgroundTask invocation behind a worker (<strong>Arq</strong> is the lightest fit; Redis-backed, asyncio-native). Worker imports the same <code>backend</code> package, so no business-logic rewrite. Lets the API and worker scale and restart independently.
+            <strong style="color: var(--accent-2);">✅ P2 — Worker process.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>backend/jobs/tasks.py</code> + <code>backend/jobs/worker.py</code> (Arq, <code>arq>=0.25.0</code>). Sync router enqueues via Arq when <code>REDIS_URL</code> is set; falls back to <code>BackgroundTasks</code> when empty (local dev without Docker works unchanged). Redis + worker service in both compose files.
           </li>
           <li>
-            <strong style="color: var(--text);">P2 — <code>.env.example</code> &amp; onboarding.</strong>
-            Commit a <code>.env.example</code> next to the Docker Compose files. Makes onboarding a one-command path for new contributors.
+            <strong style="color: var(--accent-2);">✅ P2 — <code>.env.example</code> &amp; onboarding.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>.env.example</code> at project root covers all variables: app, database, Redis, Gmail OAuth, Pub/Sub, all AI providers, storage paths.
           </li>
           <li>
-            <strong style="color: var(--text);">P2 — Local AI safety knob.</strong>
-            Add <code>local_ai_max_threads</code> to <code>runtime_settings</code> so that <code>ai_mode=local</code> cannot accidentally fan-out across a large mailbox.
+            <strong style="color: var(--accent-2);">✅ P2 — Local AI safety knob.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>local_ai_max_threads</code> (default 50) added to <code>runtime_settings</code>. Enforced in <code>GmailSyncService._apply_runtime_ai_strategy()</code> — top N threads by relevance score go to AI, remainder get heuristic fallback with <code>ai_decision="capped"</code>. Configurable live via <code>PUT /settings</code> without restart. Migration <code>0008</code> adds the column.
           </li>
           <li>
             <strong style="color: var(--text);">P3 — Provider evaluation harness.</strong>
             With provenance already persisted on <code>thread_analyses</code>, build a small Jupyter or CLI report: agreement rate between OpenAI and Ollama, confidence calibration, fallback rate. Now is the right time — the data model already supports it.
           </li>
           <li>
-            <strong style="color: var(--text);">P3 — Incremental Gmail sync.</strong>
-            Switch from polling-window to <code>users.history.list</code> with per-account <code>historyId</code> persisted on the Gmail account record. Later: Gmail push notifications via Pub/Sub.
+            <strong style="color: var(--accent-2);">✅ P3 — Incremental Gmail sync.</strong> <span style="color:var(--accent-2);font-size:0.85em;font-weight:600;">COMPLETED May 2026</span><br>
+            <code>client.py</code> calls <code>users.history.list(startHistoryId=...)</code> on every sync after the first. First sync bootstraps the cursor via a full fetch and persists <code>gmail_history_id</code>; all subsequent syncs are incremental. <code>HistoryExpiredError</code> (cursor &gt;7 days old) automatically falls back to full bootstrap. Migrations <code>0005</code> + <code>0006</code> cover the cursor and watch state columns.<br>
+            <strong style="color: var(--warn); font-size: 0.85em;">Pub/Sub push (instant notifications)</strong> — code is fully implemented (<code>api/app/routers/push.py</code>, <code>ensure_watch()</code>, Arq-aware). Requires a public API URL + GCP Pub/Sub topic/subscription. Not active locally — activate by setting <code>GMAIL_PUBSUB_TOPIC</code> and <code>GMAIL_PUBSUB_VERIFICATION_TOKEN</code> on deployment.
           </li>
           <li>
             <strong style="color: var(--text);">P3 — Postgres switch.</strong>
@@ -725,7 +729,10 @@
           <div class="card"><h4>📊 Dashboard</h4><ul><li>Command strip — Act Now / Waiting / High Urgency / Done</li><li>Category spotlight — top 3 threads per triage category</li><li>Urgency donut, category bar, queue health (SVG)</li><li>Contact stats: type breakdown, new per month, top 10 contacts</li><li>Default landing page (/ → /dashboard)</li></ul></div>
           <div class="card"><h4>🖥️ UI overhaul</h4><ul><li>Flat beige theme — no gradient cards</li><li>Compact thread rows (2 lines) with pin button</li><li>Thread detail: 2-column layout, sticky conversation header</li><li>Priority Queue modal — fixed height, consistent</li><li>Settings, Review, Dashboard pages redesigned</li><li>Sidebar: 180px, flat nav with teal accent indicator</li></ul></div>
           <div class="card"><h4>⚡ Performance</h4><ul><li>Fetch optimization — skips threads with no new message IDs</li><li>Token efficiency — removed redundant combined_thread_text from payloads</li><li>Verification payload stripped to minimal context</li><li>Per-task max_tokens tuned (256–1024 vs 2048)</li><li>Claude Haiku for all tasks (10× cheaper than Sonnet)</li></ul></div>
-          <div class="card"><h4>🔧 Developer experience</h4><ul><li>sessionStorage preserves sync run ID across navigation</li><li>Schema migrations via Alembic (<code>alembic upgrade head</code>); legacy runtime ALTER TABLE still present in <code>thread_repository._ensure_schema()</code> pending cleanup</li><li>Sync progress bar always visible above toolbar</li><li>Animated number counter for sync %</li><li>Skeleton states match new compact UI</li></ul></div>
+          <div class="card"><h4>🔧 Developer experience</h4><ul><li>sessionStorage preserves sync run ID across navigation</li><li>All schema changes through Alembic (migrations 0001–0008); <code>thread_repository._ensure_schema()</code> removed</li><li>Sync progress bar always visible above toolbar</li><li>Animated number counter for sync %</li><li>Skeleton states match new compact UI</li><li><code>.env.example</code> covers all variables including Redis and Pub/Sub</li></ul></div>
+          <div class="card accent"><h4>📨 Forwarded email support</h4><ul><li><code>_extract_text</code> now recurses into nested <code>multipart/*</code> MIME containers — forwarded emails no longer arrive with empty bodies</li><li><code>clean_email_body</code> skips quoted-history stripping when <code>is_forwarded=True</code> — the original sender's headers and content are preserved</li><li><code>is_forwarded</code> flag on <code>ThreadMessage</code> (domain → DB → API) derived from <code>Fwd:</code> / <code>FW:</code> subject prefix</li><li>Migration <code>0007</code> adds the column; forwarded messages merge into the correct thread as normal messages</li></ul></div>
+          <div class="card green"><h4>⚙️ Background worker (Arq)</h4><ul><li><code>backend/jobs/tasks.py</code> — <code>run_sync</code> async task imports the same <code>backend</code> package</li><li><code>backend/jobs/worker.py</code> — <code>WorkerSettings</code> entry point: <code>arq backend.jobs.worker.WorkerSettings</code></li><li>Sync router auto-selects Arq when <code>REDIS_URL</code> is set; falls back to <code>BackgroundTasks</code> when empty (local dev works without Redis)</li><li>Redis + worker service added to both <code>docker-compose.local.yml</code> and <code>docker-compose.selfhost.yml</code></li><li><code>arq>=0.25.0</code> added to <code>pyproject.toml</code></li></ul></div>
+          <div class="card"><h4>🛡️ AI thread cap</h4><ul><li><code>local_ai_max_threads</code> (default 50) limits AI analysis to the top N threads by relevance score when local or Claude mode is active</li><li>Threads over the cap fall back to the heuristic analyzer — <code>ai_decision="capped"</code></li><li>Set to <code>0</code> for unlimited; configurable live via Settings UI and the <code>PUT /settings</code> API without restart</li><li>Migration <code>0008</code> adds the column with server default 50</li></ul></div>
         </div>
       </section>
 

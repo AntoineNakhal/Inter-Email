@@ -41,6 +41,9 @@ class DraftService:
         # that user's perspective. Empty / unset → None → providers skip
         # the user-perspective preamble.
         user_email = self.runtime_settings.gmail_mailbox_email.strip() or None
+        # Explicit display name avoids the AI guessing the name from the
+        # email address prefix (e.g. "a.nakhal" → wrong first name guess).
+        user_name = self.runtime_settings.gmail_mailbox_name.strip() or None
 
         request = DraftReplyRequest(
             thread=thread,
@@ -48,6 +51,7 @@ class DraftService:
             attachment_names=attachment_names,
             user_instructions=user_instructions,
             user_email=user_email,
+            user_name=user_name,
         )
         provider = self.provider_router.provider_for_task("draft_reply")
         try:

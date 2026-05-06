@@ -22,7 +22,7 @@ from backend.domain.thread import (
 from backend.persistence.repositories.contact_repository import ContactRepository
 from backend.persistence.repositories.sync_repository import SyncRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
-from backend.providers.gmail.client import GmailReadonlyClient
+from backend.providers.gmail.client import GmailReadonlyClient, HistoryExpiredError
 from backend.providers.gmail.mapper import group_messages_by_thread
 
 
@@ -58,23 +58,53 @@ class GmailSyncService:
         self.contact_repository = ContactRepository(session)
 
     def create_run(self, source: str) -> SyncRunSummary:
-        run = self.sync_repository.start_run(source)
+        mailbox = self.runtime_settings.gmail_mailbox_email.strip().lower()
+
+        # Per-account single-active-run lock: reject a new run if one is
+        # already in progress for this mailbox. The caller should surface this
+        # to the user rather than queue a second overlapping sync.
+        if mailbox:
+            active = self.sync_repository.get_active_run_for_account(mailbox)
+            if active is not None:
+                raise RuntimeError(
+                    f"A sync is already running for {mailbox} "
+                    f"(run_id={active.id}). Cancel it first."
+                )
+
+        run = self.sync_repository.start_run(source, mailbox_account=mailbox)
         self.session.commit()
         return self.progress_store.start(run.id, source)
 
     def get_run_status(self, run_id: int) -> SyncRunSummary | None:
+        # When Arq is active the worker updates the DB but has its own
+        # in-memory progress_store. Always read from DB so the API sees
+        # the worker's real progress instead of the stale queued state.
+        from backend.core.config import get_settings
+        if get_settings().redis_url:
+            return self.sync_repository.get_run(run_id)
         progress = self.progress_store.get(run_id)
         if progress:
             return progress
         return self.sync_repository.get_run(run_id)
 
     def get_latest_run_status(self) -> SyncRunSummary | None:
+        from backend.core.config import get_settings
+        if get_settings().redis_url:
+            return self.sync_repository.get_latest_run()
         progress = self.progress_store.latest()
         if progress:
             return progress
         return self.sync_repository.get_latest_run()
 
     def get_running_run(self) -> SyncRunSummary | None:
+        from backend.core.config import get_settings
+        if get_settings().redis_url:
+            # Read active run directly from DB — the worker updates it, not this process.
+            mailbox = self.runtime_settings.gmail_mailbox_email.strip().lower()
+            if mailbox:
+                active = self.sync_repository.get_active_run_for_account(mailbox)
+                return self.sync_repository.get_run(active.id) if active else None
+            return self.sync_repository.get_latest_run()
         return self.progress_store.running()
 
     def cancel_run(self, run_id: int) -> SyncRunSummary | None:
@@ -109,21 +139,87 @@ class GmailSyncService:
                 max_results,
                 lookback_days,
             )
-            self.progress_store.update(
+            # ------------------------------------------------------------------
+            # Fetch phase: incremental (history) or full (bootstrap / expiry)
+            # ------------------------------------------------------------------
+            stored_history_id = self.runtime_settings.gmail_history_id.strip()
+            # Use incremental only when a cursor exists AND the user hasn't
+            # requested a longer window than the default 7-day rolling window.
+            # A longer lookback means they want a real full re-fetch (e.g. "last month").
+            force_full = lookback_days > 7
+            fetch_mode = "incremental" if (stored_history_id and not force_full) else "bootstrap"
+
+            fetch_status_message = (
+                "Fetching changes since last sync."
+                if fetch_mode == "incremental"
+                else f"Full fetch — last {lookback_days} days."
+                if force_full
+                else "Full fetch — bootstrapping incremental sync."
+            )
+            fetching_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.FETCHING,
-                status_message="Fetching recent Gmail threads.",
+                status_message=fetch_status_message,
                 stage_unit_current=0,
                 stage_unit_total=0,
             )
+            if fetching_summary:
+                self._persist_stage_progress(run_id, fetching_summary)
+
             fetch_started_at = perf_counter()
-            known_message_ids = self.thread_repository.get_known_message_ids()
-            messages = self.gmail_client.list_recent_messages(
-                max_results=max_results,
-                source=source,
-                lookback_days=lookback_days,
-                known_message_ids=known_message_ids,
-            )
+            deleted_thread_ids: set[str] = set()
+            new_history_id: str = ""
+
+            if fetch_mode == "incremental":
+                try:
+                    messages, new_history_id, deleted_thread_ids = (
+                        self.gmail_client.list_messages_since_history(
+                            start_history_id=stored_history_id,
+                            source=source,
+                            max_results=max_results,
+                        )
+                    )
+                    logger.info(
+                        "Sync run %s incremental fetch: %s messages, "
+                        "%s deleted thread(s) in %.2fs",
+                        run_id,
+                        len(messages),
+                        len(deleted_thread_ids),
+                        perf_counter() - fetch_started_at,
+                    )
+                except HistoryExpiredError:
+                    logger.warning(
+                        "Sync run %s: historyId %r expired — falling back to full fetch.",
+                        run_id,
+                        stored_history_id,
+                    )
+                    fetch_mode = "bootstrap"
+
+            if fetch_mode == "bootstrap":
+                # For a manual longer-window fetch, skip the known-IDs filter so
+                # every thread in the requested window is re-evaluated. Threads
+                # with unchanged content will reuse their cached analysis; only
+                # new or changed threads get re-analyzed.
+                known_message_ids = (
+                    set()
+                    if force_full
+                    else self.thread_repository.get_known_message_ids()
+                )
+                messages = self.gmail_client.list_recent_messages(
+                    max_results=max_results,
+                    source=source,
+                    lookback_days=lookback_days,
+                    known_message_ids=known_message_ids,
+                )
+                new_history_id = self.gmail_client.get_current_history_id()
+                logger.info(
+                    "Sync run %s bootstrap fetch: %s messages, historyId=%r in %.2fs",
+                    run_id,
+                    len(messages),
+                    new_history_id,
+                    perf_counter() - fetch_started_at,
+                )
+
             fetched_message_count = len(messages)
             self._raise_if_cancel_requested(run_id)
             logger.info(
@@ -132,7 +228,7 @@ class GmailSyncService:
                 len(messages),
                 perf_counter() - fetch_started_at,
             )
-            self.progress_store.update(
+            persisting_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.PERSISTING,
                 status_message=f"Fetched {len(messages)} messages. Grouping threads.",
@@ -141,6 +237,8 @@ class GmailSyncService:
                 stage_unit_current=0,
                 stage_unit_total=len(messages),
             )
+            if persisting_summary:
+                self._persist_stage_progress(run_id, persisting_summary)
             grouping_started_at = perf_counter()
             grouped_threads = group_messages_by_thread(messages)
             grouped_threads = self._apply_runtime_ai_strategy(grouped_threads)
@@ -156,8 +254,42 @@ class GmailSyncService:
                 grouped_threads=grouped_threads,
                 fetched_message_count=len(messages),
             )
+
+            # Clean up threads that were fully deleted from Gmail.
+            # deleted_thread_ids are IDs where Gmail reported a messageDeleted
+            # event. Those that didn't come back as saved_threads are gone.
+            if deleted_thread_ids:
+                saved_thread_id_set = {t.external_thread_id for t in saved_threads}
+                truly_deleted = [
+                    tid for tid in deleted_thread_ids
+                    if tid not in saved_thread_id_set
+                ]
+                if truly_deleted:
+                    self.thread_repository.delete_threads(truly_deleted)
+                    logger.info(
+                        "Sync run %s removed %s locally-deleted thread(s): %s",
+                        run_id,
+                        len(truly_deleted),
+                        truly_deleted[:5],
+                    )
+
             self.session.commit()
             self._raise_if_cancel_requested(run_id)
+
+            # Persist the new history cursor so the next sync is incremental.
+            # Done immediately after persisting threads, before analysis, so
+            # a crash during analysis doesn't lose the cursor.
+            if new_history_id:
+                from backend.persistence.repositories.runtime_settings_repository import (
+                    RuntimeSettingsRepository,
+                )
+                RuntimeSettingsRepository(self.session).update_gmail_history_id(
+                    new_history_id
+                )
+                self.session.commit()
+                logger.info(
+                    "Sync run %s persisted new historyId=%r", run_id, new_history_id
+                )
 
             # Threads skipped at fetch time (already-known message IDs) may
             # still need re-analysis if the active AI provider changed since
@@ -185,7 +317,7 @@ class GmailSyncService:
             ai_thread_count = len(
                 [thread for thread in saved_threads if thread.included_in_ai]
             )
-            self.progress_store.update(
+            analyzing_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.ANALYZING,
                 status_message=(
@@ -199,6 +331,8 @@ class GmailSyncService:
                 stage_unit_current=0,
                 stage_unit_total=len(saved_threads),
             )
+            if analyzing_summary:
+                self._persist_stage_progress(run_id, analyzing_summary)
             analysis_started_at = perf_counter()
             # Pull the connected mailbox owner so analysis prompts know
             # whose perspective to take. Falls back to None if no mailbox
@@ -229,7 +363,7 @@ class GmailSyncService:
                 len(analyzed_threads),
                 perf_counter() - analysis_started_at,
             )
-            self.progress_store.update(
+            summarizing_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.SUMMARIZING,
                 status_message="Building your queue summary.",
@@ -241,6 +375,8 @@ class GmailSyncService:
                 stage_unit_current=0,
                 stage_unit_total=1,
             )
+            if summarizing_summary:
+                self._persist_stage_progress(run_id, summarizing_summary)
             summary_started_at = perf_counter()
             queue_summary = self.queue_service.summarize_threads(analyzed_threads)
             self._raise_if_cancel_requested(run_id)
@@ -358,7 +494,7 @@ class GmailSyncService:
             status_message = "Thread analysis complete."
         else:
             status_message = f"Analyzing threads ({current}/{total})."
-        self.progress_store.update(
+        summary = self.progress_store.update(
             run_id,
             stage=SyncStage.ANALYZING,
             status_message=status_message,
@@ -368,6 +504,10 @@ class GmailSyncService:
             stage_unit_current=current,
             stage_unit_total=total,
         )
+        # Persist to DB on every thread so the API process (which reads DB
+        # when Arq is active) sees live per-thread progress, not just stage transitions.
+        if summary:
+            self._persist_stage_progress(run_id, summary)
 
     def _persist_threads_with_progress(
         self,
@@ -506,8 +646,36 @@ class GmailSyncService:
         if not force_all:
             return grouped_threads
 
+        # Apply the safety cap: when local_ai_max_threads > 0, limit AI
+        # analysis to the top N threads by relevance score. The rest get
+        # the heuristic fallback so the app stays responsive on large mailboxes.
+        max_threads = self.runtime_settings.local_ai_max_threads
+        if max_threads > 0:
+            eligible = [
+                t for t in grouped_threads
+                if t.security_status != SecurityStatus.CLASSIFIED
+            ]
+            eligible_sorted = sorted(
+                eligible,
+                key=lambda t: t.relevance_score or 0,
+                reverse=True,
+            )
+            ai_thread_ids = {
+                t.external_thread_id for t in eligible_sorted[:max_threads]
+            }
+        else:
+            ai_thread_ids = None  # unlimited
+
         for thread in grouped_threads:
             if thread.security_status == SecurityStatus.CLASSIFIED:
+                continue
+            if ai_thread_ids is not None and thread.external_thread_id not in ai_thread_ids:
+                # Over the cap — heuristic handles this one.
+                thread.included_in_ai = False
+                thread.ai_decision = "capped"
+                thread.ai_decision_reason = (
+                    f"Thread limit of {max_threads} reached — heuristic fallback used."
+                )
                 continue
             thread.included_in_ai = True
             thread.relevance_bucket = thread.relevance_bucket or RelevanceBucket.IMPORTANT
@@ -523,6 +691,77 @@ class GmailSyncService:
             if thread.analysis_status == AnalysisStatus.SKIPPED:
                 thread.analysis_status = AnalysisStatus.PENDING
         return grouped_threads
+
+    def ensure_watch(self, topic: str) -> None:
+        """Register or renew a Pub/Sub watch for the connected Gmail account.
+
+        Called after every successful sync. Registers a new watch if none
+        exists, or renews it when expiry is within 24 hours.
+
+        Failures are logged as warnings and never propagate — losing push
+        notifications degrades to polling but never breaks the sync itself.
+
+        Args:
+            topic: full Pub/Sub topic resource name (from AppSettings).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from backend.persistence.repositories.runtime_settings_repository import (
+            RuntimeSettingsRepository,
+        )
+
+        if not topic:
+            return
+
+        settings_repo = RuntimeSettingsRepository(self.session)
+        current = settings_repo.get()
+        now = datetime.now(timezone.utc)
+        expiry = current.gmail_watch_expiry
+
+        # Renew if: no watch, expiry not set, or expiry within the next 24 hours.
+        needs_renewal = expiry is None or expiry <= now + timedelta(hours=24)
+        if not needs_renewal:
+            return
+
+        try:
+            resource_id, new_expiry = self.gmail_client.register_watch(topic)
+            settings_repo.update_gmail_watch(resource_id, new_expiry)
+            self.session.commit()
+            logger.info(
+                "Gmail Pub/Sub watch registered resource_id=%r expires=%s",
+                resource_id,
+                new_expiry.isoformat(),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to register Gmail Pub/Sub watch (push notifications disabled "
+                "until next successful sync): %s",
+                exc,
+            )
+
+    def _persist_stage_progress(self, run_id: int, summary: SyncRunSummary) -> None:
+        """Write a progress snapshot to the DB row at each stage transition.
+
+        This is intentionally called only when the stage changes (not on every
+        per-message tick) to keep DB write volume low while still making the
+        last-known stage recoverable after a process restart.
+        """
+        try:
+            self.sync_repository.update_progress(
+                run_id,
+                stage=summary.stage,
+                progress_percent=summary.progress_percent,
+                stage_unit_current=summary.stage_unit_current,
+                stage_unit_total=summary.stage_unit_total,
+                status_message=summary.status_message,
+                eta_seconds=summary.eta_seconds,
+            )
+            self.session.commit()
+        except Exception:
+            # Progress persistence is best-effort — never let it abort the sync.
+            logger.warning(
+                "Failed to persist progress snapshot for run %s", run_id, exc_info=True
+            )
 
     def _raise_if_cancel_requested(self, run_id: int) -> None:
         if self.progress_store.is_cancel_requested(run_id):

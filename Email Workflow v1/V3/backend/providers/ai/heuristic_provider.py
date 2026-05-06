@@ -18,12 +18,17 @@ from backend.domain.analysis import (
 )
 from backend.domain.thread import (
     DraftDocument,
+    RelevanceBucket,
     ThreadAnalysis,
     TriageCategory,
     UrgencyLevel,
 )
 from backend.providers.ai.analysis_style import suggest_current_status
-from backend.providers.ai.action_style import fit_next_action_to_thread, suggest_next_action
+from backend.providers.ai.action_style import (
+    fit_next_action_to_thread,
+    fit_needs_next_action_to_thread,
+    suggest_next_action,
+)
 from backend.providers.ai.base import AIProvider
 from backend.providers.ai.summary_style import suggest_summary
 
@@ -58,17 +63,28 @@ class HeuristicAIProvider(AIProvider):
         text = f"{thread.subject}\n{thread.combined_thread_text}".lower()
         urgency = self._infer_urgency(text=text, waiting_on_us=thread.waiting_on_us)
         category = self._infer_category(text=text)
+        needs_next_action = self._needs_next_action(thread, text=text, urgency=urgency)
         needs_action_today = urgency == UrgencyLevel.HIGH or (
-            thread.waiting_on_us and not thread.resolved_or_closed
+            needs_next_action and thread.waiting_on_us and not thread.resolved_or_closed
         )
-        should_draft_reply = thread.waiting_on_us and not thread.resolved_or_closed
+        should_draft_reply = (
+            needs_next_action
+            and thread.waiting_on_us
+            and not thread.resolved_or_closed
+            and not thread.latest_message_from_me
+        )
 
         return ThreadAnalysis(
             category=category,
             urgency=urgency,
             summary=self._build_summary(thread),
             current_status=self._build_status(thread),
-            next_action=self._build_next_action(thread, needs_action_today),
+            next_action=(
+                self._build_next_action(thread, needs_action_today)
+                if needs_next_action
+                else ""
+            ),
+            needs_next_action=needs_next_action,
             needs_action_today=needs_action_today,
             should_draft_reply=should_draft_reply,
             draft_needs_date=any(pattern in text for pattern in DATE_HINT_PATTERNS),
@@ -128,7 +144,7 @@ class HeuristicAIProvider(AIProvider):
 
         if analysis.summary.strip():
             accuracy_percent += 10
-        if analysis.next_action.strip():
+        if analysis.needs_next_action and analysis.next_action.strip():
             accuracy_percent += 12
         if analysis.current_status.strip():
             accuracy_percent += 6
@@ -147,7 +163,9 @@ class HeuristicAIProvider(AIProvider):
             accuracy_percent += 6
 
         accuracy_percent = max(35, min(96, accuracy_percent))
-        needs_human_review = accuracy_percent < 70 or not analysis.next_action.strip()
+        needs_human_review = accuracy_percent < 70 or (
+            analysis.needs_next_action and not analysis.next_action.strip()
+        )
         review_reason = (
             "The local verifier is not fully confident in the summary or next action."
             if needs_human_review
@@ -242,6 +260,20 @@ class HeuristicAIProvider(AIProvider):
         if thread.latest_message_from_me:
             return suggest_next_action(thread)
         return suggest_next_action(thread)
+
+    def _needs_next_action(self, thread, text: str, urgency: UrgencyLevel) -> bool:
+        requested = bool(
+            thread.waiting_on_us
+            or thread.latest_message_has_question
+            or thread.latest_message_has_action_request
+            or urgency == UrgencyLevel.HIGH
+        )
+        if (
+            thread.relevance_bucket in {RelevanceBucket.NOISE, RelevanceBucket.MAYBE}
+            and not thread.waiting_on_us
+        ):
+            requested = False
+        return fit_needs_next_action_to_thread(requested, thread)
 
     def _build_draft_body_lines(self, request: DraftReplyRequest) -> list[str]:
         thread = request.thread
