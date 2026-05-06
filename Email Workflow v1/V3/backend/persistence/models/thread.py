@@ -54,6 +54,12 @@ class EmailThreadModel(Base, TimestampMixin):
     )
     last_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Merge transparency — persisted so the split-thread action and UI
+    # can show WHY threads were grouped together.
+    grouping_reason: Mapped[str] = mapped_column(String(64), default="gmail_thread_id")
+    merge_signals_json: Mapped[str] = mapped_column(Text, default="[]")
+    source_thread_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+
     user: Mapped["UserModel"] = relationship(back_populates="threads")
 
     messages: Mapped[list["ThreadMessageModel"]] = relationship(
@@ -81,6 +87,11 @@ class EmailThreadModel(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="DraftModel.created_at.desc()",
     )
+    override: Mapped["ThreadOverrideModel | None"] = relationship(
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class ThreadMessageModel(Base, TimestampMixin):
@@ -97,6 +108,7 @@ class ThreadMessageModel(Base, TimestampMixin):
     recipients_json: Mapped[str] = mapped_column(Text, default="[]")
     subject: Mapped[str] = mapped_column(String(500), default="")
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_gmail_thread_id: Mapped[str] = mapped_column(String(255), default="")
     snippet: Mapped[str] = mapped_column(Text, default="")
     cleaned_body: Mapped[str] = mapped_column(Text, default="")
     label_ids_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -149,6 +161,7 @@ class ThreadAnalysisModel(Base, TimestampMixin):
     verifier_used_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ai_override_disagreements_json: Mapped[str] = mapped_column(Text, default="{}")
 
     thread: Mapped["EmailThreadModel"] = relationship(back_populates="analysis")
 

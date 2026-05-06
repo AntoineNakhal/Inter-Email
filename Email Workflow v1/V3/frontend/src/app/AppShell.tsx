@@ -13,7 +13,6 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "/home", label: "Home" },
   { to: "/inbox", label: "Inbox" },
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/review", label: "Review" },
   { to: "/settings", label: "Settings" },
 ];
 

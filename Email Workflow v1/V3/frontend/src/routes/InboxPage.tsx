@@ -1,14 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  faArrowLeft,
-  faArrowUpRightFromSquare,
-  faArrowRight,
-  faChevronDown,
-  faSquareCheck,
-  faThumbtack,
-  faXmark,
-} from "@fortawesome/free-solid-svg-icons";
-import { faSquare } from "@fortawesome/free-regular-svg-icons";
+import { faChevronDown } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   startTransition,
@@ -21,14 +12,11 @@ import {
 import { Link } from "react-router-dom";
 
 import { ThreadCard } from "../components/ThreadCard";
-import { DraftComposer } from "../features/drafts/DraftComposer";
 import {
   useAcknowledgeAllMutation,
   useAcknowledgeBatchMutation,
   useCancelSyncMutation,
-  usePinMutation,
   useQueueDashboard,
-  useSeenMutation,
   useSyncMutation,
   useSyncRunStatus,
 } from "../hooks/useApi";
@@ -174,166 +162,6 @@ function isSeen(thread: EmailThread): boolean {
   return Boolean(thread.seen_state?.seen);
 }
 
-function priorityRank(thread: EmailThread): number {
-  let score = 0;
-  if (thread.analysis?.needs_action_today) score += 100;
-  if (thread.seen_state?.pinned) score += 50;
-  if (thread.analysis?.urgency === "high") score += 30;
-  score += Math.min(thread.message_count, 12);
-  return score;
-}
-
-function topPriorityThreads(threads: EmailThread[]): EmailThread[] {
-  return [...threads]
-    .filter(
-      (thread) =>
-        !thread.resolved_or_closed &&
-        !isSeen(thread) &&
-        Boolean(thread.analysis?.needs_next_action) &&
-        (
-          Boolean(thread.analysis?.needs_action_today) ||
-          thread.analysis?.urgency === "high" ||
-          Boolean(thread.seen_state?.pinned)
-        ),
-    )
-    .sort((left, right) => priorityRank(right) - priorityRank(left))
-    .slice(0, 6);
-}
-
-function priorityWorkflowLabel(thread: EmailThread): string {
-  if (thread.analysis?.needs_action_today) return "Act today";
-  if (thread.waiting_on_us) return "Waiting on us";
-  if (thread.resolved_or_closed) return "Closed";
-  return "Monitor";
-}
-
-function priorityWorkflowTone(thread: EmailThread): string {
-  if (thread.analysis?.needs_action_today) return "tone-urgent";
-  if (thread.waiting_on_us) return "tone-watch";
-  return "tone-neutral";
-}
-
-function PriorityQueueModal({
-  threads,
-  currentIndex,
-  onClose,
-  onPrevious,
-  onNext,
-}: {
-  threads: EmailThread[];
-  currentIndex: number;
-  onClose: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  const activeThread = threads[currentIndex] ?? null;
-  const seenMutation = useSeenMutation(activeThread?.thread_id ?? "");
-  const pinMutation = usePinMutation(activeThread?.thread_id ?? "");
-  const toneClass = activeThread ? priorityWorkflowTone(activeThread) : "tone-neutral";
-
-  return (
-    <div className="pq-overlay" onClick={onClose}>
-      <div className="pq-modal" onClick={(e) => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="pq-header">
-          <span className="pq-header__eyebrow">
-            Priority Queue{threads.length > 0 ? ` · ${currentIndex + 1} of ${threads.length}` : ""}
-          </span>
-          <div className="pq-header__actions">
-            {activeThread && (
-              <>
-                <DraftComposer
-                  thread={activeThread}
-                  recommended={Boolean(
-                    activeThread.analysis?.needs_next_action &&
-                      activeThread.analysis?.should_draft_reply,
-                  )}
-                  iconOnly
-                />
-                <button
-                  className={`td-action-btn ${activeThread.seen_state?.seen ? "td-action-btn--active" : ""}`}
-                  onClick={() => seenMutation.mutate(!(activeThread.seen_state?.seen ?? false))}
-                  title={activeThread.seen_state?.seen ? "Undo done" : "Mark as done"}
-                >
-                  <FontAwesomeIcon icon={activeThread.seen_state?.seen ? faSquareCheck : faSquare} />
-                </button>
-                <button
-                  className={`td-action-btn ${activeThread.seen_state?.pinned ? "td-action-btn--pinned" : ""}`}
-                  onClick={() => pinMutation.mutate(!(activeThread.seen_state?.pinned ?? false))}
-                  title={activeThread.seen_state?.pinned ? "Unpin" : "Pin"}
-                >
-                  <FontAwesomeIcon icon={faThumbtack} />
-                </button>
-              </>
-            )}
-            <button className="td-action-btn" onClick={onClose} aria-label="Close">
-              <FontAwesomeIcon icon={faXmark} />
-            </button>
-          </div>
-        </div>
-
-        <div className="pq-divider" />
-
-        {/* Scrollable content */}
-        <div className="pq-content">
-          {activeThread ? (
-            <>
-              <div className="pq-meta">
-                <span className={`pill ${toneClass}`}>{priorityWorkflowLabel(activeThread)}</span>
-                {activeThread.analysis?.urgency && activeThread.analysis.urgency !== "unknown" && (
-                  <span className="pill tone-outline">{activeThread.analysis.urgency}</span>
-                )}
-              </div>
-              <h2 className="pq-subject">{activeThread.subject || "Untitled thread"}</h2>
-
-              <div className="pq-block pq-block--accent">
-                <p className="pq-label">Next action</p>
-                <p className="pq-value pq-value--strong">
-                  {activeThread.analysis?.needs_next_action
-                    ? activeThread.analysis.next_action
-                    : "No action needed right now."}
-                </p>
-              </div>
-
-              {activeThread.analysis?.summary && (
-                <div className="pq-block">
-                  <p className="pq-label">Summary</p>
-                  <p className="pq-value">{activeThread.analysis.summary}</p>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="pq-empty">
-              <p className="pq-value">You've reached the end of the priority queue.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="pq-divider" />
-
-        {/* Footer */}
-        <div className="pq-footer">
-          <div className="pq-nav">
-            <button className="pq-nav__btn" type="button" onClick={onPrevious} disabled={currentIndex === 0} title="Previous">
-              <FontAwesomeIcon icon={faArrowLeft} />
-            </button>
-            <button className="pq-nav__btn" type="button" onClick={onNext} disabled={currentIndex >= threads.length - 1} title="Next">
-              <FontAwesomeIcon icon={faArrowRight} />
-            </button>
-          </div>
-          {activeThread && (
-            <Link to={`/threads/${activeThread.thread_id}`} className="pq-open-link" onClick={onClose}>
-              Open thread
-              <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
-            </Link>
-          )}
-        </div>
-
-      </div>
-    </div>
-  );
-}
 
 function normalizedUrgency(thread: EmailThread): string {
   return thread.analysis?.urgency ?? "unknown";
@@ -663,8 +491,6 @@ export function InboxPage() {
     useState<PriorityFilterValue>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [syncLookbackDays, setSyncLookbackDays] = useState(7);
-  const [isPriorityModalOpen, setIsPriorityModalOpen] = useState(false);
-  const [priorityModalIndex, setPriorityModalIndex] = useState(0);
   const handledCompletionRunIdRef = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(search);
 
@@ -790,18 +616,6 @@ export function InboxPage() {
     () => sectionedThreads(filteredThreads),
     [filteredThreads],
   );
-  const priorityThreads = useMemo(
-    () => topPriorityThreads(filteredThreads),
-    [filteredThreads],
-  );
-  useEffect(() => {
-    if (!priorityThreads.length) {
-      setPriorityModalIndex(0);
-      return;
-    }
-
-    setPriorityModalIndex((current) => Math.min(current, priorityThreads.length));
-  }, [priorityThreads.length]);
   const hasActiveFilters =
     deferredSearch.trim().length > 0 ||
     priorityFilter !== "all" ||
@@ -864,19 +678,6 @@ export function InboxPage() {
       maxResults: 50,
       lookbackDays: syncLookbackDays,
     });
-  };
-
-  const openPriorityModal = () => {
-    setPriorityModalIndex(0);
-    setIsPriorityModalOpen(true);
-  };
-
-  const advancePriorityModal = () => {
-    setPriorityModalIndex((current) => current + 1);
-  };
-
-  const retreatPriorityModal = () => {
-    setPriorityModalIndex((current) => Math.max(0, current - 1));
   };
 
   return (
@@ -951,14 +752,6 @@ export function InboxPage() {
                 : isSyncSettling
                   ? "Refreshing inbox..."
                   : "Refresh Gmail"}
-          </button>
-          <button
-            type="button"
-            className="inbox-header__btn inbox-header__btn--ghost"
-            onClick={openPriorityModal}
-            disabled={!priorityThreads.length}
-          >
-            {priorityThreads.length ? `Priority queue (${priorityThreads.length})` : "Priority queue"}
           </button>
         </div>
       </div>
@@ -1038,16 +831,6 @@ export function InboxPage() {
       {showInitialSkeleton ? <QueueSkeleton /> : null}
       {showRefreshSkeleton ? <QueueSkeleton refreshing /> : null}
       {showEmptyState ? <EmptyInboxState syncing={isSyncing} /> : null}
-
-      {isPriorityModalOpen ? (
-        <PriorityQueueModal
-          threads={priorityThreads}
-          currentIndex={priorityModalIndex}
-          onClose={() => setIsPriorityModalOpen(false)}
-          onPrevious={retreatPriorityModal}
-          onNext={advancePriorityModal}
-        />
-      ) : null}
 
       {error instanceof Error ? <p>{error.message}</p> : null}
       {syncMutation.error instanceof Error ? <p>{syncMutation.error.message}</p> : null}

@@ -1,4 +1,5 @@
 """Thread and message domain models."""
+from __future__ import annotations
 
 from __future__ import annotations
 
@@ -72,6 +73,9 @@ class ThreadMessage(BaseModel):
     cleaned_body: str = ""
     label_ids: list[str] = Field(default_factory=list)
     is_forwarded: bool = False
+    # The Gmail thread ID this message originally belonged to before grouping.
+    # Used by the split-thread action to re-separate merged threads.
+    original_gmail_thread_id: str = ""
 
 
 class ThreadAnalysis(BaseModel):
@@ -98,6 +102,10 @@ class ThreadAnalysis(BaseModel):
     model_name: str = "deterministic-fallback"
     prompt_version: str = "v1"
     used_fallback: bool = False
+    # When user overrides were passed as hints, tracks which fields the AI
+    # chose to disagree with and what its reasoning was.
+    # Key = field name (e.g. "category"), value = AI's reasoning for disagreeing.
+    ai_override_disagreements: dict[str, str] = Field(default_factory=dict)
     accuracy_percent: int = 0
     verification_summary: str = ""
     needs_human_review: bool = False
@@ -180,6 +188,7 @@ class EmailThread(BaseModel):
     seen_state: SeenState | None = None
     review: ReviewDecision | None = None
     latest_draft: DraftDocument | None = None
+    override: "ThreadOverride | None" = None
 
     def compute_signature(self) -> str:
         """Build a stable content signature for seen-state and updates."""

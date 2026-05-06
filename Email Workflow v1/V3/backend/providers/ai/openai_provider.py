@@ -56,6 +56,26 @@ class OpenAIProvider(AIProvider):
         )
 
     @staticmethod
+    def _user_overrides_block(user_overrides: dict[str, object] | None) -> str:
+        """Inject user corrections as soft hints into the analysis prompt.
+
+        The AI is asked to consider these but may disagree — disagreements are
+        detected post-analysis by comparing the AI output to the override values.
+        """
+        if not user_overrides:
+            return ""
+        lines = []
+        for field, value in user_overrides.items():
+            lines.append(f"  - {field}: {value}")
+        hints = "\n".join(lines)
+        return (
+            "USER CORRECTIONS (soft hints — consider these carefully; "
+            "you may disagree if you have strong evidence from the email content, "
+            "but your output should reflect your best analysis of the actual emails):\n"
+            f"{hints}\n\n"
+        )
+
+    @staticmethod
     def _user_perspective_block(user_email: str | None) -> str:
         """
         Returns a short paragraph that tells the model whose inbox this is.
@@ -80,6 +100,7 @@ class OpenAIProvider(AIProvider):
             system_prompt=(
                 self._today_block()
                 + self._user_perspective_block(request.user_email)
+                + self._user_overrides_block(request.user_overrides)
                 + "You are analyzing one email thread for an internal operations queue. "
                 "Ignore email signatures, confidentiality footers, and quoted reply history. "
                 "Anchor the analysis primarily on the latest meaningful message, using earlier messages only as context. "

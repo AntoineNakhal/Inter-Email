@@ -49,6 +49,19 @@ def generate_draft(
     return DraftGenerateResponse.from_domain(draft)
 
 
+@router.delete("/threads/{thread_id}/draft", status_code=204)
+def delete_draft(
+    thread_id: str,
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> None:
+    """Discard the stored draft for a thread without sending it."""
+    thread = services.queue_service.get_thread(thread_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    services.review_service.thread_repository.clear_draft(thread_id)
+    services.session.commit()
+
+
 class SendDraftRequest(BaseModel):
     subject: str
     body: str

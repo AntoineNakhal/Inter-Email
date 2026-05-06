@@ -5,6 +5,76 @@ import {
   faSquareCheck,
   faThumbtack,
 } from "@fortawesome/free-solid-svg-icons";
+import { faSquare } from "@fortawesome/free-regular-svg-icons";
+
+const SPOTLIGHT_CATEGORIES = [
+  { key: "Urgent / Executive", label: "Urgent / Executive", accent: "var(--alert)" },
+  { key: "Customer / Partner", label: "Customer / Partner", accent: "#185FA5" },
+  { key: "Finance / Admin",    label: "Finance / Admin",    accent: "#854F0B" },
+  { key: "Events / Logistics", label: "Events / Logistics", accent: "#3B6D11" },
+  { key: "FYI / Low Priority", label: "FYI / Low",          accent: "var(--muted)" },
+] as const;
+
+const URGENCY_COLOR: Record<string, string> = {
+  high:    "var(--alert)",
+  medium:  "var(--warn)",
+  low:     "var(--accent)",
+  unknown: "var(--muted)",
+};
+
+function spotlightThreadsForCategory(threads: EmailThread[], categoryKey: string): EmailThread[] {
+  return threads
+    .filter((t) => !t.seen_state?.seen && !t.resolved_or_closed && t.analysis?.category === categoryKey)
+    .sort((a, b) => {
+      const order = ["high", "medium", "low", "unknown"];
+      return order.indexOf(a.analysis?.urgency ?? "unknown") - order.indexOf(b.analysis?.urgency ?? "unknown");
+    })
+    .slice(0, 3);
+}
+
+function CategorySpotlightPanel({ threads }: { threads: EmailThread[] }) {
+  return (
+    <div className="home-panel home-panel--spotlight">
+      <div className="home-panel__head">
+        <div>
+          <p className="home-panel__eyebrow">Backlog</p>
+          <h3 className="home-panel__title">Top priorities by category</h3>
+        </div>
+        <Link to="/inbox" className="home-panel__link" style={{ fontSize: "0.78rem" }}>
+          Full inbox <FontAwesomeIcon icon={faArrowRight} />
+        </Link>
+      </div>
+      <div className="db-spotlight-list">
+        {SPOTLIGHT_CATEGORIES.map(({ key, label, accent }) => {
+          const top = spotlightThreadsForCategory(threads, key);
+          return (
+            <div key={key} className="db-srow">
+              <div className="db-srow__cat">
+                <span className="db-srow__dot" style={{ background: accent }} />
+                <span className="db-srow__label">{label}</span>
+              </div>
+              <div className="db-srow__chips">
+                {top.length > 0 ? top.map((t) => (
+                  <Link key={t.thread_id} to={`/threads/${t.thread_id}`} className="db-chip">
+                    <span className="db-chip__top">
+                      <span className="db-chip__dot" style={{ background: URGENCY_COLOR[t.analysis?.urgency ?? "unknown"] }} />
+                      <span className="db-chip__subject">{t.subject || "Untitled"}</span>
+                    </span>
+                    <span className="db-chip__action">
+                      {t.analysis?.needs_next_action ? t.analysis.next_action : "No action needed right now."}
+                    </span>
+                  </Link>
+                )) : (
+                  <span className="db-srow__empty">All clear</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -225,13 +295,6 @@ export function HomePage() {
   const quickWinsCount = quickWinThreads.length;
   const waitingOnOthersCount = waitingThreads.length;
   const pinnedCount = openThreads.filter(isPinned).length;
-  const actionableIds = new Set(actionableThreads.map((thread) => thread.thread_id));
-  const waitingIds = new Set(waitingThreads.map((thread) => thread.thread_id));
-  const laterCount = openThreads.filter(
-    (thread) =>
-      !actionableIds.has(thread.thread_id) &&
-      !waitingIds.has(thread.thread_id),
-  ).length;
 
   const focusSeenMutation = useSeenMutation(activeFocus?.thread_id ?? "");
   const focusPinMutation = usePinMutation(activeFocus?.thread_id ?? "");
@@ -341,39 +404,42 @@ export function HomePage() {
                           activeFocus.analysis?.needs_next_action &&
                             activeFocus.analysis?.should_draft_reply,
                         )}
+                        iconOnly
                       />
                       <button
-                        className="button button--ghost"
+                        className={`td-action-btn${activeFocus.seen_state?.seen ? " td-action-btn--active" : ""}`}
                         type="button"
                         onClick={() => focusSeenMutation.mutate(!(activeFocus.seen_state?.seen ?? false))}
+                        title={activeFocus.seen_state?.seen ? "Undo done" : "Mark done"}
                       >
-                        <FontAwesomeIcon icon={faSquareCheck} />
-                        {activeFocus.seen_state?.seen ? "Undo done" : "Mark done"}
+                        <FontAwesomeIcon icon={activeFocus.seen_state?.seen ? faSquareCheck : faSquare} />
                       </button>
                       <button
-                        className="button button--ghost"
+                        className={`td-action-btn${activeFocus.seen_state?.pinned ? " td-action-btn--pinned" : ""}`}
                         type="button"
                         onClick={() => focusPinMutation.mutate(!(activeFocus.seen_state?.pinned ?? false))}
+                        title={activeFocus.seen_state?.pinned ? "Unpin" : "Pin"}
                       >
                         <FontAwesomeIcon icon={faThumbtack} />
-                        {activeFocus.seen_state?.pinned ? "Unpin" : "Pin"}
                       </button>
                       {hasMultipleFocusThreads ? (
                         <div className="home-focus__nav" aria-label="Today focus navigation">
                           <button
-                            className="button button--ghost"
+                            className="home-focus__open"
+                            style={{ background: "none", border: "none", cursor: "pointer" }}
                             type="button"
                             onClick={() => cycleFocus(-1)}
                           >
                             <FontAwesomeIcon icon={faArrowLeft} />
-                            Previous
+                            Prev
                           </button>
                           <button
-                            className="button button--ghost"
+                            className="home-focus__open"
+                            style={{ background: "none", border: "none", cursor: "pointer" }}
                             type="button"
                             onClick={() => cycleFocus(1)}
                           >
-                            Next priority
+                            Next
                             <FontAwesomeIcon icon={faArrowRight} />
                           </button>
                         </div>
@@ -458,17 +524,7 @@ export function HomePage() {
                 )}
               </div>
 
-              <div className="home-panel home-panel--compact">
-                <p className="home-panel__eyebrow">Backlog</p>
-                <h3 className="home-panel__title">What remains after today</h3>
-                <p className="home-panel__summary">
-                  {laterCount} open thread{laterCount === 1 ? "" : "s"} can stay in the backlog after you clear the current focus queue.
-                </p>
-                <Link to="/inbox" className="home-panel__link">
-                  Review the full inbox
-                  <FontAwesomeIcon icon={faArrowRight} />
-                </Link>
-              </div>
+              <CategorySpotlightPanel threads={threads} />
             </div>
           </div>
         </>

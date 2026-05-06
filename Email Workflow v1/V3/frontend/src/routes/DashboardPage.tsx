@@ -267,13 +267,9 @@ function QueueHealth({ threads }: { threads: EmailThread[] }) {
   );
 }
 
-function NewContactsLineChart({
-  points,
-}: {
-  points: { month: string; count: number }[];
-}) {
+function EmailVolumeChart({ points }: { points: ChartPoint[] }) {
   if (points.length === 0) {
-    return <p className="db-chart__empty">No data yet.</p>;
+    return <p className="db-chart__empty">No data for this period.</p>;
   }
 
   const width = 320;
@@ -283,54 +279,33 @@ function NewContactsLineChart({
   const paddingBottom = 28;
   const innerWidth = width - paddingX * 2;
   const innerHeight = height - paddingTop - paddingBottom;
-  const max = Math.max(...points.map((point) => point.count), 1);
-  const denominator = Math.max(points.length - 1, 1);
+  const max = Math.max(...points.map((p) => p.count), 1);
+  const denom = Math.max(points.length - 1, 1);
 
-  const chartPoints = points.map((point, index) => {
-    const x = paddingX + (innerWidth * index) / denominator;
-    const y = paddingTop + innerHeight - (point.count / max) * innerHeight;
-    return { ...point, x, y };
-  });
+  const pts = points.map((p, i) => ({
+    ...p,
+    x: paddingX + (innerWidth * i) / denom,
+    y: paddingTop + innerHeight - (p.count / max) * innerHeight,
+  }));
 
-  const polylinePoints = chartPoints.map((point) => `${point.x},${point.y}`).join(" ");
+  // Show at most ~6 x-axis labels so they don't crowd
+  const step = Math.max(1, Math.ceil(pts.length / 6));
+  const labelPts = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
 
   return (
     <div className="db-line-chart">
-      <svg
-        className="db-line-chart__svg"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="New emails over time"
-      >
-        <line
-          x1={paddingX}
-          y1={height - paddingBottom}
-          x2={width - paddingX}
-          y2={height - paddingBottom}
-          className="db-line-chart__axis"
-        />
-        <polyline
-          fill="none"
-          points={polylinePoints}
-          className="db-line-chart__path"
-        />
-        {chartPoints.map((point) => (
-          <circle
-            key={point.month}
-            cx={point.x}
-            cy={point.y}
-            r="3.5"
-            className="db-line-chart__point"
-          >
-            <title>{`${point.month}: ${point.count}`}</title>
+      <svg className="db-line-chart__svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Email threads over time">
+        <line x1={paddingX} y1={height - paddingBottom} x2={width - paddingX} y2={height - paddingBottom} className="db-line-chart__axis" />
+        <polyline fill="none" points={pts.map((p) => `${p.x},${p.y}`).join(" ")} className="db-line-chart__path" />
+        {pts.map((p) => (
+          <circle key={p.key} cx={p.x} cy={p.y} r="3.5" className="db-line-chart__point">
+            <title>{`${p.label}: ${p.count}`}</title>
           </circle>
         ))}
       </svg>
       <div className="db-line-chart__labels">
-        {points.map((point) => (
-          <span key={point.month} className="db-line-chart__label">
-            {point.month.slice(5)}
-          </span>
+        {labelPts.map((p) => (
+          <span key={p.key} className="db-line-chart__label">{p.label}</span>
         ))}
       </div>
     </div>
@@ -359,18 +334,85 @@ const CONTACT_RANGE_OPTIONS = [
   { value: "all", label: "All time" },
 ] as const;
 
+function rangeStartDate(range: string): Date | null {
+  const now = new Date();
+  const days: Record<string, number> = {
+    today: 1, week: 7, month: 30, three_months: 90,
+    six_months: 180, year: 365, three_years: 1095, five_years: 1825,
+  };
+  if (range === "all" || !(range in days)) return null;
+  const d = new Date(now);
+  d.setDate(d.getDate() - days[range]);
+  return d;
+}
+
+type ChartPoint = { key: string; label: string; count: number };
+
+function threadsByPeriod(threads: EmailThread[], range: string): ChartPoint[] {
+  const counts: Record<string, number> = {};
+
+  for (const t of threads) {
+    if (!t.latest_message_date) continue;
+    const d = new Date(t.latest_message_date);
+    let key: string;
+    if (range === "today") {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}`;
+    } else if (range === "week") {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    } else if (range === "month") {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    } else {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+
+  return Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, count]) => {
+      let label: string;
+      if (range === "today") {
+        label = `${key.slice(11)}h`;
+      } else if (range === "week" || range === "month") {
+        const [, , day] = key.split("-");
+        const date = new Date(key);
+        label = range === "week"
+          ? date.toLocaleDateString("en-US", { weekday: "short" })
+          : day;
+      } else {
+        const [year, month] = key.split("-");
+        const date = new Date(Number(year), Number(month) - 1, 1);
+        label = range === "year"
+          ? date.toLocaleDateString("en-US", { month: "short" })
+          : date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+      }
+      return { key, label, count };
+    });
+}
+
 export function DashboardPage() {
   const { data, isLoading } = useQueueDashboard();
-  const [contactRange, setContactRange] =
+  const [range, setRange] =
     useState<(typeof CONTACT_RANGE_OPTIONS)[number]["value"]>("all");
-  const { data: contactStats } = useContactStats(contactRange);
-  const threads = data?.threads ?? [];
-  const active  = threads.filter(isActive);
+  // Contacts are the permanent address book — not time-filtered.
+  // Decoupled from range so they stay visible regardless of what period is selected.
+  const { data: contactStats } = useContactStats("all");
 
-  const actNow    = active.filter((t) => t.analysis?.needs_action_today).length;
-  const waiting   = active.filter((t) => t.waiting_on_us).length;
-  const highUrgency = active.filter((t) => t.analysis?.urgency === "high").length;
-  const doneCount = threads.filter((t) => t.seen_state?.seen).length;
+  const allThreads = data?.threads ?? [];
+
+  // Filter all dashboard data by the selected range.
+  const cutoff = rangeStartDate(range);
+  const threads = cutoff
+    ? allThreads.filter((t) =>
+        t.latest_message_date
+          ? new Date(t.latest_message_date) >= cutoff
+          : false,
+      )
+    : allThreads;
+
+  const active = threads.filter(isActive);
+  const emailsByPeriod = threadsByPeriod(threads, range);
+
 
   return (
     <section className="page db-page">
@@ -383,7 +425,17 @@ export function DashboardPage() {
             {new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric" })}
           </p>
         </div>
-        <Link to="/inbox" className="sp-connect-btn">Open inbox</Link>
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <label className="select-field db-header-range">
+            <select value={range} onChange={(e) => setRange(e.target.value as typeof range)}>
+              {CONTACT_RANGE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
+          </label>
+          <Link to="/inbox" className="sp-connect-btn">Open inbox</Link>
+        </div>
       </div>
 
       <div className="sp-divider" />
@@ -392,34 +444,6 @@ export function DashboardPage() {
         <p className="rp-loading">Loading dashboard…</p>
       ) : (
         <>
-          {/* Command strip */}
-          <div className="db-cmd-strip">
-            <CommandCard label="Act Now"     value={actNow}      sub="need action today"  accent="var(--alert)" />
-            <CommandCard label="Waiting"     value={waiting}     sub="waiting on reply"   accent="var(--warn)" />
-            <CommandCard label="High urgency" value={highUrgency} sub="flagged high"       accent="#b42318" />
-            <CommandCard label="Done"        value={doneCount}   sub="handled this cycle" accent="var(--accent)" />
-          </div>
-
-          <div className="sp-divider" />
-
-          {/* Category spotlight */}
-          <div>
-            <p className="db-section-title">Top priorities by category</p>
-            <div className="db-spotlight-list">
-              {CATEGORIES.map(({ key, label, accent }) => (
-                <CategorySpotlightRow
-                  key={key}
-                  threads={threads}
-                  categoryKey={key}
-                  label={label}
-                  accent={accent}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="sp-divider" />
-
           {/* Charts */}
           <div>
             <p className="db-section-title">Queue statistics</p>
@@ -430,82 +454,65 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {contactStats && contactStats.total > 0 && (
-            <>
-              <div className="sp-divider" />
+          <div className="sp-divider" />
 
-              {/* Contact stats */}
-              <div>
-                <p className="db-section-title">Contacts · {contactStats.total} people</p>
-                <label className="select-field db-section-filter">
-                  <select
-                    value={contactRange}
-                    onChange={(event) =>
-                      setContactRange(
-                        event.target.value as (typeof CONTACT_RANGE_OPTIONS)[number]["value"],
-                      )
-                    }
-                  >
-                    {CONTACT_RANGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
-                </label>
-                <div className="db-charts-row">
+          {/* Email volume + contacts */}
+          <div>
+            <p className="db-section-title">Activity</p>
+            <div className="db-charts-row">
 
-                  {/* Type breakdown */}
-                  <div className="db-chart">
-                    <p className="db-chart__title">By type</p>
-                    <div className="db-bar-list">
-                      {Object.entries(contactStats.by_type)
-                        .sort(([, a], [, b]) => b - a)
-                        .map(([type, count]) => {
-                          const max = Math.max(...Object.values(contactStats.by_type), 1);
-                          return (
-                            <div key={type} className="db-bar-row">
-                              <span className="db-bar-label" style={{ textTransform: "capitalize" }}>{type}</span>
-                              <div className="db-bar-track">
-                                <div className="db-bar-fill" style={{ width: `${(count / max) * 100}%`, background: TYPE_COLOR[type] ?? "var(--muted)" }} />
-                              </div>
-                              <span className="db-bar-val">{count}</span>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-
-                  {/* New contacts over time */}
-                  <div className="db-chart">
-                    <p className="db-chart__title">New emails over time</p>
-                    <NewContactsLineChart points={contactStats.new_per_month} />
-                  </div>
-
-                  {/* Top contacts */}
-                  <div className="db-chart">
-                    <p className="db-chart__title">Most emailed</p>
-                    <div className="db-top-list">
-                      {contactStats.top_contacts.slice(0, 7).map((c, i) => (
-                        <div key={c.email} className="db-top-row">
-                          <span className="db-top-rank">{i + 1}</span>
-                          <div className="db-top-info">
-                            <span className="db-top-name">{c.display_name || c.email}</span>
-                            <span className="db-top-org">{c.organization || c.email}</span>
-                          </div>
-                          <span className="db-top-count" style={{ color: TYPE_COLOR[c.contact_type] ?? "var(--muted)" }}>
-                            {c.thread_count}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
+              {/* Email threads over time — computed from Gmail thread dates */}
+              <div className="db-chart">
+                <p className="db-chart__title">Email threads over time</p>
+                <EmailVolumeChart points={emailsByPeriod} />
               </div>
-            </>
-          )}
+
+              {/* Contact type breakdown */}
+              {contactStats && contactStats.total > 0 && (
+                <div className="db-chart">
+                  <p className="db-chart__title">Contacts by type</p>
+                  <div className="db-bar-list">
+                    {Object.entries(contactStats.by_type)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([type, count]) => {
+                        const max = Math.max(...Object.values(contactStats.by_type), 1);
+                        return (
+                          <div key={type} className="db-bar-row">
+                            <span className="db-bar-label" style={{ textTransform: "capitalize" }}>{type}</span>
+                            <div className="db-bar-track">
+                              <div className="db-bar-fill" style={{ width: `${(count / max) * 100}%`, background: TYPE_COLOR[type] ?? "var(--muted)" }} />
+                            </div>
+                            <span className="db-bar-val">{count}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Top contacts */}
+              {contactStats && contactStats.top_contacts.length > 0 && (
+                <div className="db-chart">
+                  <p className="db-chart__title">Most emailed</p>
+                  <div className="db-top-list">
+                    {contactStats.top_contacts.slice(0, 7).map((c, i) => (
+                      <div key={c.email} className="db-top-row">
+                        <span className="db-top-rank">{i + 1}</span>
+                        <div className="db-top-info">
+                          <span className="db-top-name">{c.display_name || c.email}</span>
+                          <span className="db-top-org">{c.organization || c.email}</span>
+                        </div>
+                        <span className="db-top-count" style={{ color: TYPE_COLOR[c.contact_type] ?? "var(--muted)" }}>
+                          {c.thread_count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
         </>
       )}
     </section>

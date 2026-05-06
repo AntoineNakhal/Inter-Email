@@ -20,6 +20,8 @@ export type ThreadMessage = {
   sent_at: string | null;
   snippet: string;
   cleaned_body: string;
+  is_forwarded: boolean;
+  original_gmail_thread_id: string;
 };
 
 export type ThreadAnalysis = {
@@ -30,6 +32,7 @@ export type ThreadAnalysis = {
   next_action: string;
   needs_next_action: boolean;
   needs_action_today: boolean;
+  waiting_on_us: boolean | null;
   should_draft_reply: boolean;
   draft_needs_date: boolean;
   draft_date_reason: string | null;
@@ -51,6 +54,31 @@ export type ThreadAnalysis = {
   verifier_used_fallback: boolean;
   analyzed_at: string | null;
   verified_at: string | null;
+  ai_override_disagreements: Record<string, string>;
+};
+
+export type ThreadOverride = {
+  category: string | null;
+  urgency: string | null;
+  needs_action_today: boolean | null;
+  waiting_on_us: boolean | null;
+  needs_next_action: boolean | null;
+  should_draft_reply: boolean | null;
+  relevance_bucket: string | null;
+  notes: string;
+  overridden_at: string | null;
+  updated_at: string | null;
+};
+
+export type ThreadOverrideRequest = {
+  category?: string | null;
+  urgency?: string | null;
+  needs_action_today?: boolean | null;
+  waiting_on_us?: boolean | null;
+  needs_next_action?: boolean | null;
+  should_draft_reply?: boolean | null;
+  relevance_bucket?: string | null;
+  notes?: string;
 };
 
 export type SeenState = {
@@ -101,11 +129,16 @@ export type EmailThread = {
   analysis_status: string;
   signature: string;
   is_new: boolean;
+  // Merge transparency
+  grouping_reason: string;
+  merge_signals: string[];
+  source_thread_ids: string[];
   messages: ThreadMessage[];
   analysis: ThreadAnalysis | null;
   seen_state: SeenState | null;
   review: ReviewDecision | null;
   latest_draft: DraftDocument | null;
+  override: ThreadOverride | null;
 };
 
 export type QueueSummary = {

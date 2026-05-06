@@ -58,6 +58,7 @@ class ThreadRepository:
                 selectinload(EmailThreadModel.review),
                 selectinload(EmailThreadModel.state),
                 selectinload(EmailThreadModel.drafts),
+                selectinload(EmailThreadModel.override),
             )
         )
         models = self.session.scalars(query).all()
@@ -89,6 +90,7 @@ class ThreadRepository:
                 selectinload(EmailThreadModel.review),
                 selectinload(EmailThreadModel.state),
                 selectinload(EmailThreadModel.drafts),
+                selectinload(EmailThreadModel.override),
             )
             .order_by(EmailThreadModel.latest_message_date.desc())
         )
@@ -109,6 +111,7 @@ class ThreadRepository:
                 selectinload(EmailThreadModel.review),
                 selectinload(EmailThreadModel.state),
                 selectinload(EmailThreadModel.drafts),
+                selectinload(EmailThreadModel.override),
             )
         )
         model = self.session.scalar(query)
@@ -188,6 +191,9 @@ class ThreadRepository:
         )
         model.signature = next_signature
         model.last_synced_at = datetime.now(timezone.utc)
+        model.grouping_reason = thread.grouping_reason or "gmail_thread_id"
+        model.merge_signals_json = json.dumps(thread.merge_signals, ensure_ascii=False)
+        model.source_thread_ids_json = json.dumps(thread.source_thread_ids, ensure_ascii=False)
 
         incoming_message_ids = _dedupe_message_ids(
             [message.external_message_id for message in thread.messages]
@@ -231,6 +237,8 @@ class ThreadRepository:
                 ensure_ascii=False,
             )
             message_model.is_forwarded = message.is_forwarded
+            if message.original_gmail_thread_id:
+                message_model.original_gmail_thread_id = message.original_gmail_thread_id
             if message_progress_callback is not None:
                 message_progress_callback(saved_message_count, total_messages)
 
@@ -341,6 +349,9 @@ class ThreadRepository:
         model.analysis.verifier_used_fallback = analysis.verifier_used_fallback
         model.analysis.analyzed_at = analysis.analyzed_at
         model.analysis.verified_at = analysis.verified_at
+        model.analysis.ai_override_disagreements_json = json.dumps(
+            analysis.ai_override_disagreements, ensure_ascii=False
+        )
         model.analysis.thread = model
         model.analysis_status = AnalysisStatus.COMPLETE.value
         model.last_analyzed_at = analysis.analyzed_at
@@ -584,7 +595,9 @@ class ThreadRepository:
         latest_draft = model.drafts[0] if model.drafts else None
         return EmailThread(
             external_thread_id=model.external_thread_id,
-            source_thread_ids=[model.external_thread_id],
+            source_thread_ids=_load_json_list(model.source_thread_ids_json) or [model.external_thread_id],
+            grouping_reason=model.grouping_reason or "gmail_thread_id",
+            merge_signals=_load_json_list(model.merge_signals_json),
             subject=model.subject,
             participants=_load_json_list(model.participants_json),
             message_count=model.message_count,
@@ -600,6 +613,7 @@ class ThreadRepository:
                     cleaned_body=message.cleaned_body,
                     label_ids=_load_json_list(message.label_ids_json),
                     is_forwarded=bool(message.is_forwarded),
+                    original_gmail_thread_id=message.original_gmail_thread_id or "",
                 )
                 for message in model.messages
             ],
@@ -626,7 +640,75 @@ class ThreadRepository:
             seen_state=_to_seen_state(model.state),
             review=_to_review(model.review),
             latest_draft=_to_draft(latest_draft),
+            override=_to_override(model.override),
         )
+
+    def split_thread(self, external_thread_id: str, user_id: int) -> list[EmailThread]:
+        """Split a merged thread back into its original Gmail threads.
+
+        Groups messages by their original_gmail_thread_id and creates a
+        separate email_threads row for each group. The merged thread is deleted.
+        Returns the newly created threads.
+        """
+        model = self._require_thread_model(external_thread_id, user_id)
+        source_ids = _load_json_list(model.source_thread_ids_json)
+
+        if len(source_ids) <= 1:
+            raise ValueError(
+                f"Thread {external_thread_id!r} was not merged — nothing to split."
+            )
+
+        # Group messages by their original Gmail thread ID
+        groups: dict[str, list] = {}
+        for msg in model.messages:
+            origin = msg.original_gmail_thread_id or model.external_thread_id
+            groups.setdefault(origin, []).append(msg)
+
+        if len(groups) <= 1:
+            raise ValueError(
+                f"Thread {external_thread_id!r} messages all share the same origin — "
+                "cannot determine split boundary."
+            )
+
+        new_threads: list[EmailThread] = []
+        for origin_thread_id, messages in groups.items():
+            new_model = EmailThreadModel(
+                user_id=user_id,
+                external_thread_id=origin_thread_id,
+                subject=messages[0].subject if messages else model.subject,
+                participants_json=model.participants_json,
+                message_count=len(messages),
+                combined_thread_text=model.combined_thread_text,
+                security_status=model.security_status,
+                sensitivity_markers_json=model.sensitivity_markers_json,
+                analysis_status="pending",
+                signature="",
+                grouping_reason="gmail_thread_id",
+                merge_signals_json="[]",
+                source_thread_ids_json=json.dumps([origin_thread_id]),
+            )
+            self.session.add(new_model)
+            self.session.flush()  # get new_model.id
+
+            for msg in messages:
+                msg.thread_id = new_model.id
+                msg.thread = new_model
+
+            new_threads.append(self._to_domain(new_model))
+
+        self.session.delete(model)
+        self.session.flush()
+        return new_threads
+
+
+def _load_json_dict(payload: str | None) -> dict[str, str]:
+    if not payload:
+        return {}
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        return {}
+    return {str(k): str(v) for k, v in value.items()} if isinstance(value, dict) else {}
 
 
 def _load_json_list(payload: str | None) -> list[str]:
@@ -688,6 +770,7 @@ def _to_analysis(model: ThreadAnalysisModel | None) -> ThreadAnalysis | None:
         verifier_used_fallback=model.verifier_used_fallback,
         analyzed_at=model.analyzed_at,
         verified_at=model.verified_at,
+        ai_override_disagreements=_load_json_dict(model.ai_override_disagreements_json),
     )
 
 
@@ -728,4 +811,23 @@ def _to_draft(model: DraftModel | None) -> DraftDocument | None:
         model_name=model.model_name,
         used_fallback=model.used_fallback,
         created_at=model.created_at,
+    )
+
+
+def _to_override(model: "ThreadOverrideModel | None") -> "ThreadOverride | None":
+    if model is None:
+        return None
+    from backend.domain.override import ThreadOverride
+    from backend.domain.thread import RelevanceBucket, TriageCategory, UrgencyLevel
+    return ThreadOverride(
+        category=TriageCategory(model.category) if model.category else None,
+        urgency=UrgencyLevel(model.urgency) if model.urgency else None,
+        needs_action_today=model.needs_action_today,
+        waiting_on_us=model.waiting_on_us,
+        needs_next_action=model.needs_next_action,
+        should_draft_reply=model.should_draft_reply,
+        relevance_bucket=RelevanceBucket(model.relevance_bucket) if model.relevance_bucket else None,
+        notes=model.notes or "",
+        overridden_at=model.created_at,
+        updated_at=model.updated_at,
     )

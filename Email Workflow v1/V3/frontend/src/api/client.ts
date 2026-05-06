@@ -7,33 +7,72 @@ import type {
   SettingsSummary,
   SyncRunStatus,
   ThreadListResponse,
+  ThreadOverride,
+  ThreadOverrideRequest,
 } from "../types/api";
 
 const API_ROOT =
   `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"}/api/v1`;
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_ROOT}${path}`, {
+let refreshPromise: Promise<boolean> | null = null;
+
+function buildRequestInit(init?: RequestInit): RequestInit {
+  return {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
     ...init,
-  });
+  };
+}
+
+async function doFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${API_ROOT}${path}`, buildRequestInit(init));
+}
+
+async function refreshAuthSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await doFetch("/auth/refresh", { method: "POST" });
+        return response.ok;
+      } catch {
+        return false;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+async function parseError(response: Response): Promise<Error> {
+  const raw = await response.text();
+  let detail = raw;
+  try {
+    const parsed = JSON.parse(raw) as { detail?: string };
+    if (parsed?.detail) {
+      detail = parsed.detail;
+    }
+  } catch {
+    // Non-JSON error body; keep the raw text.
+  }
+  return new Error(detail || `Request failed with ${response.status}`);
+}
+
+async function request<T>(path: string, init?: RequestInit, allowRefresh = true): Promise<T> {
+  let response = await doFetch(path, init);
+
+  if (response.status === 401 && allowRefresh && path !== "/auth/refresh") {
+    const refreshed = await refreshAuthSession();
+    if (refreshed) {
+      response = await doFetch(path, init);
+    }
+  }
 
   if (!response.ok) {
-    const raw = await response.text();
-    let detail = raw;
-    try {
-      const parsed = JSON.parse(raw) as { detail?: string };
-      if (parsed?.detail) {
-        detail = parsed.detail;
-      }
-    } catch {
-      // Non-JSON error body; keep the raw text.
-    }
-    throw new Error(detail || `Request failed with ${response.status}`);
+    throw await parseError(response);
   }
 
   if (response.status === 204) {
@@ -112,11 +151,22 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  deleteDraft: (threadId: string) =>
+    request<void>(`/threads/${threadId}/draft`, { method: "DELETE" }),
   sendDraft: (threadId: string, payload: { subject: string; body: string; to: string }) =>
     request<{ status: string; message_id: string }>(`/threads/${threadId}/draft/send`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  saveOverride: (threadId: string, payload: ThreadOverrideRequest) =>
+    request<ThreadOverride>(`/threads/${threadId}/override`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteOverride: (threadId: string) =>
+    request<void>(`/threads/${threadId}/override`, { method: "DELETE" }),
+  splitThread: (threadId: string) =>
+    request<EmailThread[]>(`/threads/${threadId}/split`, { method: "POST" }),
   getSettings: () => request<SettingsSummary>("/settings"),
   updateSettings: (payload: RuntimeSettingsUpdate) =>
     request<SettingsSummary>("/settings", {

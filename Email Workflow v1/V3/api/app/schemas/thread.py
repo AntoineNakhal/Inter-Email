@@ -10,6 +10,30 @@ from backend.domain.analysis import QueueSummaryResult
 from backend.domain.thread import EmailThread
 
 
+class ThreadOverrideResponse(BaseModel):
+    category: str | None = None
+    urgency: str | None = None
+    needs_action_today: bool | None = None
+    waiting_on_us: bool | None = None
+    needs_next_action: bool | None = None
+    should_draft_reply: bool | None = None
+    relevance_bucket: str | None = None
+    notes: str = ""
+    overridden_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ThreadOverrideRequest(BaseModel):
+    category: str | None = None
+    urgency: str | None = None
+    needs_action_today: bool | None = None
+    waiting_on_us: bool | None = None
+    needs_next_action: bool | None = None
+    should_draft_reply: bool | None = None
+    relevance_bucket: str | None = None
+    notes: str = ""
+
+
 class ThreadMessageResponse(BaseModel):
     message_id: str
     sender: str
@@ -50,6 +74,7 @@ class ThreadAnalysisResponse(BaseModel):
     verifier_used_fallback: bool
     analyzed_at: datetime | None = None
     verified_at: datetime | None = None
+    ai_override_disagreements: dict[str, str] = Field(default_factory=dict)
 
 
 class SeenStateResponse(BaseModel):
@@ -98,11 +123,16 @@ class ThreadResponse(BaseModel):
     analysis_status: str
     signature: str
     is_new: bool = False
+    # Merge transparency
+    grouping_reason: str = "gmail_thread_id"
+    merge_signals: list[str] = Field(default_factory=list)
+    source_thread_ids: list[str] = Field(default_factory=list)
     messages: list[ThreadMessageResponse] = Field(default_factory=list)
     analysis: ThreadAnalysisResponse | None = None
     seen_state: SeenStateResponse | None = None
     review: ReviewDecisionResponse | None = None
     latest_draft: DraftResponse | None = None
+    override: ThreadOverrideResponse | None = None
 
     @classmethod
     def from_domain(cls, thread: EmailThread) -> "ThreadResponse":
@@ -126,6 +156,9 @@ class ThreadResponse(BaseModel):
             analysis_status=thread.analysis_status.value,
             signature=thread.signature,
             is_new=thread.is_new,
+            grouping_reason=thread.grouping_reason,
+            merge_signals=thread.merge_signals,
+            source_thread_ids=thread.source_thread_ids,
             messages=[
                 ThreadMessageResponse(
                     message_id=message.external_message_id,
@@ -173,6 +206,7 @@ class ThreadResponse(BaseModel):
                     verifier_used_fallback=thread.analysis.verifier_used_fallback,
                     analyzed_at=thread.analysis.analyzed_at,
                     verified_at=thread.analysis.verified_at,
+                    ai_override_disagreements=thread.analysis.ai_override_disagreements,
                 )
                 if thread.analysis
                 else None
@@ -212,6 +246,22 @@ class ThreadResponse(BaseModel):
                     created_at=thread.latest_draft.created_at,
                 )
                 if thread.latest_draft
+                else None
+            ),
+            override=(
+                ThreadOverrideResponse(
+                    category=thread.override.category.value if thread.override.category else None,
+                    urgency=thread.override.urgency.value if thread.override.urgency else None,
+                    needs_action_today=thread.override.needs_action_today,
+                    waiting_on_us=thread.override.waiting_on_us,
+                    needs_next_action=thread.override.needs_next_action,
+                    should_draft_reply=thread.override.should_draft_reply,
+                    relevance_bucket=thread.override.relevance_bucket.value if thread.override.relevance_bucket else None,
+                    notes=thread.override.notes,
+                    overridden_at=thread.override.overridden_at,
+                    updated_at=thread.override.updated_at,
+                )
+                if thread.override
                 else None
             ),
         )

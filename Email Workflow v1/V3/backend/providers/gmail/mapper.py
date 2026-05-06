@@ -455,6 +455,7 @@ def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
         cleaned_body=cleaned_body[:4000],
         label_ids=message.label_ids,
         is_forwarded=is_forwarded,
+        original_gmail_thread_id=message.external_thread_id,
     )
 
 

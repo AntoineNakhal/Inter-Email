@@ -184,18 +184,52 @@ class ThreadAnalysisService:
         thread: EmailThread,
         user_email: str | None = None,
     ) -> ThreadAnalysis:
-        request = ThreadAnalysisRequest(thread=thread, user_email=user_email)
+        # Pass user overrides as soft hints to the AI prompt.
+        user_overrides = (
+            thread.override.active_fields()
+            if thread.override and not thread.override.is_empty()
+            else None
+        )
+        request = ThreadAnalysisRequest(
+            thread=thread,
+            user_email=user_email,
+            user_overrides=user_overrides,
+        )
         provider = (
             self.provider_router.provider_for_task("thread_analysis")
             if thread.included_in_ai
             else self.provider_router.fallback_provider()
         )
         try:
-            return self._call_with_timeout(provider.analyze_thread, request, thread)
+            analysis = self._call_with_timeout(provider.analyze_thread, request, thread)
         except AIProviderError:
-            fallback = self.provider_router.fallback_provider().analyze_thread(request)
-            fallback.used_fallback = True
-            return fallback
+            analysis = self.provider_router.fallback_provider().analyze_thread(request)
+            analysis.used_fallback = True
+
+        # Detect disagreements: compare AI output to user overrides.
+        if user_overrides:
+            disagreements: dict[str, str] = {}
+            field_map = {
+                "category": ("category", lambda v: v.value if hasattr(v, "value") else v),
+                "urgency": ("urgency", lambda v: v.value if hasattr(v, "value") else v),
+                "needs_action_today": ("needs_action_today", bool),
+                "waiting_on_us": ("waiting_on_us", bool),
+                "needs_next_action": ("needs_next_action", bool),
+                "should_draft_reply": ("should_draft_reply", bool),
+                "relevance_bucket": ("relevance_bucket", lambda v: v.value if hasattr(v, "value") else v),
+            }
+            for field, (attr, cast) in field_map.items():
+                if field not in user_overrides:
+                    continue
+                ai_value = cast(getattr(analysis, attr))
+                user_value = user_overrides[field]
+                if str(ai_value) != str(user_value):
+                    disagreements[field] = (
+                        f"AI set {field}={ai_value!r} instead of your override {user_value!r}"
+                    )
+            analysis.ai_override_disagreements = disagreements
+
+        return analysis
 
     def _call_with_timeout(self, fn, request, thread: EmailThread):
         """Run *fn(request)* in a worker thread, raising AIProviderError on timeout.

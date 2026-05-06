@@ -204,12 +204,13 @@ export function DraftComposer({ thread, recommended = false, iconOnly = false }:
         </button>
       ) : (
         <button
-          className={`button ${recommended ? "" : "button--ghost"} draft-trigger`}
+          className={`td-analysis__tool-btn draft-trigger${recommended ? " td-analysis__tool-btn--active" : ""}`}
           type="button"
           onClick={open}
+          title={recommended ? "AI recommends drafting a reply" : "Make draft"}
         >
           <FontAwesomeIcon icon={faBolt} />
-          {recommended ? "Draft Reply" : "Make Draft"}
+          Make draft
         </button>
       )}
 

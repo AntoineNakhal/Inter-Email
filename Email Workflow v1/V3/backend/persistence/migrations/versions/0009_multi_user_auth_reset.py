@@ -24,6 +24,7 @@ depends_on: Union[str, Sequence[str], None] = None
 TABLES_TO_DROP = [
     "eta_progress",
     "user_sessions",
+    "thread_overrides",
     "contact_threads",
     "contacts",
     "drafts",

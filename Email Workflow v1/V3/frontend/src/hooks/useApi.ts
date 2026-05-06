@@ -6,6 +6,7 @@ import type {
   QueueDashboardResponse,
   SeenState,
   ThreadListResponse,
+  ThreadOverrideRequest,
 } from "../types/api";
 
 const LOCAL_CACHE_STALE_MS = 5 * 60 * 1000;
@@ -494,6 +495,48 @@ export function usePinMutation(threadId: string) {
   });
 }
 
+export function useSaveOverrideMutation(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ThreadOverrideRequest) =>
+      apiClient.saveOverride(threadId, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+      ]);
+    },
+  });
+}
+
+export function useDeleteOverrideMutation(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.deleteOverride(threadId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+      ]);
+    },
+  });
+}
+
+export function useSplitThreadMutation(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.splitThread(threadId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
+      ]);
+    },
+  });
+}
+
 export function useDraftMutation(threadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -502,6 +545,19 @@ export function useDraftMutation(threadId: string) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+      ]);
+    },
+  });
+}
+
+export function useDeleteDraftMutation(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.deleteDraft(threadId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["thread", threadId] }),
+        queryClient.invalidateQueries({ queryKey: ["queue-dashboard"] }),
       ]);
     },
   });

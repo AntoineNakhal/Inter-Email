@@ -16,6 +16,10 @@ class ThreadAnalysisRequest(BaseModel):
     # their prompts so the AI knows when the user is the SENDER vs the
     # RECIPIENT, and frames next_action/summary from the user's POV.
     user_email: str | None = None
+    # User overrides passed as soft hints to the AI. The AI should consider
+    # these corrections when analyzing the thread but may disagree with
+    # justification. Disagreements are tracked in ThreadAnalysis.ai_override_disagreements.
+    user_overrides: dict[str, object] | None = None
 
 
 class QueueSummaryRequest(BaseModel):
