@@ -30,7 +30,7 @@ type InboxSection = {
   threads: EmailThread[];
 };
 
-type WorkflowBucket = "act-now" | "waiting" | "monitor" | "low-priority" | "done";
+type WorkflowBucket = "act-now" | "waiting" | "monitor" | "low-priority" | "done" | "notifications";
 type PriorityFilterValue = "all" | "high" | "medium" | "low" | "unknown";
 
 const UNCATEGORIZED_LABEL = "Needs review";
@@ -70,6 +70,8 @@ function isPinned(thread: EmailThread): boolean {
 
 function workflowBucket(thread: EmailThread): WorkflowBucket {
   if (isSeen(thread) || thread.resolved_or_closed) return "done";
+  // Service emails always go to notifications — never pollute the action buckets.
+  if (thread.is_service_email) return "notifications" as WorkflowBucket;
   if (thread.analysis?.needs_action_today) return "act-now";
   if (thread.waiting_on_us) return "waiting";
   if (thread.relevance_bucket === "noise" || thread.relevance_bucket === "maybe") return "low-priority";
@@ -109,6 +111,7 @@ function sectionedThreads(threads: EmailThread[]): InboxSection[] {
     monitor: [] as EmailThread[],
     "low-priority": [] as EmailThread[],
     done: [] as EmailThread[],
+    notifications: [] as EmailThread[],
   };
 
   for (const thread of threads) {
@@ -151,6 +154,12 @@ function sectionedThreads(threads: EmailThread[]): InboxSection[] {
       title: "Done",
       description: "Handled threads and resolved conversations. Resurface automatically on new replies.",
       threads: grouped.done,
+    },
+    {
+      id: "notifications",
+      title: "Notifications",
+      description: "Automated emails from services, apps, and platforms. AI still analyzes these.",
+      threads: grouped.notifications,
     },
   ];
 }
@@ -241,18 +250,21 @@ const SECTION_DEFAULT_OPEN: Record<string, boolean> = {
   monitor: false,
   "low-priority": false,
   done: false,
+  notifications: false,
 };
 
 type CollapsibleThreadSectionProps = {
   section: InboxSection;
   defaultOpen: boolean;
   newCount?: number;
+  compact?: boolean;
 };
 
 function CollapsibleThreadSection({
   section,
   defaultOpen,
   newCount = 0,
+  compact = false,
 }: CollapsibleThreadSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = `thread-section-${section.id}`;
@@ -320,7 +332,7 @@ function CollapsibleThreadSection({
           {section.threads.length ? (
             <div className="thread-list">
               {section.threads.map((thread) => (
-                <ThreadCard key={thread.thread_id} thread={thread} />
+                <ThreadCard key={thread.thread_id} thread={thread} compact={compact} />
               ))}
             </div>
           ) : null}
@@ -511,6 +523,14 @@ export function InboxPage() {
       setActiveRunId(syncMutation.data.run_id);
     }
   }, [syncMutation.data?.run_id]);
+
+  // If the stored run ID no longer exists (404 after a DB reset or server
+  // restart), clear it so we stop polling and don't block the UI.
+  useEffect(() => {
+    if (syncRunQuery.error && activeRunId !== null) {
+      setActiveRunId(null);
+    }
+  }, [syncRunQuery.error, activeRunId]);
 
   useEffect(() => {
     if (!syncStatus || activeRunId === null) {
@@ -843,6 +863,7 @@ export function InboxPage() {
             section={section}
             defaultOpen={SECTION_DEFAULT_OPEN[section.id] ?? true}
             newCount={section.threads.filter((t) => t.is_new).length}
+            compact={section.id === "notifications"}
           />
         ))
         : null}

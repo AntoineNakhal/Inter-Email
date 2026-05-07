@@ -86,20 +86,36 @@ class OpenAIProvider(AIProvider):
             return ""
         return (
             f"PERSPECTIVE: You are analyzing this thread on behalf of {user_email}, "
-            "the inbox owner. Treat that address as 'the user'. "
+            "the inbox owner. Treat that address as 'the user' or 'you'. "
             f"When a message's From header is {user_email}, the user SENT that message — "
             "do not suggest the user 'reply' to their own messages. "
             f"When {user_email} is in To/Cc/Bcc, the user RECEIVED that message. "
-            "Frame summary, current_status, and next_action from the user's point of view "
-            "(what THEY need to do next, not what 'someone' needs to do).\n\n"
+            "Frame summary, current_status, and next_action from the user's personal point of view. "
+            "Always say 'you' or 'your' — never use a company name, domain name, or organisation name "
+            "to refer to the inbox owner. For example write 'you need to reply' not 'Inter-Op needs to reply'.\n\n"
+        )
+
+    @staticmethod
+    def _service_email_block() -> str:
+        """Extra instructions injected for automated/transactional emails."""
+        return (
+            "SERVICE EMAIL: This message was sent by an automated system or service "
+            "(noreply sender, marketing platform, notification service, etc.). "
+            "The user CANNOT reply to this email. "
+            "Set should_draft_reply to false. "
+            "Set waiting_on_us to false — the sender does not expect a personal reply. "
+            "If action is needed, it is always an external action (click a link, register, log in, etc.), "
+            "never a reply. Describe that external action in next_action.\n\n"
         )
 
     def analyze_thread(self, request: ThreadAnalysisRequest) -> ThreadAnalysis:
+        is_service = getattr(request.thread, "is_service_email", False)
         payload = self._chat_json(
             task="thread_analysis",
             system_prompt=(
                 self._today_block()
                 + self._user_perspective_block(request.user_email)
+                + (self._service_email_block() if is_service else "")
                 + self._user_overrides_block(request.user_overrides)
                 + "You are analyzing one email thread for an internal operations queue. "
                 "Ignore email signatures, confidentiality footers, and quoted reply history. "
@@ -118,7 +134,11 @@ class OpenAIProvider(AIProvider):
                 "Set it to false when the inbox owner sent the last message, or when no reply is expected. "
                 "Set needs_next_action to true only when the inbox owner genuinely has a concrete follow-up to do. "
                 "For newsletters, alerts, FYIs, automated notifications, receipts, and monitor-only threads, "
-                "set needs_next_action to false and leave next_action empty. "
+                "set needs_next_action to false and next_action to an empty string. "
+                "RULE: next_action and needs_next_action are linked. "
+                "If needs_next_action is true, next_action MUST contain a specific sentence telling the inbox owner exactly what to do. "
+                "If you cannot think of a next action, set needs_next_action to false and next_action to empty string. "
+                "Never have needs_next_action true with an empty next_action. "
                 "Return strict JSON with keys: category, urgency, summary, current_status, "
                 "needs_next_action, next_action, needs_action_today, waiting_on_us, should_draft_reply, "
                 "draft_needs_date, draft_date_reason, draft_needs_attachment, "
@@ -131,7 +151,7 @@ class OpenAIProvider(AIProvider):
             request.thread,
         )
         try:
-            return ThreadAnalysis.model_validate(
+            analysis = ThreadAnalysis.model_validate(
                 {
                     **normalized_payload,
                     "provider_name": self.name,
@@ -142,6 +162,18 @@ class OpenAIProvider(AIProvider):
                     "used_fallback": False,
                 }
             )
+            # Hard override for service emails: the user can never reply to an
+            # automated sender, so drafting a reply makes no sense regardless
+            # of what the model returned.
+            if is_service:
+                analysis.should_draft_reply = False
+                analysis.waiting_on_us = False
+                # If the AI still wrote a "reply to..." next action, clear it
+                # so the heuristic in action_style.suggest_next_action takes
+                # over and produces an appropriate external-action suggestion.
+                if "reply" in (analysis.next_action or "").lower():
+                    analysis.next_action = ""
+            return analysis
         except ValidationError as exc:
             raise AIProviderError(f"OpenAI returned invalid thread analysis: {exc}") from exc
 

@@ -190,6 +190,7 @@ class ThreadRepository:
             else thread.analysis_status.value
         )
         model.signature = next_signature
+        model.is_service_email = thread.is_service_email
         model.last_synced_at = datetime.now(timezone.utc)
         model.grouping_reason = thread.grouping_reason or "gmail_thread_id"
         model.merge_signals_json = json.dumps(thread.merge_signals, ensure_ascii=False)
@@ -634,6 +635,7 @@ class ThreadRepository:
             analysis_status=model.analysis_status,
             signature=model.signature,
             is_new=bool(model.is_new),
+            is_service_email=bool(model.is_service_email),
             last_synced_at=model.last_synced_at,
             last_analyzed_at=model.last_analyzed_at,
             analysis=_to_analysis(model.analysis),

@@ -46,3 +46,26 @@ class ThreadOverride(BaseModel):
 
     def is_empty(self) -> bool:
         return len(self.active_fields()) == 0
+
+
+# ── Forward-reference resolution ──────────────────────────────────────────────
+# thread.py uses the string annotation "ThreadOverride | None" on EmailThread
+# to avoid a circular import (override.py already imports enums from thread.py).
+# Pydantic v2 can't resolve that string on its own, so we rebuild EmailThread
+# here — the one place where both sides are fully defined — and then rebuild
+# every analysis request model that transitively contains EmailThread.
+from backend.domain.thread import EmailThread as _EmailThread  # noqa: E402
+from backend.domain.analysis import (  # noqa: E402
+    DraftReplyRequest as _DraftReplyRequest,
+    QueueSummaryRequest as _QueueSummaryRequest,
+    ThreadAnalysisRequest as _ThreadAnalysisRequest,
+    ThreadVerificationRequest as _ThreadVerificationRequest,
+)
+from backend.domain.sync import SyncRunSummary as _SyncRunSummary  # noqa: E402
+
+_EmailThread.model_rebuild(_types_namespace={"ThreadOverride": ThreadOverride})
+_QueueSummaryRequest.model_rebuild()
+_ThreadAnalysisRequest.model_rebuild()
+_DraftReplyRequest.model_rebuild()
+_ThreadVerificationRequest.model_rebuild()
+_SyncRunSummary.model_rebuild()

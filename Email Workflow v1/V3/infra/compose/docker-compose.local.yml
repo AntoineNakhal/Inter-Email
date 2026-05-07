@@ -31,10 +31,13 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql+psycopg://interemailv3:interemailv3@postgres:5432/interemailv3
+    command: uvicorn api.app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     volumes:
       - ../../data:/app/data
+      - ../../api:/app/api
+      - ../../backend:/app/backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,6 +56,8 @@ services:
     command: arq backend.jobs.worker.WorkerSettings
     volumes:
       - ../../data:/app/data
+      - ../../api:/app/api
+      - ../../backend:/app/backend
     depends_on:
       postgres:
         condition: service_healthy

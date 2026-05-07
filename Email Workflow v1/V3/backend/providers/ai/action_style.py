@@ -46,38 +46,16 @@ AUTOMATED_CONTENT_HINTS = (
 
 
 def fit_next_action_to_thread(raw_action: str, thread: EmailThread) -> str:
-    normalized = normalize_email_text(raw_action)
-    suggested = suggest_next_action(thread)
-    if not normalized:
-        return suggested
-
-    lowered = normalized.lower()
-    if any(lowered.startswith(prefix) for prefix in GENERIC_ACTION_PREFIXES):
-        return suggested
-
-    if _is_too_generic(lowered):
-        return suggested
-
-    return normalized
+    """Pass AI output through unchanged. No heuristic fallback — the AI prompt
+    enforces a non-empty next_action whenever needs_next_action is true."""
+    return normalize_email_text(raw_action)
 
 
 def fit_needs_next_action_to_thread(raw_flag: object, thread: EmailThread) -> bool:
-    requested = bool(raw_flag)
+    """Trust the AI's judgment. Only override resolved threads."""
     if thread.resolved_or_closed:
         return False
-    if thread.waiting_on_us:
-        return True
-    if thread.latest_message_from_me:
-        return False
-    if _looks_like_automated_no_action(thread):
-        return False
-    if thread.relevance_bucket in {RelevanceBucket.NOISE, RelevanceBucket.MAYBE}:
-        return False
-    if thread.latest_message_from_external and (
-        thread.latest_message_has_question or thread.latest_message_has_action_request
-    ):
-        return True
-    return requested
+    return bool(raw_flag)
 
 
 def clear_non_action_fields(normalized: dict[str, object]) -> dict[str, object]:
@@ -92,6 +70,25 @@ def clear_non_action_fields(normalized: dict[str, object]) -> dict[str, object]:
 
 
 def suggest_next_action(thread: EmailThread) -> str:
+    # Service emails never require a reply — action is always external.
+    if getattr(thread, "is_service_email", False):
+        latest_text_for_service = normalize_email_text(
+            "\n".join(
+                part for part in [
+                    thread.messages[-1].subject if thread.messages else thread.subject,
+                    thread.messages[-1].snippet if thread.messages else "",
+                ]
+                if part
+            )
+        ).lower()
+        if any(p in latest_text_for_service for p in ("register", "sign up", "rsvp", "save your spot")):
+            return "Decide whether to register and click the link if yes."
+        if any(p in latest_text_for_service for p in ("invoice", "receipt", "payment", "billing")):
+            return "Review the receipt or invoice for your records."
+        if any(p in latest_text_for_service for p in ("security", "alert", "suspicious", "verify")):
+            return "Review the security alert and take the recommended action if needed."
+        return "Review this notification and take any required action via the link."
+
     latest_message = thread.messages[-1] if thread.messages else None
     latest_text = normalize_email_text(
         "\n".join(

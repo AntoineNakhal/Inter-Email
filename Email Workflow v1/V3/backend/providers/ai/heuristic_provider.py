@@ -25,7 +25,6 @@ from backend.domain.thread import (
 )
 from backend.providers.ai.analysis_style import suggest_current_status
 from backend.providers.ai.action_style import (
-    fit_next_action_to_thread,
     fit_needs_next_action_to_thread,
     suggest_next_action,
 )
@@ -253,12 +252,6 @@ class HeuristicAIProvider(AIProvider):
     def _build_next_action(self, thread, needs_action_today: bool) -> str:
         if thread.resolved_or_closed:
             return "Keep the thread archived unless a new message reopens it."
-        if thread.waiting_on_us and needs_action_today:
-            return fit_next_action_to_thread("", thread)
-        if thread.waiting_on_us:
-            return fit_next_action_to_thread("", thread)
-        if thread.latest_message_from_me:
-            return suggest_next_action(thread)
         return suggest_next_action(thread)
 
     def _needs_next_action(self, thread, text: str, urgency: UrgencyLevel) -> bool:

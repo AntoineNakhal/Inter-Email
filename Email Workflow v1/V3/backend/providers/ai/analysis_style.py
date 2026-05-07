@@ -10,10 +10,24 @@ from backend.domain.thread import EmailThread
 
 GENERIC_STATUS_PHRASES = (
     "waiting on inter-op to respond",
+    "waiting on inter-op",
     "waiting on us",
     "conversation needs monitoring",
     "review required",
     "awaiting response",
+)
+
+EVENT_PHRASES = (
+    "register now",
+    "register here",
+    "save your spot",
+    "rsvp",
+    "join us",
+    "webinar",
+    "coaching session",
+    "virtual event",
+    "online event",
+    "sign up",
 )
 
 RECEIPT_PHRASES = (
@@ -46,39 +60,32 @@ DOCUMENT_PHRASES = (
 
 
 def fit_current_status_to_thread(raw_status: str, thread: EmailThread) -> str:
-    normalized = normalize_email_text(raw_status)
-    suggested = suggest_current_status(thread)
-    if not normalized:
-        return suggested
-
-    lowered = normalized.lower()
-    if any(marker in lowered for marker in FOOTER_MARKERS):
-        return suggested
-    if _status_should_be_replaced(lowered, thread):
-        return suggested
-    return normalized
+    """Use the AI's status as-is. Empty stays empty — no heuristic fill."""
+    return normalize_email_text(raw_status)
 
 
 def suggest_current_status(thread: EmailThread) -> str:
     latest_text = latest_thread_text(thread)
     sender_name = latest_sender_name(thread)
-    sender_phrase = sender_name or "the sender"
+    sender_phrase = sender_name or "sender"
 
+    if any(phrase in latest_text for phrase in EVENT_PHRASES):
+        return f"Invitation from {sender_phrase} — decision pending."
     if any(phrase in latest_text for phrase in RECEIPT_PHRASES):
-        return f"Waiting on Inter-Op to confirm receipt to {sender_phrase}."
+        return f"You need to confirm receipt to {sender_phrase}."
     if any(phrase in latest_text for phrase in SCHEDULING_PHRASES):
-        return f"Waiting on Inter-Op to confirm the proposed schedule with {sender_phrase}."
+        return f"You need to confirm the schedule with {sender_phrase}."
     if any(phrase in latest_text for phrase in MEETING_LINK_PHRASES):
-        return "Meeting details have been shared and may need a confirmation."
+        return "Meeting details shared — confirm if needed."
     if any(phrase in latest_text for phrase in DOCUMENT_PHRASES):
-        return f"Waiting on Inter-Op to review the requested document from {sender_phrase}."
+        return f"Document from {sender_phrase} needs your review."
     if thread.waiting_on_us:
-        return f"Waiting on Inter-Op to reply to {sender_phrase}."
+        return f"{sender_phrase} is waiting for your reply."
     if thread.latest_message_from_me:
         return f"Waiting on {sender_phrase} to respond."
     if thread.resolved_or_closed:
-        return "Conversation appears resolved for now."
-    return "Conversation needs a quick review to decide the next step."
+        return "Resolved."
+    return "Needs a quick review."
 
 
 def latest_thread_text(thread: EmailThread) -> str:
@@ -126,4 +133,6 @@ def _status_should_be_replaced(lowered_status: str, thread: EmailThread) -> bool
         token in lowered_status for token in ("document", "quote", "invoice", "proposal", "contract")
     ):
         return True
-    return lowered_status in GENERIC_STATUS_PHRASES
+    # Substring match — catches variants like "Waiting on Inter-Op to reply to Google"
+    # not just the exact phrases in the list.
+    return any(phrase in lowered_status for phrase in GENERIC_STATUS_PHRASES)

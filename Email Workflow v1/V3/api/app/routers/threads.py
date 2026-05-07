@@ -107,7 +107,7 @@ def save_override(
         relevance_bucket=RelevanceBucket(payload.relevance_bucket) if payload.relevance_bucket else None,
         notes=payload.notes,
     )
-    saved = repo.upsert(thread_id=model.id, user_id=services.user_id, override=override)
+    saved = repo.upsert(thread_id=model.id, user_id=services.current_user.id, override=override)
     services.session.commit()
 
     return ThreadOverrideResponse(
@@ -141,7 +141,7 @@ def delete_override(
         raise HTTPException(status_code=404, detail="Thread not found.")
 
     repo = ThreadOverrideRepository(services.session)
-    repo.delete(thread_id=model.id, user_id=services.user_id)
+    repo.delete(thread_id=model.id, user_id=services.current_user.id)
     services.session.commit()
 
 
@@ -158,7 +158,7 @@ def split_thread(
     try:
         new_threads = services.thread_repository.split_thread(
             external_thread_id=thread_id,
-            user_id=services.user_id,
+            user_id=services.current_user.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

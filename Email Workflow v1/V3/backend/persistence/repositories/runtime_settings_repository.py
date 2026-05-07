@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.domain.runtime_settings import AIMode, RuntimeSettings
@@ -75,11 +76,27 @@ class RuntimeSettingsRepository:
                 RuntimeSettingsModel.user_id == self.user_id
             )
         )
-        if model is None:
-            model = RuntimeSettingsModel(user_id=self.user_id)
-            self.session.add(model)
-            self.session.flush()
-        return model
+        if model is not None:
+            return model
+
+        # Use a SAVEPOINT so that a concurrent-insert IntegrityError only
+        # rolls back this one operation, not the entire request transaction.
+        # Without this, two simultaneous requests for a new user both see
+        # no row, both attempt INSERT, and the second crashes with a
+        # duplicate-key violation on ix_runtime_settings_user_id.
+        try:
+            with self.session.begin_nested():
+                model = RuntimeSettingsModel(user_id=self.user_id)
+                self.session.add(model)
+            return model
+        except IntegrityError:
+            # Another concurrent request won the INSERT race.
+            # The SAVEPOINT was rolled back; re-fetch the row it created.
+            return self.session.scalar(
+                select(RuntimeSettingsModel).where(
+                    RuntimeSettingsModel.user_id == self.user_id
+                )
+            )
 
     @staticmethod
     def _to_domain(model: RuntimeSettingsModel) -> RuntimeSettings:

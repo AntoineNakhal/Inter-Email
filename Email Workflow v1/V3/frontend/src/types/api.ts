@@ -129,6 +129,7 @@ export type EmailThread = {
   analysis_status: string;
   signature: string;
   is_new: boolean;
+  is_service_email: boolean;
   // Merge transparency
   grouping_reason: string;
   merge_signals: string[];

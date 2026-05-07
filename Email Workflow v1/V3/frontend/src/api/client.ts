@@ -11,8 +11,7 @@ import type {
   ThreadOverrideRequest,
 } from "../types/api";
 
-const API_ROOT =
-  `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"}/api/v1`;
+const API_ROOT = `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"}/api/v1`;
 
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -82,7 +81,12 @@ async function request<T>(path: string, init?: RequestInit, allowRefresh = true)
   return (await response.json()) as T;
 }
 
+export type CurrentUserResponse = { id: number; email: string; display_name: string; role: string };
+
 export const apiClient = {
+  // allowRefresh=false avoids an infinite loop: if /auth/me returns 401 we
+  // don't want to attempt a token refresh (that would also 401, then retry...).
+  getMe: () => request<CurrentUserResponse>("/auth/me", undefined, false),
   health: () => request<{ status: string }>("/health"),
   listThreads: () => request<ThreadListResponse>("/threads"),
   getThread: (threadId: string) => request<EmailThread>(`/threads/${threadId}`),

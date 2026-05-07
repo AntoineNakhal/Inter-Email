@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from email.utils import getaddresses, parsedate_to_datetime
 
-from backend.core.email_text import clean_email_body, clean_email_snippet
+from backend.core.email_text import clean_email_body, clean_email_snippet, extract_text_from_html, is_html_body
 from backend.domain.thread import (
     EmailThread,
     InboundEmailMessage,
@@ -364,7 +364,7 @@ def _build_thread(group: dict[str, object]) -> EmailThread:
     latest_message = message_models[-1] if message_models else None
     combined_text = "\n\n".join(
         f"From: {message.sender}\nSubject: {message.subject}\n"
-        f"Snippet: {message.snippet}\nBody: {message.cleaned_body}"
+        f"Snippet: {message.snippet}\nBody: {_body_for_ai(message.cleaned_body)}"
         for message in message_models
     )
     subject = _clean_subject(group["subject"] or "(no subject)")
@@ -380,7 +380,17 @@ def _build_thread(group: dict[str, object]) -> EmailThread:
     has_question = any(marker in latest_text for marker in QUESTION_HINTS)
     has_action_request = any(marker in latest_text for marker in ACTION_HINTS)
     resolved = any(marker in latest_text for marker in RESOLVED_HINTS)
-    waiting_on_us = latest_from_external and (has_question or has_action_request) and not resolved
+    # Must be computed before waiting_on_us since it affects the calculation.
+    is_service_email = any(
+        getattr(msg, "is_service_email", False) for msg in sorted_messages
+    )
+    # Service emails never require a reply — any action is always external.
+    waiting_on_us = (
+        not is_service_email
+        and latest_from_external
+        and (has_question or has_action_request)
+        and not resolved
+    )
     relevance_score = _score_thread(
         subject=subject,
         combined_text=combined_text,
@@ -388,10 +398,10 @@ def _build_thread(group: dict[str, object]) -> EmailThread:
         latest_from_external=latest_from_external,
     )
     relevance_bucket = _bucket_for_score(relevance_score, subject, combined_text)
-    included_in_ai = relevance_bucket in {
-        RelevanceBucket.MUST_REVIEW,
-        RelevanceBucket.IMPORTANT,
-    }
+    # Analyze everything with AI — the relevance gate was a cost-saving measure
+    # but caused real threads to get heuristic output. Parallel analysis makes
+    # the cost of analyzing all threads the same as analyzing one.
+    included_in_ai = not is_service_email
 
     thread = EmailThread(
         external_thread_id=str(group["canonical_thread_id"]),
@@ -435,16 +445,78 @@ def _build_thread(group: dict[str, object]) -> EmailThread:
             if included_in_ai
             else "Thread was classified as low-signal or noise."
         ),
+        is_service_email=is_service_email,
     )
     thread.signature = thread.compute_signature()
     return thread
+
+
+_GMAIL_CHROME_MARKERS = (
+    'class="gmail_quote"',
+    'class="gmail_signature"',
+    'class="gmail_attr"',
+    'class="gmail_quote_container"',
+    "data-smartmail=",
+)
+
+
+def _is_rich_html_email(body_html: str) -> bool:
+    """Return True only for emails designed for HTML rendering.
+
+    Regular conversational emails sent via Gmail always include a text/html
+    part, but it's just plain text wrapped in Gmail's own markup (signatures,
+    quoted history chrome). Those are more readable as cleaned plain text.
+
+    A 'rich' HTML email is one where the HTML provides real layout value:
+    marketing emails, transactional receipts, newsletters — typically built
+    with MJML or table-based layouts and no Gmail-specific class names.
+    """
+    if not body_html:
+        return False
+
+    # Any Gmail-specific markup means it's a conversational email.
+    html_lower = body_html.lower()
+    if any(marker.lower() in html_lower for marker in _GMAIL_CHROME_MARKERS):
+        return False
+
+    # Table-heavy structure = marketing/transactional email.
+    if body_html.count("<table") >= 2:
+        return True
+
+    # Has a doctype/html wrapper but no tables → probably a simple
+    # HTML-only transactional email; still worth rendering.
+    if body_html.lstrip().lower().startswith(("<!doctype", "<html")):
+        return True
+
+    return False
+
+
+def _body_for_ai(body: str) -> str:
+    """Return a plain-text excerpt of a message body suitable for AI context.
+
+    HTML emails are stripped to readable text first so the AI gets signal,
+    not markup. Capped at 4 000 chars — same as the original limit — to keep
+    prompt sizes predictable regardless of email length.
+    """
+    text = extract_text_from_html(body) if is_html_body(body) else body
+    text = clean_email_body(text)
+    return text[:4_000]
 
 
 def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
     recipients = [addr for _, addr in getaddresses([message.to_address]) if addr]
     is_forwarded = bool(re.match(r"^(?:fw|fwd)\s*:", message.subject.strip(), re.IGNORECASE))
     cleaned_snippet = clean_email_snippet(message.snippet)
-    cleaned_body = clean_email_body(message.body_text, is_forwarded=is_forwarded)
+
+    # For display: prefer HTML when available — renders fonts, weights,
+    # signatures, and quoted history exactly as the sender intended.
+    # Fall back to cleaned plain text only when no HTML part exists.
+    display_body = (
+        message.body_html
+        if message.body_html
+        else clean_email_body(message.body_text, is_forwarded=is_forwarded)
+    )
+
     return ThreadMessage(
         external_message_id=message.external_message_id,
         sender=message.from_address,
@@ -452,7 +524,9 @@ def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
         subject=message.subject,
         sent_at=_parse_date(message.date_header),
         snippet=cleaned_snippet[:500],
-        cleaned_body=cleaned_body[:4000],
+        # 200k covers the largest HTML marketing emails while staying well under Postgres Text limits.
+        # AI context uses _body_for_ai() which strips HTML and caps at 4k chars.
+        cleaned_body=display_body[:200_000],
         label_ids=message.label_ids,
         is_forwarded=is_forwarded,
         original_gmail_thread_id=message.external_thread_id,
@@ -572,7 +646,7 @@ def _group_combined_text(messages: list[InboundEmailMessage]) -> str:
             for part in [
                 message.subject,
                 clean_email_snippet(message.snippet),
-                clean_email_body(message.body_text),
+                _body_for_ai(clean_email_body(message.body_text)),
             ]
             if part
         )

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -43,6 +43,132 @@ function gmailThreadUrl(threadId: string) {
   return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
 }
 
+/**
+ * Converts plain-text URLs into clickable <a> elements.
+ * Handles both bare URLs (https://...) and angle-bracket wrapped ones (<https://...>).
+ */
+function linkifyText(text: string): React.ReactNode[] {
+  const urlPattern = /<(https?:\/\/[^\s>]+)>|(https?:\/\/\S+)/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = urlPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    const url = match[1] ?? match[2];
+    nodes.push(
+      <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
+        style={{ wordBreak: "break-all" }}>
+        {url}
+      </a>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+/** Returns true when the body is HTML rather than plain text. */
+function isHtmlBody(body: string): boolean {
+  const trimmed = body.trimStart().toLowerCase();
+  return (
+    trimmed.startsWith("<!doctype") ||
+    trimmed.startsWith("<html") ||
+    trimmed.startsWith("<div")  ||   // conversational Gmail emails
+    trimmed.startsWith("<span") ||
+    (trimmed.includes("<table") && trimmed.includes("</table>")) ||
+    (trimmed.includes("<br>") && trimmed.includes("<"))
+  );
+}
+
+/**
+ * Renders an HTML email body in an iframe using a blob URL.
+ * Using a blob URL (instead of srcdoc + sandbox) gives us reliable same-origin
+ * access to read scrollHeight for auto-sizing. Scripts in the email still run,
+ * but this is an internal dev tool so that trade-off is acceptable.
+ */
+const HTML_CLAMP_PX = 420; // collapsed height for tall HTML emails
+
+function HtmlMessageBody({ html, isForwarded = false }: { html: string; isForwarded?: boolean }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [contentHeight, setContentHeight] = useState(300);
+  const [expanded, setExpanded] = useState(false);
+  const [blobUrl, setBlobUrl] = useState("");
+
+  const isTall = contentHeight > HTML_CLAMP_PX;
+  const displayHeight = isTall && !expanded ? HTML_CLAMP_PX : contentHeight;
+
+  useEffect(() => {
+    // Strip Gmail's quoted history blocks on replies — each message in the
+    // thread is shown separately so inline quotes just duplicate content.
+    // Skip this for forwards: the forwarded email lives inside gmail_quote
+    // and IS the actual content, so removing it would wipe the message.
+    let cleaned = html;
+    if (!isForwarded && (html.includes("gmail_quote") || html.includes("gmail_attr"))) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      doc
+        .querySelectorAll(".gmail_quote, .gmail_quote_container, .gmail_attr")
+        .forEach((el) => el.remove());
+      cleaned = doc.documentElement.outerHTML;
+    }
+
+    // Inject <base target="_blank"> so every link opens in a new tab.
+    const baseTag = '<base target="_blank" rel="noopener noreferrer">';
+    const patched = /<head[^>]*>/i.test(cleaned)
+      ? cleaned.replace(/(<head[^>]*>)/i, `$1${baseTag}`)
+      : `${baseTag}${cleaned}`;
+
+    const blob = new Blob([patched], { type: "text/html; charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    setBlobUrl(url);
+    setExpanded(false); // reset on new content
+    return () => URL.revokeObjectURL(url);
+  }, [html]);
+
+  return (
+    <div className={`td-message__body${isTall ? " td-message__body--clickable" : ""}`}
+      onClick={() => { if (isTall) setExpanded((v) => !v); }}
+    >
+      <div style={{ overflow: "hidden", height: `${displayHeight}px`, transition: "height 200ms ease", position: "relative" }}>
+        <iframe
+          ref={iframeRef}
+          src={blobUrl}
+          style={{ width: "100%", border: "none", display: "block", height: `${contentHeight}px` }}
+          onLoad={() => {
+            try {
+              const doc = iframeRef.current?.contentDocument;
+              const h = doc?.documentElement?.scrollHeight ?? doc?.body?.scrollHeight;
+              if (h && h > 0) setContentHeight(h + 16);
+            } catch {
+              setContentHeight(500);
+            }
+          }}
+          title="Email content"
+        />
+        {isTall && !expanded && (
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0, height: "60px",
+            background: "linear-gradient(transparent, var(--bg, #fff))",
+            pointerEvents: "none",
+          }} />
+        )}
+      </div>
+      {isTall && (
+        <span className="td-message__toggle">
+          {expanded ? "Show less" : "Show more"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function MessageTimelineItem({
   message,
   index,
@@ -55,12 +181,14 @@ function MessageTimelineItem({
     sent_at: string | null;
     snippet: string;
     cleaned_body: string;
+    is_forwarded: boolean;
   };
   index: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const excerpt = formatMessageExcerpt(message.cleaned_body, message.snippet);
-  const shouldClamp = excerpt.length > 360;
+  const bodyIsHtml = isHtmlBody(message.cleaned_body ?? "");
+  const excerpt = bodyIsHtml ? "" : formatMessageExcerpt(message.cleaned_body, message.snippet);
+  const shouldClamp = !bodyIsHtml && excerpt.length > 360;
 
   return (
     <article className="td-message">
@@ -78,22 +206,23 @@ function MessageTimelineItem({
         </p>
       ) : null}
 
-      {excerpt ? (
+      {bodyIsHtml ? (
+        <div className="td-message__body td-message__body--html">
+          <HtmlMessageBody html={message.cleaned_body} isForwarded={message.is_forwarded} />
+        </div>
+      ) : excerpt ? (
         <div
           className={`td-message__body${shouldClamp ? " td-message__body--clickable" : ""}`}
           onClick={() => { if (shouldClamp) setExpanded((v) => !v); }}
-          role={shouldClamp ? "button" : undefined}
-          tabIndex={shouldClamp ? 0 : undefined}
-          onKeyDown={(e) => { if (shouldClamp && (e.key === "Enter" || e.key === " ")) setExpanded((v) => !v); }}
         >
           <p className={`td-message__excerpt${shouldClamp && !expanded ? " td-message__excerpt--clamped" : ""}`}>
-            {excerpt}
+            {linkifyText(excerpt)}
           </p>
-          {shouldClamp ? (
+          {shouldClamp && (
             <span className="td-message__toggle">
               {expanded ? "Show less" : "Show more"}
             </span>
-          ) : null}
+          )}
         </div>
       ) : null}
     </article>

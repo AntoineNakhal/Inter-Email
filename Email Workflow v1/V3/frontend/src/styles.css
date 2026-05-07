@@ -2291,6 +2291,10 @@ pre {
 
 /* ─── Conversation header with Gmail link ────────────────────────── */
 .td-messages__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg, #fff);
   display: flex;
   align-items: center;
   gap: 0.25rem;

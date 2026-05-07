@@ -1,8 +1,43 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { useQueueDashboard } from "../hooks/useApi";
-import { useAcknowledgeAllMutation } from "../hooks/useApi";
-import { useGmailConnectionStatus } from "../hooks/useApi";
+import { useQueueDashboard, useAcknowledgeAllMutation, useGmailConnectionStatus, useCurrentUser } from "../hooks/useApi";
+
+// Full-page redirect (not XHR) — must be absolute so React Router doesn't
+// intercept it as a client-side route.
+const GOOGLE_LOGIN_URL = `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"}/api/v1/auth/google/start`;
+
+function LoginWall() {
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "100vh",
+      gap: "1.5rem",
+      background: "var(--bg, #fff)",
+    }}>
+      <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>INTER-OP</h1>
+      <p style={{ color: "var(--muted, #666)", margin: 0 }}>Sign in to access your email workflow.</p>
+      <button
+        type="button"
+        onClick={() => { window.location.href = GOOGLE_LOGIN_URL; }}
+        style={{
+          padding: "0.6rem 1.4rem",
+          background: "var(--accent, #1a6ef5)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontWeight: 600,
+          fontSize: "0.9rem",
+        }}
+      >
+        Sign in with Google
+      </button>
+    </div>
+  );
+}
 
 // Same animation pattern as the AI-mode selector in SettingsPage:
 // position the indicator absolutely behind the nav links, measure the
@@ -17,6 +52,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
 ];
 
 export function AppShell() {
+  const { user, isLoading: authLoading } = useCurrentUser();
   const location = useLocation();
   const { data } = useQueueDashboard();
   const { data: gmailConnection } = useGmailConnectionStatus();
@@ -87,6 +123,10 @@ export function AppShell() {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [activeIndex, location.pathname]);
+
+  // Auth gate: block all data fetching and rendering until session is confirmed.
+  if (authLoading) return null;
+  if (!user) return <LoginWall />;
 
   return (
     <div className="app-shell">

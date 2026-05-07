@@ -5,8 +5,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.app.routers import auth, contacts, drafts, gmail, health, push, review, settings as settings_router, sync, threads
 from api.app.dependencies.services import build_service_bundle_for_user_id
@@ -77,6 +78,34 @@ def create_app() -> FastAPI:
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
     app.include_router(contacts.router, prefix="/api/v1", tags=["contacts"])
     app.include_router(push.router, prefix="/api/v1", tags=["push"])
+
+    # @app.exception_handler(Exception) is routed to ServerErrorMiddleware by
+    # Starlette, which sits OUTSIDE CORSMiddleware. That means the response
+    # from the handler bypasses the CORS send-wrapper and the browser blocks it.
+    # Fix: manually inject the CORS header inside the handler itself.
+    allowed_origins = {
+        "http://localhost:5173",
+        f"http://localhost:{app_settings.frontend_port}",
+    }
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        import traceback
+        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+        origin = request.headers.get("origin", "")
+        headers: dict[str, str] = {}
+        if origin in allowed_origins:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+        # In local dev, surface the real error so it shows up in the browser.
+        # Switch to generic message before deploying to production.
+        detail = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc()}"
+        return JSONResponse(
+            status_code=500,
+            content={"detail": detail},
+            headers=headers,
+        )
+
     return app
 
 

@@ -583,6 +583,46 @@ class GmailReadonlyClient:
         start = local_now - timedelta(days=safe_lookback_days)
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # Strings that, when present anywhere in the From address, indicate an
+    # automated/transactional sender. Checked with `in` so they match both
+    # prefixes (noreply@) and substrings (invoice+statements@, billing.co@).
+    _SERVICE_SENDER_PREFIXES = (
+        "noreply", "no-reply", "donotreply", "do-not-reply",
+        "notifications@", "notification@", "updates@", "newsletter@",
+        "mailer@", "bounces@", "bounce@", "alerts@", "auto@",
+        "automated@", "system@",
+        # Billing / transactional
+        "invoice", "billing", "receipt", "payment", "statements",
+        "orders@", "confirm@", "confirmation@",
+    )
+
+    def _is_service_email(self, headers: dict[str, str]) -> bool:
+        """Return True when the message is from an automated/transactional sender.
+
+        Uses RFC-standard bulk-email headers as the primary signal — these are
+        legally required and present in virtually all marketing/service emails.
+        Falls back to sender address heuristics for automated system emails
+        that don't use bulk sending infrastructure.
+        """
+        # List-Unsubscribe is the most reliable signal — required by CAN-SPAM
+        # and GDPR for all bulk/marketing email. Real person emails never have it.
+        if headers.get("List-Unsubscribe") or headers.get("List-Unsubscribe-Post"):
+            return True
+
+        # Precedence: bulk/list — RFC 2076 bulk email marker.
+        precedence = (headers.get("Precedence") or "").strip().lower()
+        if precedence in ("bulk", "list", "junk"):
+            return True
+
+        # Auto-Submitted — used by automated systems (calendar, alerts, etc.).
+        auto_submitted = (headers.get("Auto-Submitted") or "").strip().lower()
+        if auto_submitted and auto_submitted != "no":
+            return True
+
+        # Sender address prefix heuristic — catches noreply@, notifications@, etc.
+        from_address = (headers.get("From") or "").lower()
+        return any(prefix in from_address for prefix in self._SERVICE_SENDER_PREFIXES)
+
     def _normalize_message(self, message: dict[str, Any]) -> InboundEmailMessage:
         payload = message.get("payload", {})
         headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
@@ -595,7 +635,9 @@ class GmailReadonlyClient:
             date_header=headers.get("Date", ""),
             snippet=clean_email_snippet(message.get("snippet", "")),
             body_text=clean_email_body(self._extract_text(payload)),
+            body_html=self._extract_html(payload),
             label_ids=message.get("labelIds", []),
+            is_service_email=self._is_service_email(headers),
         )
 
     def _append_unique_message(
@@ -613,6 +655,32 @@ class GmailReadonlyClient:
             return
         seen_message_ids.add(message_id)
         messages.append(normalized)
+
+    def _extract_html(self, payload: dict[str, Any]) -> str:
+        """Recursively extract the HTML body from a Gmail payload.
+
+        Mirrors _extract_text but looks for text/html parts.
+        Returns empty string when no HTML part exists (plain-text only emails).
+        """
+        body = payload.get("body", {})
+        mime_type = payload.get("mimeType", "")
+        # A top-level text/html payload (rare but valid).
+        if mime_type == "text/html":
+            data = body.get("data")
+            if data:
+                return self._decode_base64(data)
+
+        for part in payload.get("parts", []) or []:
+            part_mime = part.get("mimeType", "")
+            if part_mime == "text/html":
+                part_data = part.get("body", {}).get("data")
+                if part_data:
+                    return self._decode_base64(part_data)
+            elif part_mime.startswith("multipart/"):
+                nested = self._extract_html(part)
+                if nested:
+                    return nested
+        return ""
 
     def _extract_text(self, payload: dict[str, Any]) -> str:
         """Recursively extract the plain-text body from a Gmail payload.

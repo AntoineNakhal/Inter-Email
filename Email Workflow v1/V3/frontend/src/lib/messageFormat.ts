@@ -84,9 +84,5 @@ export function formatMessageExcerpt(
     return "";
   }
 
-  const compact = preferred.replace(/\n{3,}/g, "\n\n").trim();
-  if (compact.length <= 1200) {
-    return compact;
-  }
-  return `${compact.slice(0, 1200).trim()}...`;
+  return preferred.replace(/\n{3,}/g, "\n\n").trim();
 }

@@ -57,8 +57,10 @@ class InboundEmailMessage(BaseModel):
     to_address: str
     date_header: str
     snippet: str
-    body_text: str = ""
+    body_text: str = ""   # plain-text MIME part — used for AI context
+    body_html: str = ""   # text/html MIME part — used for display when present
     label_ids: list[str] = Field(default_factory=list)
+    is_service_email: bool = False  # automated/transactional sender detected at fetch time
 
 
 class ThreadMessage(BaseModel):
@@ -182,6 +184,7 @@ class EmailThread(BaseModel):
     analysis_status: AnalysisStatus = AnalysisStatus.PENDING
     signature: str = ""
     is_new: bool = False
+    is_service_email: bool = False  # automated/transactional sender
     last_synced_at: datetime | None = None
     last_analyzed_at: datetime | None = None
     analysis: ThreadAnalysis | None = None

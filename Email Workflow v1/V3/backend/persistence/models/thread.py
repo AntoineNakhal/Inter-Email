@@ -48,6 +48,7 @@ class EmailThreadModel(Base, TimestampMixin):
     analysis_status: Mapped[str] = mapped_column(String(32), default="pending")
     signature: Mapped[str] = mapped_column(String(128), default="")
     is_new: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_service_email: Mapped[bool] = mapped_column(Boolean, default=False)
     last_synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utc_now,

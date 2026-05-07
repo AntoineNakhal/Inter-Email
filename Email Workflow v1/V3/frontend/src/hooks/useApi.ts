@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "../api/client";
+import { apiClient, type CurrentUserResponse } from "../api/client";
 import type {
   EmailThread,
   QueueDashboardResponse,
@@ -11,6 +11,30 @@ import type {
 
 const LOCAL_CACHE_STALE_MS = 5 * 60 * 1000;
 const LOCAL_CACHE_GC_MS = 30 * 60 * 1000;
+
+/**
+ * Checks whether the user has an active session. Returns the user object when
+ * authenticated, `null` when definitely not (401), or `undefined` while loading.
+ * No other hook should fire data requests until this resolves to a user object.
+ */
+export function useCurrentUser(): { user: CurrentUserResponse | null; isLoading: boolean } {
+  const { data, isLoading } = useQuery<CurrentUserResponse | null>({
+    queryKey: ["current-user"],
+    queryFn: async () => {
+      try {
+        return await apiClient.getMe();
+      } catch {
+        // Any error (401, network, etc.) means "not authenticated" for our purposes.
+        return null;
+      }
+    },
+    staleTime: LOCAL_CACHE_STALE_MS,
+    gcTime: LOCAL_CACHE_GC_MS,
+    retry: false, // don't hammer /auth/me on failure
+    refetchOnWindowFocus: false,
+  });
+  return { user: data ?? null, isLoading };
+}
 
 export function useThreads() {
   return useQuery({
@@ -48,6 +72,7 @@ export function useSyncRunStatus(runId: number | null) {
     queryKey: ["sync-run", runId],
     queryFn: () => apiClient.getSyncRunStatus(runId ?? 0),
     enabled: runId !== null,
+    retry: false, // a 404 (stale run after DB reset) should not be retried
     refetchInterval: (query) =>
       query.state.data?.status === "running" ? 1000 : false,
   });

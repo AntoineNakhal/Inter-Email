@@ -28,7 +28,7 @@ function urgencyTone(urgency: string | undefined): string {
   return "tone-neutral";
 }
 
-export function ThreadCard({ thread }: { thread: EmailThread }) {
+export function ThreadCard({ thread, compact = false }: { thread: EmailThread; compact?: boolean }) {
   const pinMutation = usePinMutation(thread.thread_id);
   const acknowledgeThreadMutation = useAcknowledgeThreadMutation(thread.thread_id);
   const tone = statusTone(thread);
@@ -51,15 +51,16 @@ export function ThreadCard({ thread }: { thread: EmailThread }) {
         }}
       >
         <div className="thread-row__top">
-          <span className={`pill tone-${tone}`}>{label}</span>
+          {!compact && <span className={`pill tone-${tone}`}>{label}</span>}
           <span className="thread-row__subject">{thread.subject || "Untitled thread"}</span>
-          {thread.analysis?.needs_human_review ? (
-            <span className="pill tone-watch" style={{ fontSize: "0.7rem" }}>Review</span>
-          ) : null}
-          {urgency && urgency !== "unknown" ? (
-            <span className={`pill ${urgencyTone(urgency)}`} style={{ marginLeft: "auto", flexShrink: 0 }}>
+          {/* Only show urgency high in compact/notification mode */}
+          {urgency && urgency !== "unknown" && (!compact || urgency === "high") ? (
+            <span className={`pill ${urgencyTone(urgency)}`} style={{ marginLeft: "auto", flexShrink: 0, ...(compact ? { opacity: 0.7 } : {}) }}>
               {urgency}
             </span>
+          ) : null}
+          {!compact && thread.analysis?.needs_human_review ? (
+            <span className="pill tone-watch" style={{ fontSize: "0.7rem" }}>Review</span>
           ) : null}
           <button
             className={`thread-card__pin-btn ${thread.seen_state?.pinned ? "thread-card__pin-btn--active" : ""}`}
@@ -74,10 +75,13 @@ export function ThreadCard({ thread }: { thread: EmailThread }) {
             <FontAwesomeIcon icon={faThumbtack} className="thread-card__pin-icon" />
           </button>
         </div>
-        <p className="thread-row__action">
-          <span className="thread-row__action-arrow">→</span>
-          {nextAction}
-        </p>
+        {/* In compact mode only show next action when there's something real to do */}
+        {(!compact || thread.analysis?.needs_next_action) && (
+          <p className="thread-row__action">
+            <span className="thread-row__action-arrow">→</span>
+            {nextAction}
+          </p>
+        )}
       </Link>
     </div>
   );

@@ -3,6 +3,77 @@
 from __future__ import annotations
 
 import re
+from html.parser import HTMLParser
+
+
+# Tags whose entire subtree (including text content) should be ignored.
+_SKIP_TAGS = frozenset({"script", "style", "head"})
+# Tags that should produce a line break in the extracted text.
+_BLOCK_TAGS = frozenset({"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6"})
+
+
+class _HtmlTextExtractor(HTMLParser):
+    """Minimal HTML → plain-text extractor using the stdlib parser."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: object) -> None:
+        if tag in _SKIP_TAGS:
+            self._skip_depth += 1
+        elif tag in _BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._parts.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        import html as _html
+        if self._skip_depth == 0:
+            self._parts.append(_html.unescape(f"&{name};"))
+
+    def handle_charref(self, name: str) -> None:
+        import html as _html
+        if self._skip_depth == 0:
+            self._parts.append(_html.unescape(f"&#{name};"))
+
+    def get_text(self) -> str:
+        raw = "".join(self._parts)
+        raw = re.sub(r"[^\S\n]+", " ", raw)
+        raw = re.sub(r"\n{3,}", "\n\n", raw)
+        return raw.strip()
+
+
+def extract_text_from_html(html: str) -> str:
+    """Strip HTML tags and return readable plain text.
+
+    Uses Python's built-in html.parser — no extra dependency.
+    Skips <script>, <style>, and <head> subtrees entirely.
+    """
+    extractor = _HtmlTextExtractor()
+    try:
+        extractor.feed(html)
+    except Exception:
+        # Malformed HTML — fall back to a simple tag-strip regex.
+        return re.sub(r"<[^>]+>", " ", html).strip()
+    return extractor.get_text()
+
+
+def is_html_body(text: str) -> bool:
+    """Return True when the body is an HTML document rather than plain text."""
+    trimmed = text.lstrip().lower()
+    return (
+        trimmed.startswith("<!doctype")
+        or trimmed.startswith("<html")
+        or ("<table" in trimmed and "</table>" in trimmed)
+    )
 
 
 INLINE_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (

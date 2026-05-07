@@ -47,3 +47,12 @@ class SyncRunSummary(BaseModel):
     queue_summary: QueueSummaryResult | None = None
     error_message: str | None = None
     threads: list[EmailThread] = Field(default_factory=list)
+
+
+# SyncRunSummary contains EmailThread, which has a forward ref to ThreadOverride
+# (defined in a separate module to avoid a circular import). We resolve it here
+# so this module is self-contained — both the API and the worker import sync.py,
+# but the worker never imports override.py, so the rebuild must happen here.
+from backend.domain.override import ThreadOverride as _ThreadOverride  # noqa: E402
+EmailThread.model_rebuild(_types_namespace={"ThreadOverride": _ThreadOverride})
+SyncRunSummary.model_rebuild()
