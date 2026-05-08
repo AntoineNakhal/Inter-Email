@@ -216,3 +216,62 @@ export type GmailConnectionStatus = {
   connect_url: string | null;
   error_message: string | null;
 };
+
+// ─── Knowledge Base ──────────────────────────────────────────────────────
+// Mirrors the Pydantic schema in api/app/schemas/knowledge.py. Status
+// values match the backend enum exactly — keep these in sync when the
+// schema changes.
+export type KbIngestionStatus =
+  | "pending"
+  | "processing"
+  | "awaiting_review"
+  | "ready"
+  | "failed";
+
+export type KbFinalizeRequest = {
+  title: string;
+  product_name: string | null;
+  category: string | null;
+  description: string | null;
+};
+
+export type KbChunkSummary = {
+  id: number;
+  chunk_index: number;
+  content: string;
+  token_count: number;
+};
+
+export type KbChunkListResponse = {
+  document_id: number;
+  chunks: KbChunkSummary[];
+};
+
+export type KbChunkUpdateRequest = {
+  content: string;
+};
+
+export type KbDocument = {
+  id: number;
+  filename: string;
+  file_type: string;
+  size_bytes: number;
+  title: string;
+  product_name: string | null;
+  category: string | null;
+  description: string | null;
+  status: KbIngestionStatus;
+  error_message: string | null;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KbDocumentListResponse = {
+  documents: KbDocument[];
+};
+
+export type KbUploadResponse = {
+  document: KbDocument;
+  queued: boolean;
+};

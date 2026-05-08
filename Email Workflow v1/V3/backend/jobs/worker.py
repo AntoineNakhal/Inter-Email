@@ -9,11 +9,11 @@ lives here — only the Arq wiring (which tasks to register, which Redis to use)
 
 from __future__ import annotations
 
-from arq import cron
+from arq import cron, func
 from arq.connections import RedisSettings
 
 from backend.core.config import get_settings
-from backend.jobs.tasks import run_sync
+from backend.jobs.tasks import ingest_kb_document, run_sync
 
 
 def get_redis_settings() -> RedisSettings:
@@ -24,7 +24,15 @@ def get_redis_settings() -> RedisSettings:
 class WorkerSettings:
     """Arq worker configuration."""
 
-    functions = [run_sync]
+    # `arq.func(...)` lets us set per-job overrides without changing the
+    # globals. KB ingestion of a 150+ page PDF can take a couple of
+    # minutes (extract + chunk + embed + metadata); 15 min is safe rope.
+    # Gmail sync keeps the default 5 min (its longest stage is bounded
+    # by the Gmail API itself).
+    functions = [
+        run_sync,
+        func(ingest_kb_document, name="ingest_kb_document", timeout=900),
+    ]
     redis_settings = get_redis_settings()
 
     # Retry failed jobs once after 30 s.

@@ -9,10 +9,23 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.app.routers import auth, contacts, drafts, gmail, health, push, review, settings as settings_router, sync, threads
+from api.app.routers import (
+    auth,
+    contacts,
+    drafts,
+    gmail,
+    health,
+    knowledge,
+    push,
+    review,
+    settings as settings_router,
+    sync,
+    threads,
+)
 from api.app.dependencies.services import build_service_bundle_for_user_id
 from backend.core.config import get_settings
 from backend.core.database import get_session_factory, init_database
+from backend.knowledge.database import init_kb_database
 from backend.persistence.repositories.user_repository import UserRepository
 
 
@@ -24,6 +37,18 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     settings.ensure_runtime_directories()
     init_database(settings)
+    # KB lives on its own DB engine + Alembic chain. No-op when KB_DATABASE_URL
+    # is empty. Wrapped in try/except so a misconfigured / unreachable KB
+    # never takes the whole API down — the Settings page surfaces a clean
+    # 503 when the KB router is hit.
+    try:
+        init_kb_database(settings)
+    except Exception:
+        logger.warning(
+            "Knowledge Base initialization failed — feature will return 503 "
+            "until KB_DATABASE_URL is reachable.",
+            exc_info=True,
+        )
 
     # On startup, mark any sync_runs rows that are still "running" from a
     # previous process as "interrupted". This prevents the UI from showing a
@@ -53,6 +78,13 @@ async def lifespan(_: FastAPI):
 def create_app() -> FastAPI:
     app_settings = get_settings()
     init_database(app_settings)
+    try:
+        init_kb_database(app_settings)
+    except Exception:
+        logger.warning(
+            "Knowledge Base initialization failed during app creation.",
+            exc_info=True,
+        )
     app = FastAPI(
         title="Inter-Email V3 API",
         version="0.1.0",
@@ -78,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
     app.include_router(contacts.router, prefix="/api/v1", tags=["contacts"])
     app.include_router(push.router, prefix="/api/v1", tags=["push"])
+    app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"])
 
     # @app.exception_handler(Exception) is routed to ServerErrorMiddleware by
     # Starlette, which sits OUTSIDE CORSMiddleware. That means the response

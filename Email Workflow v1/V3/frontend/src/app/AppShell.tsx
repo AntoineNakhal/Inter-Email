@@ -47,6 +47,7 @@ function LoginWall() {
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "/home", label: "Home" },
   { to: "/inbox", label: "Inbox" },
+  { to: "/technical-info", label: "Technical Info" },
   { to: "/dashboard", label: "Dashboard" },
   { to: "/settings", label: "Settings" },
 ];

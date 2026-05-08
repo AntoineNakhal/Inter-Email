@@ -587,3 +587,138 @@ export function useDeleteDraftMutation(threadId: string) {
     },
   });
 }
+
+// ─── Knowledge Base ──────────────────────────────────────────────────────
+const KB_DOCUMENTS_KEY = ["kb-documents"] as const;
+const KB_DOCUMENT_KEY = (id: number) => ["kb-document", id] as const;
+
+/**
+ * Lists KB documents. Polls every 4 seconds while any doc is still
+ * processing so the UI updates without manual refresh — once everything
+ * is in a terminal state (awaiting_review / ready / failed) we drop back
+ * to a passive cache.
+ */
+export function useKbDocuments() {
+  return useQuery({
+    queryKey: KB_DOCUMENTS_KEY,
+    queryFn: apiClient.listKbDocuments,
+    staleTime: LOCAL_CACHE_STALE_MS,
+    gcTime: LOCAL_CACHE_GC_MS,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      const hasInflight = data.documents.some(
+        (doc) => doc.status === "pending" || doc.status === "processing",
+      );
+      return hasInflight ? 4000 : false;
+    },
+  });
+}
+
+/**
+ * Lists every chunk for a document — used by the modal's chunk explorer.
+ * Only fires once the doc is past PROCESSING (no point asking earlier
+ * because chunks haven't been written yet).
+ */
+export function useKbChunks(
+  documentId: number | null,
+  shouldFetch: boolean,
+) {
+  return useQuery({
+    queryKey: documentId
+      ? (["kb-chunks", documentId] as const)
+      : (["kb-chunks", "none"] as const),
+    queryFn: () => apiClient.listKbChunks(documentId as number),
+    enabled: documentId !== null && shouldFetch,
+    staleTime: LOCAL_CACHE_STALE_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Polls a single document while it's still pre-review so the modal can
+ * update its UI as soon as the worker finishes. Stops polling once the
+ * doc reaches a terminal state.
+ */
+export function useKbDocument(documentId: number | null) {
+  return useQuery({
+    queryKey: documentId ? KB_DOCUMENT_KEY(documentId) : ["kb-document", "none"],
+    queryFn: () => apiClient.getKbDocument(documentId as number),
+    enabled: documentId !== null,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 1500;
+      // Keep polling while the worker is still doing its thing.
+      return data.status === "pending" || data.status === "processing"
+        ? 1500
+        : false;
+    },
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useUploadKbDocumentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => apiClient.uploadKbDocument(file),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: KB_DOCUMENTS_KEY });
+    },
+  });
+}
+
+export function useFinalizeKbDocumentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      payload,
+    }: {
+      documentId: number;
+      payload: import("../types/api").KbFinalizeRequest;
+    }) => apiClient.finalizeKbDocument(documentId, payload),
+    onSuccess: async (_data, { documentId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: KB_DOCUMENTS_KEY }),
+        queryClient.invalidateQueries({ queryKey: KB_DOCUMENT_KEY(documentId) }),
+      ]);
+    },
+  });
+}
+
+export function useDeleteKbDocumentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: number) => apiClient.deleteKbDocument(documentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: KB_DOCUMENTS_KEY });
+    },
+  });
+}
+
+export function useUpdateKbChunkMutation(documentId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chunkId, content }: { chunkId: number; content: string }) =>
+      apiClient.updateKbChunk(documentId, chunkId, { content }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["kb-chunks", documentId],
+      });
+    },
+  });
+}
+
+export function useDeleteKbChunkMutation(documentId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (chunkId: number) =>
+      apiClient.deleteKbChunk(documentId, chunkId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["kb-chunks", documentId] }),
+        queryClient.invalidateQueries({ queryKey: KB_DOCUMENTS_KEY }),
+      ]);
+    },
+  });
+}

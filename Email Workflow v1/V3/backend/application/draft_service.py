@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+
 from backend.domain.analysis import DraftReplyRequest
 from backend.domain.runtime_settings import RuntimeSettings
-from backend.domain.thread import DraftDocument
+from backend.domain.thread import DraftDocument, EmailThread
+from backend.knowledge.services.retrieval_service import RagRetrievalService
 from backend.persistence.repositories.draft_repository import DraftRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.ai.base import AIProviderError
 from backend.providers.ai.router import AIProviderRouter
+
+
+logger = logging.getLogger(__name__)
 
 
 class DraftService:
@@ -20,11 +26,13 @@ class DraftService:
         thread_repository: ThreadRepository,
         draft_repository: DraftRepository,
         runtime_settings: RuntimeSettings,
+        rag_service: RagRetrievalService | None = None,
     ) -> None:
         self.provider_router = provider_router
         self.thread_repository = thread_repository
         self.draft_repository = draft_repository
         self.runtime_settings = runtime_settings
+        self.rag_service = rag_service
 
     def generate_draft(
         self,
@@ -52,6 +60,7 @@ class DraftService:
             user_instructions=user_instructions,
             user_email=user_email,
             user_name=user_name,
+            kb_context=self._build_kb_context(thread, user_instructions),
         )
         provider = self.provider_router.provider_for_task("draft_reply")
         try:
@@ -70,3 +79,33 @@ class DraftService:
     @staticmethod
     def _has_meaningful_draft(draft: DraftDocument) -> bool:
         return bool(draft.subject.strip() or draft.body.strip())
+
+    def _build_kb_context(
+        self,
+        thread: EmailThread,
+        user_instructions: str,
+    ) -> str:
+        """Look up product context in the KB for this draft, if RAG is wired.
+
+        We blend the thread text with the user's instructions in the query
+        so a "include the spec sheet for the X20" instruction reliably pulls
+        the right chunks even if the X20 isn't mentioned in the thread.
+        """
+        if self.rag_service is None:
+            return ""
+        query_text = "\n\n".join(
+            part for part in [
+                thread.subject or "",
+                thread.combined_thread_text,
+                user_instructions or "",
+            ] if part
+        )
+        try:
+            matches = self.rag_service.retrieve_for_text(query_text)
+        except Exception:
+            logger.exception(
+                "RAG retrieval failed for draft on thread %s — proceeding without context.",
+                thread.external_thread_id,
+            )
+            return ""
+        return self.rag_service.build_context_block(matches)

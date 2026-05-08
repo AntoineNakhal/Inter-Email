@@ -19,6 +19,7 @@ from backend.domain.thread import (
     TriageCategory,
     UrgencyLevel,
 )
+from backend.knowledge.services.retrieval_service import RagRetrievalService
 from backend.persistence.repositories.thread_repository import ThreadRepository
 from backend.providers.ai.base import AIProviderError
 from backend.providers.ai.router import AIProviderRouter
@@ -74,10 +75,15 @@ class ThreadAnalysisService:
         provider_router: AIProviderRouter,
         thread_repository: ThreadRepository,
         crm_service: CRMService,
+        # Optional — when None, the service runs without RAG (KB disabled
+        # or not yet wired). The presence/absence of this dependency is the
+        # single switch that turns the feature on or off in this layer.
+        rag_service: RagRetrievalService | None = None,
     ) -> None:
         self.provider_router = provider_router
         self.thread_repository = thread_repository
         self.crm_service = crm_service
+        self.rag_service = rag_service
 
     def analyze_threads(
         self,
@@ -281,6 +287,7 @@ class ThreadAnalysisService:
             thread=thread,
             user_email=user_email,
             user_overrides=user_overrides,
+            kb_context=self._build_kb_context(thread),
         )
         # Always use the primary AI provider — the decision to skip or analyze
         # was already made upstream. included_in_ai is no longer used to pick
@@ -449,3 +456,26 @@ class ThreadAnalysisService:
         analysis.verifier_model_name = verification.model_name
         analysis.verifier_used_fallback = verification.used_fallback
         analysis.verified_at = verification.verified_at
+
+    def _build_kb_context(self, thread: EmailThread) -> str:
+        """Look up product context in the KB for this thread, if RAG is wired.
+
+        Pure best-effort: any failure inside the retrieval service is logged
+        and swallowed (RagRetrievalService already handles the EmbeddingError
+        path). We never want a KB outage to cascade into "no analysis".
+        """
+        if self.rag_service is None:
+            return ""
+        # The thread's combined text is what the AI will read anyway, so
+        # using it as the retrieval query keeps embedding semantics aligned
+        # with the prompt context.
+        query_text = (thread.subject or "") + "\n\n" + thread.combined_thread_text
+        try:
+            matches = self.rag_service.retrieve_for_text(query_text)
+        except Exception:
+            logger.exception(
+                "RAG retrieval failed for thread %s — proceeding without context.",
+                thread.external_thread_id,
+            )
+            return ""
+        return self.rag_service.build_context_block(matches)

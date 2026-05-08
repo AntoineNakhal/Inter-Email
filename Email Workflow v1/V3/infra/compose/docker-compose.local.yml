@@ -16,6 +16,33 @@ services:
       timeout: 5s
       retries: 10
 
+  # Separate Postgres for the Knowledge Base (RAG corpus + embeddings).
+  # Kept isolated from the main app DB so:
+  #   * its lifecycle (dump, wipe, re-ingest) doesn't touch user/email data
+  #   * pgvector + heavy similarity scans don't share IO with the hot OLTP path
+  #   * we can scale or move the KB later without a coordinated migration
+  # Image: pgvector/pgvector ships Postgres 16 + the vector extension preinstalled.
+  kb-postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kb
+      POSTGRES_PASSWORD: kb
+      POSTGRES_DB: inter_kb
+    ports:
+      - "5433:5432"
+    volumes:
+      - kb_postgres_data:/var/lib/postgresql/data
+    # Specify -d inter_kb so the probe connects to the real DB. Without it,
+    # pg_isready falls back to db=kb (the username) and Postgres logs a
+    # FATAL "database does not exist" on every healthcheck. Functionally
+    # harmless, visually alarming.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb -d inter_kb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -31,6 +58,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql+psycopg://interemailv3:interemailv3@postgres:5432/interemailv3
+      - KB_DATABASE_URL=postgresql+psycopg://kb:kb@kb-postgres:5432/inter_kb
     command: uvicorn api.app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
@@ -40,6 +68,8 @@ services:
       - ../../backend:/app/backend
     depends_on:
       postgres:
+        condition: service_healthy
+      kb-postgres:
         condition: service_healthy
       redis:
         condition: service_started
@@ -53,6 +83,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql+psycopg://interemailv3:interemailv3@postgres:5432/interemailv3
+      - KB_DATABASE_URL=postgresql+psycopg://kb:kb@kb-postgres:5432/inter_kb
     command: arq backend.jobs.worker.WorkerSettings
     volumes:
       - ../../data:/app/data
@@ -60,6 +91,8 @@ services:
       - ../../backend:/app/backend
     depends_on:
       postgres:
+        condition: service_healthy
+      kb-postgres:
         condition: service_healthy
       redis:
         condition: service_started
@@ -77,3 +110,4 @@ services:
 
 volumes:
   postgres_data:
+  kb_postgres_data:

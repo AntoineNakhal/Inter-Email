@@ -6,6 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115.0",
+  # Required by FastAPI's UploadFile / File() — used by the KB upload route.
+  # FastAPI doesn't pull this in automatically; without it the API crashes
+  # at import time with "Form data requires python-multipart to be installed".
+  "python-multipart>=0.0.9",
   "uvicorn[standard]>=0.30.0",
   "pydantic>=2.7.0",
   "python-dotenv>=1.0.1",
@@ -18,6 +22,15 @@ dependencies = [
   "openai>=1.35.0",
   "anthropic>=0.40.0",
   "arq>=0.25.0",
+  # Knowledge Base (RAG) — separate concern, separate DB. Each library
+  # owns one extractor; pgvector wires the vector column into SQLAlchemy;
+  # tiktoken counts tokens exactly the way OpenAI's embedding model does
+  # so our 400/50 chunk budget is real and not a guess.
+  "pdfplumber>=0.11.0",
+  "python-pptx>=0.6.21",
+  "openpyxl>=3.1.0",
+  "pgvector>=0.3.0",
+  "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]

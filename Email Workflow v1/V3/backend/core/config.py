@@ -137,6 +137,35 @@ class AppSettings(BaseModel):
     auth_cookie_domain: str = Field("", alias="AUTH_COOKIE_DOMAIN")
     auth_cookie_secure: bool = Field(False, alias="AUTH_COOKIE_SECURE")
 
+    # ------------------------------------------------------------------
+    # Knowledge Base (RAG)
+    # ------------------------------------------------------------------
+    # Separate Postgres instance — kept off the hot OLTP path. When empty,
+    # the KB feature is disabled gracefully (RAG retrieval returns no
+    # context, ingestion endpoints reject with a clear error).
+    kb_database_url: str = Field("", alias="KB_DATABASE_URL")
+    # OpenAI embedding model. text-embedding-3-small = 1536 dims.
+    # If you change this, you MUST also change the Vector(1536) column
+    # dimension in the kb_chunks model + write a migration to rebuild.
+    kb_embedding_model: str = Field(
+        "text-embedding-3-small",
+        alias="KB_EMBEDDING_MODEL",
+    )
+    # Cosine-similarity floor. Below this, a chunk is considered too
+    # off-topic to inject into the prompt. Tune empirically per-corpus.
+    kb_similarity_threshold: float = Field(
+        0.75,
+        alias="KB_SIMILARITY_THRESHOLD",
+    )
+    # Max chunks returned by the retriever. 5 is enough to ground an
+    # answer without bloating the prompt budget.
+    kb_top_k: int = Field(5, alias="KB_TOP_K")
+    # Max bytes accepted on upload. 100 MB covers a typical 150-200 page
+    # technical PDF with diagrams; raise via env var if your corpus has
+    # multi-hundred-page reference manuals. Hard ceiling exists so one
+    # bad upload (a 5 GB scan, a runaway script) can't OOM the worker.
+    kb_max_upload_bytes: int = Field(100 * 1024 * 1024, alias="KB_MAX_UPLOAD_BYTES")
+
     app_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
 
     @field_validator("gmail_max_results", mode="before")
@@ -176,6 +205,26 @@ class AppSettings(BaseModel):
         if isinstance(value, bool):
             return value
         return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    # Threshold lives in [0, 1]; guard against junk env values so a bad
+    # deploy doesn't silently disable the KB by setting threshold > 1.
+    @field_validator("kb_similarity_threshold", mode="before")
+    @classmethod
+    def validate_threshold(cls, value: float | str) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return 0.75
+        return max(0.0, min(1.0, parsed))
+
+    @field_validator("kb_top_k", "kb_max_upload_bytes", mode="before")
+    @classmethod
+    def validate_kb_positive_int(cls, value: int | str) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 1
+        return max(1, parsed)
 
     @property
     def resolved_cache_dir(self) -> Path:
@@ -355,6 +404,17 @@ def get_settings() -> AppSettings:
         "AUTH_REFRESH_TOKEN_DAYS": os.getenv("AUTH_REFRESH_TOKEN_DAYS", "30"),
         "AUTH_COOKIE_DOMAIN": os.getenv("AUTH_COOKIE_DOMAIN", ""),
         "AUTH_COOKIE_SECURE": os.getenv("AUTH_COOKIE_SECURE", "false"),
+        "KB_DATABASE_URL": os.getenv("KB_DATABASE_URL", ""),
+        "KB_EMBEDDING_MODEL": os.getenv(
+            "KB_EMBEDDING_MODEL",
+            "text-embedding-3-small",
+        ),
+        "KB_SIMILARITY_THRESHOLD": os.getenv("KB_SIMILARITY_THRESHOLD", "0.75"),
+        "KB_TOP_K": os.getenv("KB_TOP_K", "5"),
+        "KB_MAX_UPLOAD_BYTES": os.getenv(
+            "KB_MAX_UPLOAD_BYTES",
+            str(100 * 1024 * 1024),
+        ),
     }
     return AppSettings.model_validate(raw_values)
 

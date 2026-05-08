@@ -20,6 +20,11 @@ class ThreadAnalysisRequest(BaseModel):
     # these corrections when analyzing the thread but may disagree with
     # justification. Disagreements are tracked in ThreadAnalysis.ai_override_disagreements.
     user_overrides: dict[str, object] | None = None
+    # Pre-formatted PRODUCT CONTEXT block fetched from the Knowledge Base.
+    # Empty string = no context to inject (KB disabled, no high-similarity
+    # matches, or embedding service down). Providers concatenate it verbatim
+    # into the system prompt — the formatting lives in RagRetrievalService.
+    kb_context: str = ""
 
 
 class QueueSummaryRequest(BaseModel):
@@ -41,6 +46,9 @@ class DraftReplyRequest(BaseModel):
     # Explicit display name for the draft signature (e.g. "Antoine Nakhal").
     # When set, providers use this directly instead of inferring from user_email.
     user_name: str | None = None
+    # Pre-formatted PRODUCT CONTEXT block from the Knowledge Base. Empty
+    # when no relevant chunks were found. See ThreadAnalysisRequest.kb_context.
+    kb_context: str = ""
 
 
 class ThreadVerificationRequest(BaseModel):

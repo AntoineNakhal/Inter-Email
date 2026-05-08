@@ -2,6 +2,13 @@ import type {
   DraftDocument,
   EmailThread,
   GmailConnectionStatus,
+  KbChunkListResponse,
+  KbChunkSummary,
+  KbChunkUpdateRequest,
+  KbDocument,
+  KbDocumentListResponse,
+  KbFinalizeRequest,
+  KbUploadResponse,
   QueueDashboardResponse,
   RuntimeSettingsUpdate,
   SettingsSummary,
@@ -78,6 +85,38 @@ async function request<T>(path: string, init?: RequestInit, allowRefresh = true)
     return undefined as T;
   }
 
+  return (await response.json()) as T;
+}
+
+/**
+ * Multipart form-data POST with the same auth handling as `request<>()`.
+ * Importantly: we do NOT set Content-Type — the browser must add the
+ * boundary string itself, otherwise the server can't parse the form.
+ */
+async function multipartPost<T>(
+  path: string,
+  formData: FormData,
+  allowRefresh = true,
+): Promise<T> {
+  const init: RequestInit = {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  };
+  let response = await fetch(`${API_ROOT}${path}`, init);
+
+  if (response.status === 401 && allowRefresh) {
+    const refreshed = await refreshAuthSession();
+    if (refreshed) {
+      response = await fetch(`${API_ROOT}${path}`, init);
+    }
+  }
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -179,4 +218,37 @@ export const apiClient = {
     }),
   getGmailConnectionStatus: () =>
     request<GmailConnectionStatus>("/gmail/connection"),
+
+  // Knowledge Base
+  listKbDocuments: () => request<KbDocumentListResponse>("/knowledge/documents"),
+  getKbDocument: (documentId: number) =>
+    request<KbDocument>(`/knowledge/documents/${documentId}`),
+  listKbChunks: (documentId: number) =>
+    request<KbChunkListResponse>(`/knowledge/documents/${documentId}/chunks`),
+  updateKbChunk: (
+    documentId: number,
+    chunkId: number,
+    payload: KbChunkUpdateRequest,
+  ) =>
+    request<KbChunkSummary>(
+      `/knowledge/documents/${documentId}/chunks/${chunkId}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    ),
+  deleteKbChunk: (documentId: number, chunkId: number) =>
+    request<void>(
+      `/knowledge/documents/${documentId}/chunks/${chunkId}`,
+      { method: "DELETE" },
+    ),
+  uploadKbDocument: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return multipartPost<KbUploadResponse>("/knowledge/documents", form);
+  },
+  finalizeKbDocument: (documentId: number, payload: KbFinalizeRequest) =>
+    request<KbDocument>(`/knowledge/documents/${documentId}/finalize`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteKbDocument: (documentId: number) =>
+    request<void>(`/knowledge/documents/${documentId}`, { method: "DELETE" }),
 };

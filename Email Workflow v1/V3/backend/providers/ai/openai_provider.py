@@ -96,6 +96,17 @@ class OpenAIProvider(AIProvider):
         )
 
     @staticmethod
+    def _kb_context_block(kb_context: str) -> str:
+        """Inject the Knowledge Base PRODUCT CONTEXT block.
+
+        The block itself is built upstream by RagRetrievalService — this
+        helper only ensures the block is wrapped consistently across tasks
+        and is a no-op when there's nothing to inject. Keeps the call sites
+        symmetric with `_today_block()`, `_user_perspective_block()`, etc.
+        """
+        return kb_context or ""
+
+    @staticmethod
     def _service_email_block() -> str:
         """Extra instructions injected for automated/transactional emails."""
         return (
@@ -117,6 +128,7 @@ class OpenAIProvider(AIProvider):
                 + self._user_perspective_block(request.user_email)
                 + (self._service_email_block() if is_service else "")
                 + self._user_overrides_block(request.user_overrides)
+                + self._kb_context_block(getattr(request, "kb_context", ""))
                 + "You are analyzing one email thread for an internal operations queue. "
                 "Ignore email signatures, confidentiality footers, and quoted reply history. "
                 "Anchor the analysis primarily on the latest meaningful message, using earlier messages only as context. "
@@ -249,6 +261,7 @@ class OpenAIProvider(AIProvider):
             task="draft_reply",
             system_prompt=(
                 self._user_perspective_block(request.user_email)
+                + self._kb_context_block(getattr(request, "kb_context", ""))
                 + "Draft a professional reply email for an Inter-Op workflow.\n"
                 "The payload contains two critical fields:\n"
                 "  - 'author': the person WRITING this reply (the inbox owner). "
