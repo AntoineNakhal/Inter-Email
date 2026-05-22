@@ -16,6 +16,7 @@ import { useDraftMutation } from "../../hooks/useApi";
 import { apiClient } from "../../api/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DraftDocument, EmailThread } from "../../types/api";
+import { DraftKbSourcesPanel } from "./DraftKbSourcesPanel";
 
 type Props = { thread: EmailThread; recommended?: boolean; iconOnly?: boolean };
 
@@ -452,6 +453,13 @@ export function DraftComposer({ thread, recommended = false, iconOnly = false }:
                 </div>
                 {draft ? (
                   <>
+                    {/* Sources panel sits ABOVE the editable draft so the
+                        user sees what was retrieved (or that nothing was)
+                        before they read or edit the body. The same
+                        component is also rendered below the saved draft
+                        on the thread page — that one is the audit trail
+                        for the persisted draft. Same data, two surfaces. */}
+                    <DraftKbSourcesPanel sources={draft.kb_sources ?? []} />
                     <input
                       className="draft-result__subject-input"
                       value={editSubject}

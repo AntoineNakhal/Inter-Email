@@ -30,15 +30,30 @@ from api.app.schemas.knowledge import (
     KbChunkListResponse,
     KbChunkSummary,
     KbChunkUpdateRequest,
+    KbDiagnoseMatch,
+    KbDiagnoseResponse,
     KbDocumentListResponse,
     KbDocumentResponse,
     KbFinalizeRequest,
     KbUploadResponse,
+    KbYouTubeIngestRequest,
 )
 from backend.application.knowledge_service import KnowledgeServiceError
 from backend.core.config import get_settings
-from backend.knowledge.database import KnowledgeBaseDisabledError
-from backend.knowledge.domain.document import KbDocumentMetadata
+from backend.knowledge.database import (
+    KnowledgeBaseDisabledError,
+    get_kb_session_factory,
+    is_kb_enabled,
+)
+from backend.knowledge.domain.document import KbDocumentMetadata, KbIngestionStatus
+from backend.knowledge.repositories.chunk_repository import KbChunkRepository
+from backend.knowledge.services.embedding_service import (
+    EmbeddingError,
+    EmbeddingService,
+)
+from sqlalchemy import func, select
+from backend.knowledge.models.chunk import KbChunkModel
+from backend.knowledge.models.document import KbDocumentModel
 
 
 logger = logging.getLogger(__name__)
@@ -68,25 +83,60 @@ async def upload_document(
     file: UploadFile = File(...),
     services: ServiceBundle = Depends(get_service_bundle),
 ) -> KbUploadResponse:
-    try:
-        content = await file.read()
-        document = services.knowledge_service.create_pending_document(
-            filename=file.filename or "untitled",
-            content=content,
-        )
-    except KnowledgeBaseDisabledError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except KnowledgeServiceError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    """Streaming upload — the request body is copied to disk in 1 MB
+    chunks rather than loaded into memory. Critical for video files
+    (which can be GB-scale) but cheap enough that we use the same path
+    for text uploads too.
 
-    # Stage the bytes to disk so the worker process can read them. We use
-    # the same `data/` volume that's mounted into both api and worker
-    # containers so any worker (Arq or inline) can pick them up.
+    The temp file gets a uuid-ish name during streaming; once we've
+    validated type + size we rename it to the final
+    `<doc_id>__<filename>` convention the worker reads from.
+    """
+    import uuid
+
     settings = services.settings
     staging_dir = Path(settings.cache_dir) / "kb_uploads"
     staging_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = staging_dir / f"_upload_{uuid.uuid4().hex}"
+
+    try:
+        # Stream from the multipart upload directly to disk. Starlette
+        # already spools large uploads to a temp file under the hood,
+        # so we're really just copying that temp file to our staging
+        # dir without ever loading the full payload into memory.
+        with temp_path.open("wb") as fp:
+            while True:
+                chunk = await file.read(1024 * 1024)  # 1 MB
+                if not chunk:
+                    break
+                fp.write(chunk)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    try:
+        document = services.knowledge_service.create_pending_document_from_path(
+            filename=file.filename or "untitled",
+            file_path=temp_path,
+        )
+    except KnowledgeBaseDisabledError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except KnowledgeServiceError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Rename the temp file to the worker-readable convention. Same
+    # filesystem so this is an atomic rename, not a copy.
     staging_path = staging_dir / f"{document.id}__{document.filename}"
-    staging_path.write_bytes(content)
+    try:
+        temp_path.replace(staging_path)
+    except OSError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to stage upload: {exc}",
+        ) from exc
 
     if settings.redis_url:
         # Real worker available — enqueue via Arq.
@@ -187,6 +237,7 @@ def finalize_document(
                 product_name=_normalize_blank(payload.product_name),
                 category=_normalize_blank(payload.category),
                 description=_normalize_blank(payload.description),
+                search_aliases=(payload.search_aliases or "").strip(),
             ),
         )
     except KnowledgeBaseDisabledError as exc:
@@ -194,6 +245,260 @@ def finalize_document(
     except KnowledgeServiceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return KbDocumentResponse.from_domain(document)
+
+
+@router.get("/knowledge/diagnose", response_model=KbDiagnoseResponse)
+def diagnose_rag(
+    query: str = "",
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> KbDiagnoseResponse:
+    """End-to-end RAG self-check.
+
+    Walks every layer the retrieval pipeline depends on and returns a
+    structured report:
+
+      1. Is KB enabled in config?
+      2. Can we open a KB session?
+      3. How many docs by status? How many chunks?
+      4. Does the embedding API succeed for the query?
+      5. What does pgvector return (top-K, unfiltered)?
+      6. What survives the similarity threshold?
+
+    Use this whenever the draft "no sources" panel says no context was
+    used and you want to confirm where the chain breaks. A working RAG
+    setup will show a non-empty `matches_above_threshold` list and a
+    verdict starting with "OK".
+    """
+    settings = services.settings
+    threshold = settings.kb_similarity_threshold
+    top_k = settings.kb_top_k
+    sample_query = query.strip() or "test query for diagnostics"
+
+    # Layer 1: config
+    if not is_kb_enabled(settings):
+        return KbDiagnoseResponse(
+            kb_enabled=False,
+            kb_session_open=False,
+            documents_by_status={},
+            documents_ready=0,
+            chunks_total=0,
+            query=sample_query,
+            embedding_succeeded=False,
+            embedding_dim=0,
+            threshold=threshold,
+            top_k=top_k,
+            unfiltered_matches=[],
+            matches_above_threshold=[],
+            verdict=(
+                "FAIL: KB_DATABASE_URL is not set in this container's "
+                "environment. Knowledge Base is disabled."
+            ),
+        )
+
+    # Layer 2: DB session
+    try:
+        kb_session = get_kb_session_factory()()
+    except Exception as exc:
+        return KbDiagnoseResponse(
+            kb_enabled=True,
+            kb_session_open=False,
+            documents_by_status={},
+            documents_ready=0,
+            chunks_total=0,
+            query=sample_query,
+            embedding_succeeded=False,
+            embedding_dim=0,
+            threshold=threshold,
+            top_k=top_k,
+            unfiltered_matches=[],
+            matches_above_threshold=[],
+            verdict=(
+                f"FAIL: Could not open KB session — {type(exc).__name__}: {exc}. "
+                "Check that the kb-postgres container is healthy."
+            ),
+        )
+
+    try:
+        # Layer 3: corpus census
+        status_rows = kb_session.execute(
+            select(KbDocumentModel.status, func.count(KbDocumentModel.id))
+            .group_by(KbDocumentModel.status)
+        ).all()
+        documents_by_status = {
+            (row[0].value if hasattr(row[0], "value") else str(row[0])): row[1]
+            for row in status_rows
+        }
+        documents_ready = documents_by_status.get(
+            KbIngestionStatus.READY.value, 0
+        )
+        chunks_total = kb_session.scalar(
+            select(func.count(KbChunkModel.id))
+        ) or 0
+
+        # Layer 4: embedding API
+        embedding_service = EmbeddingService(settings)
+        try:
+            query_embedding = embedding_service.embed_one(sample_query)
+            embedding_succeeded = True
+            embedding_dim = len(query_embedding)
+        except EmbeddingError as exc:
+            return KbDiagnoseResponse(
+                kb_enabled=True,
+                kb_session_open=True,
+                documents_by_status=documents_by_status,
+                documents_ready=documents_ready,
+                chunks_total=chunks_total,
+                query=sample_query,
+                embedding_succeeded=False,
+                embedding_dim=0,
+                threshold=threshold,
+                top_k=top_k,
+                unfiltered_matches=[],
+                matches_above_threshold=[],
+                verdict=f"FAIL: Embedding API call failed — {exc}",
+            )
+
+        # Layer 5+6: pgvector search, both unfiltered and filtered
+        chunk_repo = KbChunkRepository(kb_session)
+        unfiltered = chunk_repo.search_similar(
+            query_embedding=query_embedding,
+            top_k=top_k,
+            similarity_threshold=0.0,
+        )
+        filtered = [m for m in unfiltered if m.similarity >= threshold]
+
+        def to_match(match) -> KbDiagnoseMatch:
+            preview = (match.chunk.content or "").strip().replace("\n", " ")
+            if len(preview) > 200:
+                preview = preview[:199] + "…"
+            return KbDiagnoseMatch(
+                chunk_id=match.chunk.id,
+                chunk_index=match.chunk.chunk_index,
+                document_id=match.chunk.document_id,
+                document_title=match.document_title,
+                similarity=round(match.similarity, 4),
+                preview=preview,
+            )
+
+        unfiltered_payload = [to_match(m) for m in unfiltered]
+        filtered_payload = [to_match(m) for m in filtered]
+
+        # Layer 7: human-readable verdict
+        if documents_ready == 0:
+            verdict = (
+                "FAIL: No documents are in READY state. RAG only searches "
+                "READY documents; everything else is excluded. Approve a "
+                "document via the review modal on /technical-info."
+            )
+        elif chunks_total == 0:
+            verdict = (
+                "FAIL: There are READY documents but no chunks in the "
+                "kb_chunks table. Ingestion never finished — check worker "
+                "logs."
+            )
+        elif not unfiltered:
+            verdict = (
+                "FAIL: pgvector returned 0 candidates even with no "
+                "threshold. Likely cause: status filter mismatch. "
+                "Investigate the WHERE clause in chunk_repository."
+            )
+        elif not filtered:
+            top_score = unfiltered[0].similarity if unfiltered else 0.0
+            verdict = (
+                f"WARN: Top match similarity is {top_score:.3f}, below the "
+                f"threshold of {threshold:.2f}. Either lower "
+                f"KB_SIMILARITY_THRESHOLD or re-check whether the "
+                f"document actually contains the queried information."
+            )
+        else:
+            top_score = filtered[0].similarity
+            verdict = (
+                f"OK: RAG is working. Top match similarity {top_score:.3f}, "
+                f"{len(filtered)} chunks above threshold {threshold:.2f}."
+            )
+
+        return KbDiagnoseResponse(
+            kb_enabled=True,
+            kb_session_open=True,
+            documents_by_status=documents_by_status,
+            documents_ready=documents_ready,
+            chunks_total=chunks_total,
+            query=sample_query,
+            embedding_succeeded=embedding_succeeded,
+            embedding_dim=embedding_dim,
+            threshold=threshold,
+            top_k=top_k,
+            unfiltered_matches=unfiltered_payload,
+            matches_above_threshold=filtered_payload,
+            verdict=verdict,
+        )
+    finally:
+        kb_session.close()
+
+
+@router.post(
+    "/knowledge/youtube",
+    response_model=KbUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def ingest_youtube(
+    payload: KbYouTubeIngestRequest,
+    background_tasks: BackgroundTasks,
+    services: ServiceBundle = Depends(get_service_bundle),
+) -> KbUploadResponse:
+    """Ingest a YouTube video by URL.
+
+    Synchronously downloads the audio (yt-dlp) so we can validate the
+    URL and surface errors immediately to the user, then enqueues the
+    same ingestion job as a file upload — the video pipeline takes
+    over from there.
+    """
+    try:
+        document, audio_path_str = services.knowledge_service.create_youtube_document(
+            url=payload.url,
+        )
+    except KnowledgeBaseDisabledError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except KnowledgeServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Move the downloaded audio into the kb_uploads staging dir so the
+    # ingest job finds it via the same convention as uploaded files.
+    from pathlib import Path as _Path
+    source_audio = _Path(audio_path_str)
+    settings = services.settings
+    staging_dir = _Path(settings.cache_dir) / "kb_uploads"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    staging_path = staging_dir / f"{document.id}__{source_audio.name}"
+    try:
+        source_audio.replace(staging_path)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to stage downloaded audio: {exc}",
+        ) from exc
+
+    if settings.redis_url:
+        await _enqueue_kb_ingest_job(
+            document_id=document.id,
+            file_path=str(staging_path),
+            filename=document.filename,
+            file_type=document.file_type,
+        )
+    else:
+        background_tasks.add_task(
+            _run_kb_ingest_inline,
+            document.id,
+            str(staging_path),
+            document.filename,
+            document.file_type,
+        )
+    logger.info(
+        "YouTube ingestion enqueued for document_id=%s url=%s",
+        document.id,
+        payload.url,
+    )
+    return KbUploadResponse(document=KbDocumentResponse.from_domain(document))
 
 
 @router.delete("/knowledge/documents/{document_id}", status_code=204)
@@ -317,7 +622,9 @@ def _run_kb_ingest_inline(
         if not path.exists():
             logger.error("KB staging file vanished before ingestion: %s", path)
             return
-        content = path.read_bytes()
+        from backend.knowledge.extractors import VIDEO_FILE_TYPE
+        is_video = file_type == VIDEO_FILE_TYPE
+        content = b"" if is_video else path.read_bytes()
         IngestionService(
             session=session,
             document_repository=KbDocumentRepository(session),
@@ -331,6 +638,7 @@ def _run_kb_ingest_inline(
             content=content,
             filename=filename,
             file_type=file_type,
+            source_path=path if is_video else None,
         )
     except Exception:
         logger.exception(

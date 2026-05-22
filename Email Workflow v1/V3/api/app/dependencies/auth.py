@@ -6,7 +6,8 @@ from fastapi import Cookie, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from api.app.dependencies.db import get_db_session
-from backend.application.auth_service import AuthFlowStateStore, AuthService
+from backend.application.auth_service import AuthService
+from backend.application.email_account_service import EmailAccountService, OAuthStateStore
 from backend.core.config import AppSettings, get_settings
 from backend.domain.user import AuthenticatedUser
 from backend.persistence.repositories.user_repository import UserRepository
@@ -14,14 +15,16 @@ from backend.persistence.repositories.user_repository import UserRepository
 
 ACCESS_COOKIE_NAME = "inter_email_access_token"
 REFRESH_COOKIE_NAME = "inter_email_refresh_token"
-AUTH_STATE_STORE = AuthFlowStateStore()
+
+# Module-level singletons — these are stateless (settings) or in-memory stores
+# with TTL-based eviction; safe to keep as globals for a single-process deploy.
+_OAUTH_STATE_STORE = OAuthStateStore()
 
 
 def build_auth_service(session: Session) -> AuthService:
     return AuthService(
         settings=get_settings(),
         user_repository=UserRepository(session),
-        state_store=AUTH_STATE_STORE,
     )
 
 
@@ -29,6 +32,16 @@ def get_auth_service(
     session: Session = Depends(get_db_session),
 ) -> AuthService:
     return build_auth_service(session)
+
+
+def get_email_account_service(
+    session: Session = Depends(get_db_session),
+) -> EmailAccountService:
+    return EmailAccountService(
+        settings=get_settings(),
+        session=session,
+        state_store=_OAUTH_STATE_STORE,
+    )
 
 
 def get_current_user(

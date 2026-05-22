@@ -15,6 +15,10 @@ class UserRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    # ------------------------------------------------------------------ #
+    # Read helpers                                                         #
+    # ------------------------------------------------------------------ #
+
     def get_by_id(self, user_id: int) -> AuthenticatedUser | None:
         model = self.session.get(UserModel, user_id)
         if model is None or not model.is_active:
@@ -38,6 +42,44 @@ class UserRepository:
         if model is None or not model.is_active:
             return None
         return model
+
+    # ------------------------------------------------------------------ #
+    # Write helpers — email/password auth                                  #
+    # ------------------------------------------------------------------ #
+
+    def create_user(
+        self,
+        *,
+        email: str,
+        display_name: str,
+        role: UserRole,
+        password_hash: str,
+    ) -> AuthenticatedUser:
+        """Create a brand-new user account. Raises ValueError if email taken."""
+        normalized_email = str(email or "").strip().lower()
+        if self._find_by_email(normalized_email) is not None:
+            raise ValueError("An account with that email already exists.")
+        model = UserModel(
+            email=normalized_email,
+            display_name=str(display_name or "").strip(),
+            role=role.value,
+            password_hash=password_hash,
+            is_active=True,
+            last_login_at=datetime.now(timezone.utc),
+        )
+        self.session.add(model)
+        self.session.flush()
+        return self._to_domain(model)
+
+    def update_last_login(self, user_id: int) -> None:
+        model = self.session.get(UserModel, user_id)
+        if model:
+            model.last_login_at = datetime.now(timezone.utc)
+            self.session.flush()
+
+    # ------------------------------------------------------------------ #
+    # Write helpers — legacy Google OAuth (kept for backwards compat)      #
+    # ------------------------------------------------------------------ #
 
     def upsert_google_user(
         self,
@@ -69,6 +111,10 @@ class UserRepository:
         model.last_login_at = datetime.now(timezone.utc)
         self.session.flush()
         return self._to_domain(model)
+
+    # ------------------------------------------------------------------ #
+    # Session management                                                   #
+    # ------------------------------------------------------------------ #
 
     def create_session(
         self,
@@ -105,6 +151,7 @@ class UserRepository:
         self.session.flush()
 
     def list_connected_users(self) -> list[AuthenticatedUser]:
+        """Legacy: users with a gmail_token directly on the user row."""
         models = self.session.scalars(
             select(UserModel).where(
                 UserModel.is_active == True,  # noqa: E712
@@ -112,6 +159,10 @@ class UserRepository:
             )
         ).all()
         return [self._to_domain(model) for model in models]
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers                                                     #
+    # ------------------------------------------------------------------ #
 
     @staticmethod
     def _to_domain(model: UserModel) -> AuthenticatedUser:

@@ -36,6 +36,23 @@ def _run_sync_job_inline(run_id: int, source: str, max_results: int, lookback_da
         topic = services.settings.gmail_pubsub_topic
         if topic:
             services.sync_service.ensure_watch(topic)
+        # After the Gmail run completes, silently sync any other connected accounts
+        # (Outlook, iCloud, IMAP). Failures are logged but never abort the Gmail run.
+        try:
+            supplemental_count = services.sync_service.sync_supplemental_accounts(
+                lookback_days=lookback_days,
+                max_results=max_results,
+            )
+            if supplemental_count:
+                logger.info(
+                    "Sync run %s: %s additional thread(s) from supplemental accounts.",
+                    run_id,
+                    supplemental_count,
+                )
+        except Exception:
+            logger.warning(
+                "Sync run %s: supplemental account sync failed (non-fatal).", run_id, exc_info=True
+            )
     except Exception:
         logger.exception("Gmail sync failed")
     finally:

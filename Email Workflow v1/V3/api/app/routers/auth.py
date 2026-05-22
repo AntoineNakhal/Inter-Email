@@ -1,11 +1,9 @@
-"""Authentication endpoints."""
+"""Authentication endpoints — email/password auth."""
 
 from __future__ import annotations
 
-from urllib.parse import quote
-
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from pydantic import BaseModel, Field
 
 from api.app.dependencies.auth import (
     REFRESH_COOKIE_NAME,
@@ -23,60 +21,78 @@ from backend.domain.user import AuthenticatedUser
 router = APIRouter()
 
 
+# ------------------------------------------------------------------ #
+# Request schemas (local to this router — small enough to inline)      #
+# ------------------------------------------------------------------ #
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str = Field(..., min_length=8)
+    display_name: str = Field(..., min_length=1, max_length=255)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+# ------------------------------------------------------------------ #
+# Endpoints                                                            #
+# ------------------------------------------------------------------ #
+
+@router.post("/auth/register", response_model=AuthenticatedUserResponse, status_code=201)
+def register(
+    body: RegisterRequest,
+    response: Response,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> AuthenticatedUserResponse:
+    """Create a new user account and open a session."""
+    try:
+        result = auth_service.register(
+            email=body.email,
+            password=body.password,
+            display_name=body.display_name,
+        )
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    settings = get_settings()
+    set_auth_cookies(
+        response,
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+        settings=settings,
+    )
+    return AuthenticatedUserResponse.from_domain(result.user)
+
+
+@router.post("/auth/login", response_model=AuthenticatedUserResponse)
+def login(
+    body: LoginRequest,
+    response: Response,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> AuthenticatedUserResponse:
+    """Authenticate with email + password and open a session."""
+    try:
+        result = auth_service.login(email=body.email, password=body.password)
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    settings = get_settings()
+    set_auth_cookies(
+        response,
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+        settings=settings,
+    )
+    return AuthenticatedUserResponse.from_domain(result.user)
+
+
 @router.get("/auth/me", response_model=AuthenticatedUserResponse)
 def get_authenticated_user(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> AuthenticatedUserResponse:
     return AuthenticatedUserResponse.from_domain(user)
-
-
-@router.get("/auth/google/start", name="start_google_auth")
-def start_google_auth(
-    request: Request,
-    auth_service: AuthService = Depends(get_auth_service),
-) -> RedirectResponse:
-    redirect_uri = str(request.url_for("finish_google_auth"))
-    try:
-        authorization_url = auth_service.build_login_url(redirect_uri)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RedirectResponse(authorization_url, status_code=302)
-
-
-@router.get("/auth/google/callback", name="finish_google_auth")
-def finish_google_auth(
-    request: Request,
-    state: str,
-    code: str,
-    auth_service: AuthService = Depends(get_auth_service),
-) -> RedirectResponse:
-    settings = get_settings()
-    redirect_uri = str(request.url_for("finish_google_auth"))
-    try:
-        session_result = auth_service.finalize_google_login(
-            redirect_uri=redirect_uri,
-            state=state,
-            code=code,
-        )
-        destination = (
-            f"{settings.frontend_app_url.rstrip('/')}/settings?auth=connected"
-        )
-        response = RedirectResponse(destination, status_code=302)
-        set_auth_cookies(
-            response,
-            access_token=session_result.access_token,
-            refresh_token=session_result.refresh_token,
-            settings=settings,
-        )
-        return response
-    except Exception as exc:
-        destination = (
-            f"{settings.frontend_app_url.rstrip('/')}"
-            f"/settings?auth=error&message={quote(str(exc))}"
-        )
-        response = RedirectResponse(destination, status_code=302)
-        clear_auth_cookies(response, settings)
-        return response
 
 
 @router.post("/auth/refresh", response_model=AuthenticatedUserResponse)
@@ -88,17 +104,17 @@ def refresh_auth_session(
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh session missing.")
     try:
-        session_result = auth_service.refresh_access_token(refresh_token)
+        result = auth_service.refresh_access_token(refresh_token)
     except Exception as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     set_auth_cookies(
         response,
-        access_token=session_result.access_token,
-        refresh_token=session_result.refresh_token,
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
         settings=get_settings(),
     )
-    return AuthenticatedUserResponse.from_domain(session_result.user)
+    return AuthenticatedUserResponse.from_domain(result.user)
 
 
 @router.post("/auth/logout")

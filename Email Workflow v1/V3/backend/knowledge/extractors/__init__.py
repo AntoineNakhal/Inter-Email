@@ -9,6 +9,8 @@ That's it — no other file knows about the new format.
 from backend.knowledge.extractors.base import BaseExtractor, ExtractionError
 from backend.knowledge.extractors.registry import (
     SUPPORTED_FILE_TYPES,
+    VIDEO_EXTENSIONS,
+    VIDEO_FILE_TYPE,
     extract_text,
     file_type_for_filename,
 )
@@ -17,6 +19,8 @@ __all__ = [
     "BaseExtractor",
     "ExtractionError",
     "SUPPORTED_FILE_TYPES",
+    "VIDEO_EXTENSIONS",
+    "VIDEO_FILE_TYPE",
     "extract_text",
     "file_type_for_filename",
 ]

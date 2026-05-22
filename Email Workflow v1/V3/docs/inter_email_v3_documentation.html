@@ -121,13 +121,16 @@
         <a href="#workflow">12. User Workflow</a>
         <a href="#new-features">13. What Was Built</a>
         <a href="#dependencies">14. Dependencies</a>
+        <a href="#knowledge-base">15. Knowledge Base &amp; RAG</a>
+        <a href="#video-pipeline">16. Video Ingestion Pipeline</a>
+        <a href="#draft-attribution">17. Draft Source Attribution</a>
       </nav>
     </aside>
 
     <main>
       <div class="hero" id="overview">
         <h2>Inter-Email V3 — Architecture &amp; Handoff</h2>
-        <p>V3 is a modular monolith for AI-assisted email operations. A React frontend talks only to a FastAPI API, and the API delegates all real work to an internal <code>backend/</code> package split into application services, domain models, provider adapters, and repositories. It is not microservices, but it already has clean internal boundaries — and a clear migration path to Postgres, background workers, and self-hosted AI without rewriting business logic.</p>
+        <p>V3 is a modular monolith for AI-assisted email operations. A React frontend talks only to a FastAPI API, and the API delegates all real work to an internal <code>backend/</code> package split into application services, domain models, provider adapters, and repositories. As of mid-2026 the system has grown a second self-contained subsystem — a Knowledge Base with RAG retrieval, human-in-the-loop document review, per-chunk editing, and a video ingestion pipeline (audio transcription + scene-aware frame extraction + OCR + optional YouTube ingestion). RAG sources are attributed on every generated draft so the user can always audit what grounded the AI's reply.</p>
         <div class="chips">
           <div class="chip accent">Modular monolith</div>
           <div class="chip">API-first</div>
@@ -135,11 +138,14 @@
           <div class="chip">Thread-as-primary-abstraction</div>
           <div class="chip green">SQLite → Postgres ready</div>
           <div class="chip green">Built end-to-end</div>
+          <div class="chip accent">Knowledge Base + RAG</div>
+          <div class="chip accent">Video ingestion (Whisper + ffmpeg)</div>
+          <div class="chip green">Draft source attribution</div>
         </div>
       </div>
 
       <div class="note info">
-        <strong>Read this first.</strong> This document describes the V3 architecture as defined in <code>V3/docs/architecture.md</code> and as currently implemented on disk. As of May 2026 the system is essentially built end-to-end; see <a href="#status" style="color: var(--accent);">Section 8 — Current Build Status</a> for the precise per-layer state and the remaining operational gaps (sync durability, type generation). The V2 system this refactor extracted from is documented separately in <code>inter_email_v_2_documentation.html</code>.
+        <strong>Read this first.</strong> This document describes the V3 architecture as defined in <code>V3/docs/architecture.md</code> and as currently implemented on disk. As of May 2026 the system is built end-to-end and has been extended with a Knowledge Base subsystem (RAG retrieval against PDF/PPTX/XLSX/text/video corpora with human review modal, per-chunk editing, doc-level aliases, and full draft attribution); see <a href="#status" style="color: var(--accent);">Section 8 — Current Build Status</a> for the precise per-layer state. The V2 system this refactor extracted from is documented separately in <code>inter_email_v_2_documentation.html</code>.
       </div>
 
       <!-- ========= 1. CORE THESIS ========= -->
@@ -470,6 +476,28 @@
         <div class="note">
           <strong>User isolation invariant.</strong> All data — threads, analyses, contacts, sync runs, ETA stats — is scoped to a <code>user_id</code> foreign key. Switching or disconnecting a Gmail account clears only that user's data. One user never sees another's. Regression test pinned in <code>test_gmail_connection_service.py</code>.
         </div>
+
+        <h4 style="margin-top: 28px;">5b. Knowledge Base — separate Postgres + pgvector</h4>
+        <p>The Knowledge Base lives in a <strong>second Postgres container</strong> (<code>kb-postgres</code>, pgvector image, host port 5433) with its own SQLAlchemy <code>Base</code>, its own Alembic chain under <code>backend/knowledge/migrations/</code>, and its own session factory. The main app DB never references KB tables and vice versa — failures in one cannot cascade into the other. The KB feature degrades gracefully when <code>KB_DATABASE_URL</code> is empty: retrieval becomes a no-op and the Settings UI surfaces a clean 503.</p>
+        <table>
+          <thead><tr><th>Table</th><th>Owns</th><th>Key columns</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>kb_documents</code></td><td>One uploaded source file or YouTube URL.</td><td><code>filename</code>, <code>file_type</code>, <code>status</code>, <code>chunk_count</code>, <code>search_aliases</code>, <code>source_url</code></td><td><code>file_type</code> ∈ <code>pdf, pptx, xlsx, txt, md, video</code>. <code>status</code> ∈ <code>pending → processing → awaiting_review → ready</code> (or <code>failed</code>). Only <code>ready</code> docs are searched by RAG. <code>search_aliases</code> are user-provided synonyms baked into every chunk's embedding input. <code>source_url</code> populated for YouTube ingestion.</td></tr>
+            <tr><td><code>kb_chunks</code></td><td>One embedded text chunk per row.</td><td><code>document_id</code> (FK, CASCADE), <code>chunk_index</code>, <code>content</code> (Text), <code>embedding</code> (Vector(1536)), <code>token_count</code></td><td>Cosine similarity index: <code>ivfflat (embedding vector_cosine_ops) WITH (lists=100)</code>. Embedding dim hard-coded to 1536 to match OpenAI <code>text-embedding-3-small</code>. Content is the raw chunk text; embedding is computed on <code>[Document: title | Product: name | Also known as: aliases]\n\nchunk_content</code> so aliases lift retrieval recall.</td></tr>
+          </tbody>
+        </table>
+        <div class="note info" style="margin-top: 12px;">
+          <strong>Why a separate DB.</strong> Two reasons: (1) pgvector + IVFFlat scans can be IO-heavy; isolating them keeps the OLTP email DB unaffected. (2) The KB's lifecycle (wipe + re-ingest, change embedding model, switch vendors) should never touch user email data. The price is a second container and a separate migration chain — worth it.
+        </div>
+        <h4 style="margin-top: 22px;">Document lifecycle</h4>
+        <p>The state machine the user actually sees in the review modal:</p>
+        <ol>
+          <li><code>pending</code> — bytes staged on disk; worker hasn't started.</li>
+          <li><code>processing</code> — worker extracting text, chunking, embedding via OpenAI, asking Haiku for metadata.</li>
+          <li><code>awaiting_review</code> — worker finished, metadata pre-filled, chunks stored but <strong>invisible to RAG</strong>. User must approve in the modal before the doc enters the corpus.</li>
+          <li><code>ready</code> — user-approved. Chunks now retrievable. Re-saving with changed <code>search_aliases</code> re-embeds every chunk in place.</li>
+          <li><code>failed</code> — terminal error; the row keeps the message so the user can read it and re-upload.</li>
+        </ol>
       </section>
 
       <!-- ========= 6. FRONTEND ========= -->
@@ -535,18 +563,38 @@
             <h4>Backend &amp; data</h4>
             <ul>
               <li>SQLAlchemy 2.x</li>
-              <li>Alembic 1.13+ (migrations)</li>
-              <li>SQLite → Postgres</li>
-              <li><code>data/sqlite/app.db</code> volume</li>
+              <li>Alembic 1.13+ (two chains: main + KB)</li>
+              <li>Postgres 16 (main + <code>kb-postgres</code> w/ pgvector)</li>
+              <li>Redis 7 + Arq (background jobs)</li>
             </ul>
           </div>
           <div class="card">
             <h4>AI &amp; Gmail</h4>
             <ul>
               <li>Anthropic Claude SDK (primary)</li>
-              <li>OpenAI SDK (fallback)</li>
+              <li>OpenAI SDK (fallback + embeddings + Whisper)</li>
               <li>Ollama HTTP (local option)</li>
               <li>gmail.readonly + gmail.send scopes</li>
+            </ul>
+          </div>
+          <div class="card accent">
+            <h4>Knowledge Base (RAG)</h4>
+            <ul>
+              <li>pgvector (Vector(1536) embeddings)</li>
+              <li>tiktoken (token-aware chunking)</li>
+              <li>pdfplumber, python-pptx, openpyxl</li>
+              <li>OpenAI <code>text-embedding-3-small</code></li>
+              <li>Claude Haiku for doc metadata</li>
+            </ul>
+          </div>
+          <div class="card accent">
+            <h4>Video pipeline</h4>
+            <ul>
+              <li>ffmpeg (audio + frame extraction)</li>
+              <li>OpenAI Whisper API (transcription)</li>
+              <li>scenedetect + opencv (scene boundaries)</li>
+              <li>pytesseract + tesseract (OCR)</li>
+              <li>yt-dlp (YouTube audio download)</li>
             </ul>
           </div>
         </div>
@@ -584,8 +632,14 @@
             <tr><td><strong>Postgres</strong></td><td><span class="pill done">Done</span></td><td>Running on <code>postgres:16-alpine</code> via Docker. <code>psycopg[binary]>=3.1</code> added as optional extra. <code>pool_pre_ping=True</code> for connection recovery. All JSON columns (<code>Text</code> with Python-side serialization) port cleanly — zero repository changes required.</td><td>—</td></tr>
             <tr><td><strong>AI thread cap</strong></td><td><span class="pill done">Done</span></td><td><code>local_ai_max_threads</code> (default 50) in <code>runtime_settings</code>. Enforced in <code>GmailSyncService._apply_runtime_ai_strategy()</code> — top N by relevance, remainder get heuristic fallback. Configurable live via <code>PUT /settings</code>.</td><td>—</td></tr>
             <tr><td><strong>Sync durability &amp; progress</strong></td><td><span class="pill done">Done</span></td><td><code>progress_json</code> written to DB at every stage transition and per-thread analysis callback — includes <code>eta_seconds</code> so the frontend has real ETA data. When Arq is active, <code>get_run_status()</code> / <code>get_running_run()</code> bypass the in-memory store and read DB directly. Manual longer-window syncs (<code>lookback_days &gt; 7</code>) force a full bootstrap, bypass <code>known_message_ids</code>, and reuse cached analysis for unchanged threads.</td><td>—</td></tr>
-            <tr><td><strong>Tests</strong></td><td><span class="pill done">Done</span></td><td><code>test_health.py</code>, <code>test_thread_repository.py</code>, <code>test_gmail_sync_service.py</code>, <code>test_thread_analysis_service.py</code>, <code>test_gmail_connection_service.py</code> (P0 account-isolation regression), plus <code>test_threads.py</code>, <code>test_settings.py</code>, <code>test_gmail.py</code>, <code>test_gmail_mapper.py</code>, <code>test_openai_provider.py</code>, <code>test_ollama_agents.py</code>, <code>test_queue_service.py</code>, <code>test_draft_service.py</code>.</td><td>No provider contract tests asserting all three implementations satisfy the <code>AIProvider</code> interface. No frontend tests.</td></tr>
+            <tr><td><strong>Tests</strong></td><td><span class="pill done">Done</span></td><td><code>test_health.py</code>, <code>test_thread_repository.py</code>, <code>test_gmail_sync_service.py</code>, <code>test_thread_analysis_service.py</code>, <code>test_gmail_connection_service.py</code> (P0 account-isolation regression), plus <code>test_threads.py</code>, <code>test_settings.py</code>, <code>test_gmail.py</code>, <code>test_gmail_mapper.py</code>, <code>test_openai_provider.py</code>, <code>test_ollama_agents.py</code>, <code>test_queue_service.py</code>, <code>test_draft_service.py</code>.</td><td>No provider contract tests asserting all three implementations satisfy the <code>AIProvider</code> interface. No frontend tests. No KB / video pipeline tests yet.</td></tr>
             <tr><td><strong>Legacy artifact</strong></td><td><span class="pill done">Done</span></td><td><code>backend/jobs/sync_runner.py</code> deleted.</td><td>—</td></tr>
+            <tr><td><strong>Knowledge Base (RAG)</strong></td><td><span class="pill done">Done</span></td><td>Separate <code>kb-postgres</code> container with pgvector. Independent Alembic chain at <code>backend/knowledge/migrations/</code>. Full pipeline: extract (PDF/PPTX/XLSX/TXT/MD/video) → token-aware chunk → embed (OpenAI <code>text-embedding-3-small</code>) → Haiku metadata → user review → READY. Per-doc search aliases trigger re-embed on save. RAG retrieval injected into <code>ThreadAnalysisService</code> + <code>DraftService</code>. Strict-grounding guardrail on prompts when no chunks match. In-app <code>/knowledge/diagnose</code> endpoint for end-to-end self-check.</td><td>—</td></tr>
+            <tr><td><strong>Draft source attribution</strong></td><td><span class="pill done">Done</span></td><td><code>kb_sources_json</code> column on <code>drafts</code> (migration <code>0012</code>) persists the chunks the AI saw at draft time. <code>DraftKbSourcesPanel</code> rendered in the modal (expanded by default) and on the thread page (collapsed). Empty state surfaces "training-data only" warning with explicit "no web search" disclaimer.</td><td>—</td></tr>
+            <tr><td><strong>Per-chunk edit + delete</strong></td><td><span class="pill done">Done</span></td><td><code>PATCH /knowledge/documents/{id}/chunks/{cid}</code> rewrites content + re-embeds atomically. <code>DELETE</code> removes the row and decrements <code>chunk_count</code>. Chunk Explorer in the review modal supports inline edit and two-tap delete.</td><td>—</td></tr>
+            <tr><td><strong>Video ingestion pipeline</strong></td><td><span class="pill done">Done</span></td><td><code>backend/knowledge/video/</code> subpackage: ffmpeg audio extraction, OpenAI Whisper transcription with timestamps, scenedetect for boundaries, ffmpeg for targeted frame extraction, pytesseract OCR on text-heavy frames. Output is a structured timestamped text document interleaving transcript + on-screen text; flows through existing chunker/embedder unchanged. Local files (mp4/mov/webm/mkv/m4v) and YouTube URLs both supported.</td><td>Vision-API frame analysis and recursive summarisation for very long videos pending — see Section 16.</td></tr>
+            <tr><td><strong>YouTube ingestion</strong></td><td><span class="pill done">Done</span></td><td><code>POST /knowledge/youtube</code> accepts a URL, uses <code>yt-dlp</code> to download audio-only stream, then runs the same video pipeline. <code>source_url</code> column on <code>kb_documents</code> records provenance.</td><td>—</td></tr>
+            <tr><td><strong>Frontend KB UI</strong></td><td><span class="pill done">Done</span></td><td>Dedicated <code>/technical-info</code> page (nav link above Dashboard). <code>KnowledgeBaseSection</code> with drag-and-drop + YouTube URL input. <code>KbReviewModal</code> (two-column layout, full chunk explorer, search + tier-coloured similarity badges). <code>KbDiagnosticPanel</code> for in-app RAG self-check. <code>DraftKbSourcesPanel</code> on draft modal + thread page.</td><td>—</td></tr>
           </tbody>
         </table>
         <div class="note info">
@@ -730,6 +784,10 @@
           <div class="wf-item"><div class="wf-icon">🔍</div><div class="wf-content"><p class="wf-step-title">4 — Open thread detail for full context</p><p class="wf-step-desc">The thread detail page splits into two columns: left shows the AI analysis (summary, current status, next action, verifier score), right shows the full conversation timeline with expandable message excerpts. Action buttons (Gmail link, Done ✓, Pin 📌, Analyse ✨) sit in the header.</p><div class="wf-chips-sm"><span class="wf-chip-sm">Two-column layout</span><span class="wf-chip-sm">Independent column scroll</span><span class="wf-chip-sm">Manual re-analysis button</span><span class="wf-chip-sm">Analysis skeleton on load</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:100%"></div></div></div></div>
           <div class="wf-item"><div class="wf-icon">✍️</div><div class="wf-content"><p class="wf-step-title">5 — Generate, edit, and send a reply</p><p class="wf-step-desc">The ⚡ button opens a 3-stage wizard (date · attachments · instructions). Each stage shows whether it's recommended by the AI. Claude generates the draft; the user edits subject and body inline. Clicking <strong>Send</strong> fetches the Gmail signature automatically and sends via Gmail API. Draft is cleared from the DB after send.</p><div class="wf-chips-sm"><span class="wf-chip-sm">3-stage wizard with skip confirmation</span><span class="wf-chip-sm">Editable before send</span><span class="wf-chip-sm">Auto Gmail signature</span><span class="wf-chip-sm">Thread reply via threadId</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:100%"></div></div></div></div>
           <div class="wf-item"><div class="wf-icon">📊</div><div class="wf-content"><p class="wf-step-title">6 — Dashboard overview</p><p class="wf-step-desc">The Dashboard page shows: a <strong>command strip</strong> (Act Now / Waiting / High Urgency / Done counts), a <strong>category spotlight</strong> (top 3 active threads per triage category as clickable chips), and <strong>statistics charts</strong> (urgency donut, category bar, queue health, contact type breakdown, new contacts per month, top emailed contacts). All charts are pure SVG — no chart library needed.</p><div class="wf-chips-sm"><span class="wf-chip-sm">Category spotlight</span><span class="wf-chip-sm">SVG charts (no library)</span><span class="wf-chip-sm">Contact stats from DB</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:80%"></div></div></div></div>
+          <div class="wf-item"><div class="wf-icon">📚</div><div class="wf-content"><p class="wf-step-title">7 — Upload product documentation</p><p class="wf-step-desc">User goes to the new <strong>Technical Info</strong> page (nav link above Dashboard). They drag a PDF, PPTX, XLSX, TXT, MD, or a video file (MP4/MOV/WEBM/MKV/M4V) into the dropzone — or paste a YouTube URL into the "or" input below. The doc starts ingesting in the background: extract → token-aware chunk → OpenAI embedding → Claude Haiku metadata extraction. For videos: ffmpeg pulls audio, Whisper transcribes with timestamps, scenedetect picks scene-change moments, frames get OCR'd, and the consolidated transcript+OCR document flows through the same chunker.</p><div class="wf-chips-sm"><span class="wf-chip-sm">PDF/PPTX/XLSX/TXT/MD + video</span><span class="wf-chip-sm">YouTube URL</span><span class="wf-chip-sm">ffmpeg + Whisper + OCR</span><span class="wf-chip-sm">Background ingestion via Arq</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:90%"></div></div></div></div>
+          <div class="wf-item"><div class="wf-icon">🔍</div><div class="wf-content"><p class="wf-step-title">8 — Human review &amp; chunk inspection</p><p class="wf-step-desc">When ingestion finishes, the doc moves to <strong>Awaiting review</strong>. A two-column modal opens: metadata form on the left (title, product name, category, description, <em>search aliases</em>), Chunk Explorer on the right with the full list ranked by chunk index — each clickable to read the exact text, with search-inside-chunks and tier-coloured similarity badges. Per-chunk Edit and Delete are available; editing re-embeds atomically. Saving aliases triggers a corpus-wide re-embedding for that doc so customer-side terms still hit the right chunks.</p><div class="wf-chips-sm"><span class="wf-chip-sm">Two-column modal</span><span class="wf-chip-sm">Per-chunk edit + delete</span><span class="wf-chip-sm">Search aliases → re-embed</span><span class="wf-chip-sm">Status: Awaiting review → Ready</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:100%"></div></div></div></div>
+          <div class="wf-item"><div class="wf-icon">🧭</div><div class="wf-content"><p class="wf-step-title">9 — Draft uses RAG &amp; user audits sources</p><p class="wf-step-desc">When the user generates a draft (step 5), <code>DraftService</code> embeds the thread text + instructions, retrieves top-K chunks from pgvector (no similarity threshold — top results are always shown, the user is the relevance judge), and injects them as a <code>PRODUCT CONTEXT</code> block in the prompt. Strict-grounding guardrails fire when nothing matches; ambiguity guardrails fire when several products could match. The generated draft carries a <code>kb_sources</code> array persisted to <code>drafts.kb_sources_json</code>; the <strong>Sources panel</strong> in the modal (and on the thread page) shows each chunk with similarity %, tier badge (strong / moderate / weak), and click-to-expand preview. Empty state explicitly says "from training data only, no web search" so silent no-ops are impossible.</p><div class="wf-chips-sm"><span class="wf-chip-sm">pgvector cosine (top-K)</span><span class="wf-chip-sm">Sources panel persisted</span><span class="wf-chip-sm">Strict-grounding + ambiguity guardrails</span><span class="wf-chip-sm">No web search — disclosed</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:100%"></div></div></div></div>
+          <div class="wf-item"><div class="wf-icon">🧪</div><div class="wf-content"><p class="wf-step-title">10 — Self-diagnose RAG health</p><p class="wf-step-desc">If the user expects a draft to be grounded but sees "no sources used", the <strong>Test RAG retrieval</strong> panel on Technical Info gives them a one-click answer. Type a query, hit Run — the backend walks every layer (config → DB session → doc status census → embedding API → pgvector search) and returns a structured report with a coloured verdict pill (OK / WARN / FAIL) and the top candidates with their similarity scores. Eliminates guessing about why retrieval did or didn't fire.</p><div class="wf-chips-sm"><span class="wf-chip-sm">/knowledge/diagnose</span><span class="wf-chip-sm">Verdict pill</span><span class="wf-chip-sm">Top candidates with scores</span><span class="wf-chip-sm">Self-serve debugging</span></div><div class="wf-progress"><div class="wf-progress-fill" style="--pw:100%"></div></div></div></div>
         </div>
         <script>
           (function() {
@@ -761,6 +819,11 @@
           <div class="card accent"><h4>📨 Forwarded email support</h4><ul><li><code>_extract_text</code> now recurses into nested <code>multipart/*</code> MIME containers — forwarded emails no longer arrive with empty bodies</li><li><code>clean_email_body</code> skips quoted-history stripping when <code>is_forwarded=True</code> — the original sender's headers and content are preserved</li><li><code>is_forwarded</code> flag on <code>ThreadMessage</code> (domain → DB → API) derived from <code>Fwd:</code> / <code>FW:</code> subject prefix</li><li>Migration <code>0007</code> adds the column; forwarded messages merge into the correct thread as normal messages</li></ul></div>
           <div class="card green"><h4>⚙️ Background worker (Arq)</h4><ul><li><code>backend/jobs/tasks.py</code> — <code>run_sync</code> async task imports the same <code>backend</code> package</li><li><code>backend/jobs/worker.py</code> — <code>WorkerSettings</code> entry point: <code>arq backend.jobs.worker.WorkerSettings</code></li><li>Sync router auto-selects Arq when <code>REDIS_URL</code> is set; falls back to <code>BackgroundTasks</code> when empty (local dev works without Redis)</li><li>Redis + worker service added to both <code>docker-compose.local.yml</code> and <code>docker-compose.selfhost.yml</code></li><li><code>arq>=0.25.0</code> added to <code>pyproject.toml</code></li></ul></div>
           <div class="card"><h4>🛡️ AI thread cap</h4><ul><li><code>local_ai_max_threads</code> (default 50) limits AI analysis to the top N threads by relevance score when local or Claude mode is active</li><li>Threads over the cap fall back to the heuristic analyzer — <code>ai_decision="capped"</code></li><li>Set to <code>0</code> for unlimited; configurable live via Settings UI and the <code>PUT /settings</code> API without restart</li><li>Migration <code>0008</code> adds the column with server default 50</li></ul></div>
+          <div class="card accent"><h4>📚 Knowledge Base &amp; RAG</h4><ul><li>Separate <code>kb-postgres</code> container with pgvector — independent from main app DB</li><li>Five extractors: PDF (pdfplumber), PPTX (python-pptx), XLSX (openpyxl), TXT, MD</li><li>Token-aware chunking via tiktoken (~400 tok / 50 tok overlap)</li><li>OpenAI <code>text-embedding-3-small</code> (1536-dim Vector column, IVFFlat cosine index)</li><li>Claude Haiku auto-extracts title / product / category / description from doc</li><li>Per-doc <strong>search aliases</strong> baked into chunk embeddings → re-embedded on save</li><li>Strict-grounding + ambiguity guardrails in prompts</li><li><code>/knowledge/diagnose</code> endpoint for in-app health-check</li></ul></div>
+          <div class="card green"><h4>🧭 Draft source attribution</h4><ul><li><code>kb_sources_json</code> column on <code>drafts</code> persists exactly which chunks the AI saw at draft time</li><li><code>DraftKbSourcesPanel</code> rendered in both the draft modal (expanded) and on the thread page (collapsed)</li><li>Tier-coloured similarity badges: strong (≥0.65), moderate (0.45–0.65), weak (&lt;0.45)</li><li>Threshold default lowered to 0.0 — user is the relevance judge, not a heuristic</li><li>Empty state explicitly discloses: "no web search, training data only"</li><li>Snapshot model: editing/deleting chunks later doesn't rewrite past audit trails</li></ul></div>
+          <div class="card accent"><h4>👀 Human-in-the-loop review</h4><ul><li><code>AWAITING_REVIEW</code> status — chunks stored but invisible to RAG until user approves</li><li>Two-column modal: metadata form ↔ Chunk Explorer (full list, scrollable, searchable)</li><li>Per-chunk edit (re-embeds atomically) and two-tap delete</li><li>Modal opens automatically right after upload — user sees what the AI extracted before saving</li><li>Reusable from the doc list via "Review" / "Edit" buttons (label depends on status)</li></ul></div>
+          <div class="card accent"><h4>🎥 Video ingestion pipeline</h4><ul><li>Local upload (.mp4/.mov/.webm/.mkv/.m4v) up to 500 MB</li><li>YouTube URL ingestion via <code>yt-dlp</code> (audio-only stream)</li><li>ffmpeg pulls audio → OpenAI Whisper transcribes with per-segment timestamps</li><li>scenedetect picks scene-change moments — frames sampled there + every 10s baseline + at transcript visual-references</li><li>pytesseract OCR on text-heavy frames; transcript + OCR interleave by timestamp</li><li>Resulting document flows through the same chunker / embedder / review modal as PDFs — no video-specific UI</li><li>Cost: Whisper $0.006/min (~$0.18 for a 30-min video)</li></ul></div>
+          <div class="card green"><h4>🧪 In-app RAG diagnostic</h4><ul><li><code>/knowledge/diagnose?query=...</code> endpoint walks every layer (config → session → corpus census → embedding API → pgvector search)</li><li>Returns a structured report: counts by status, top candidates with similarity, verdict pill</li><li>Frontend panel on Technical Info — type a query, click Run, read the verdict</li><li>Distinguishes "RAG not configured" from "RAG ran but found nothing" — the single most useful debug tool we built</li></ul></div>
         </div>
       </section>
 
@@ -783,6 +846,42 @@
             <tr><td><strong>google-auth / oauthlib</strong></td><td><code>&gt;=2.29.0</code></td><td>OAuth 2.0 + PKCE flow for Gmail credentials.</td><td>Google's own auth library, required by all Google API integrations — <a href="https://googleapis.dev/python/google-auth/latest/" style="color:var(--accent)" target="_blank">googleapis.dev — google-auth</a></td></tr>
             <tr><td><strong>openai</strong></td><td><code>&gt;=1.35.0</code></td><td>OpenAI SDK — used by the <code>openai_provider</code> implementation.</td><td>OpenAI's official SDK — <a href="https://github.com/openai/openai-python" style="color:var(--accent)" target="_blank">github.com/openai/openai-python</a></td></tr>
             <tr><td><strong>anthropic</strong></td><td><code>&gt;=0.40.0</code></td><td>Anthropic SDK — primary AI provider (<code>claude-haiku-4-5</code>).</td><td>Anthropic's official SDK — <a href="https://github.com/anthropics/anthropic-sdk-python" style="color:var(--accent)" target="_blank">github.com/anthropics/anthropic-sdk-python</a></td></tr>
+            <tr><td><strong>arq</strong></td><td><code>&gt;=0.25.0</code></td><td>Redis-backed async task queue — runs Gmail sync + KB ingestion + video pipeline in the worker process.</td><td>Used by countless FastAPI deployments needing async background work — <a href="https://arq-docs.helpmanual.io/" style="color:var(--accent)" target="_blank">arq-docs.helpmanual.io</a></td></tr>
+            <tr><td><strong>psycopg[binary]</strong></td><td><code>&gt;=3.1.0</code></td><td>Postgres driver — connects to both main app DB and the separate <code>kb-postgres</code> container.</td><td>Maintainer-of-record for the canonical Python Postgres driver — <a href="https://www.psycopg.org/" style="color:var(--accent)" target="_blank">psycopg.org</a></td></tr>
+            <tr><td><strong>cryptography</strong></td><td><code>&gt;=43.0.0</code></td><td>Fernet-based encryption for stored Gmail OAuth tokens.</td><td>OpenSSL bindings; PyCA's reference library — <a href="https://cryptography.io/en/latest/" style="color:var(--accent)" target="_blank">cryptography.io</a></td></tr>
+            <tr><td><strong>python-multipart</strong></td><td><code>&gt;=0.0.9</code></td><td>Multipart form parsing — required by FastAPI's <code>UploadFile</code> for KB / video upload endpoints.</td><td>Maintained by the FastAPI team — <a href="https://github.com/Kludex/python-multipart" style="color:var(--accent)" target="_blank">github.com/Kludex/python-multipart</a></td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="margin:24px 0 10px;color:var(--accent);">Knowledge Base &amp; RAG — Python</h4>
+        <table>
+          <thead><tr><th>Package</th><th>Version</th><th>Purpose</th><th>Used by (proof)</th></tr></thead>
+          <tbody>
+            <tr><td><strong>pgvector</strong></td><td><code>&gt;=0.3.0</code></td><td>SQLAlchemy <code>Vector</code> type + pgvector extension — stores 1536-dim embeddings on <code>kb_chunks.embedding</code>.</td><td>OpenAI's recommended Postgres vector solution, used at scale by Supabase, Neon, Pinecone alternatives — <a href="https://github.com/pgvector/pgvector" style="color:var(--accent)" target="_blank">github.com/pgvector/pgvector</a></td></tr>
+            <tr><td><strong>tiktoken</strong></td><td><code>&gt;=0.7.0</code></td><td>OpenAI's official BPE tokenizer — gives byte-exact token counts so our ~400 / 50-overlap chunk budget is real, not an approximation.</td><td>OpenAI's reference tokenizer; embedded in LangChain, LlamaIndex, Anthropic SDK — <a href="https://github.com/openai/tiktoken" style="color:var(--accent)" target="_blank">github.com/openai/tiktoken</a></td></tr>
+            <tr><td><strong>pdfplumber</strong></td><td><code>&gt;=0.11.0</code></td><td>PDF text + table extraction. Preserves layout-derived word ordering, critical for spec sheets.</td><td>Widely used in fintech for invoice parsing, contract extraction — <a href="https://github.com/jsvine/pdfplumber" style="color:var(--accent)" target="_blank">github.com/jsvine/pdfplumber</a></td></tr>
+            <tr><td><strong>python-pptx</strong></td><td><code>&gt;=0.6.21</code></td><td>PowerPoint extraction — slide text, table cells, speaker notes.</td><td>The de-facto pptx library; used at Microsoft, IBM — <a href="https://python-pptx.readthedocs.io/" style="color:var(--accent)" target="_blank">python-pptx.readthedocs.io</a></td></tr>
+            <tr><td><strong>openpyxl</strong></td><td><code>&gt;=3.1.0</code></td><td>Excel (.xlsx) extraction — reads formula cache values, never formulas themselves.</td><td>Reference Python library for .xlsx; used everywhere from finance to data eng — <a href="https://openpyxl.readthedocs.io/" style="color:var(--accent)" target="_blank">openpyxl.readthedocs.io</a></td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="margin:24px 0 10px;color:var(--accent);">Video pipeline — Python</h4>
+        <table>
+          <thead><tr><th>Package</th><th>Version</th><th>Purpose</th><th>Used by (proof)</th></tr></thead>
+          <tbody>
+            <tr><td><strong>yt-dlp</strong></td><td><code>&gt;=2024.04.09</code></td><td>Downloads YouTube audio stream for the YouTube ingestion endpoint.</td><td>Active fork of youtube-dl; bundled in Plex, Jellyfin, Tubi-style apps; ~150k GitHub stars — <a href="https://github.com/yt-dlp/yt-dlp" style="color:var(--accent)" target="_blank">github.com/yt-dlp/yt-dlp</a></td></tr>
+            <tr><td><strong>scenedetect[opencv]</strong></td><td><code>&gt;=0.6.4</code></td><td>Detects scene-change boundaries in video — used to bias frame extraction toward high-information moments.</td><td>Used in video-tech (Twitch, Plex), media-research tools, and ad-tech for shot detection — <a href="https://www.scenedetect.com/" style="color:var(--accent)" target="_blank">scenedetect.com</a></td></tr>
+            <tr><td><strong>pytesseract</strong></td><td><code>&gt;=0.3.10</code></td><td>Python wrapper around the Tesseract OCR binary — extracts on-screen text from sampled frames.</td><td>Google's Tesseract is the de-facto open-source OCR engine; pytesseract is the standard Python binding — <a href="https://github.com/madmaze/pytesseract" style="color:var(--accent)" target="_blank">github.com/madmaze/pytesseract</a></td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="margin:24px 0 10px;color:var(--accent);">System binaries (in Dockerfile, not pip)</h4>
+        <table>
+          <thead><tr><th>Binary</th><th>Purpose</th><th>Installed via</th></tr></thead>
+          <tbody>
+            <tr><td><strong>ffmpeg</strong></td><td>Audio extraction from video, audio re-encoding (opus for Whisper upload), frame extraction at targeted timestamps. Called via <code>subprocess</code> from <code>backend/knowledge/video/audio.py</code> and <code>frames.py</code>.</td><td><code>apt-get install ffmpeg</code> in <code>infra/docker/api.Dockerfile</code>. The Swiss-army knife of video processing — every video service on Earth ships with it.</td></tr>
+            <tr><td><strong>tesseract-ocr</strong></td><td>Image OCR engine — invoked by pytesseract. Reads text from on-screen captures (slides, UI overlays).</td><td><code>apt-get install tesseract-ocr</code>. Original Google project, donated to open source in 2005. Backbone of OCR in production at countless companies.</td></tr>
+            <tr><td><strong>libgl1 / libglib2.0-0</strong></td><td>Runtime shared libraries required by opencv-python for video frame decoding.</td><td><code>apt-get install libgl1 libglib2.0-0</code>. Standard OpenCV requirements on Debian/Ubuntu base images.</td></tr>
           </tbody>
         </table>
 
@@ -813,8 +912,152 @@
         </div>
       </section>
 
+      <!-- ========= 15. KNOWLEDGE BASE & RAG ========= -->
+      <section id="knowledge-base">
+        <h3>15. Knowledge Base &amp; RAG — deep dive</h3>
+        <p class="lead">A self-contained subsystem that gives every AI call grounding in user-uploaded documents. Lives in <code>backend/knowledge/</code> behind a single facade (<code>KnowledgeService</code>) and a separate Postgres + pgvector container so it can never destabilize the main email DB.</p>
+
+        <div class="grid-3">
+          <div class="card accent">
+            <h4>Pipeline at a glance</h4>
+            <ol style="padding-left:18px;">
+              <li>Upload — multipart POST or YouTube URL</li>
+              <li>Stage bytes to disk (worker reads from there)</li>
+              <li>Extract text (per file type) → chunker (tiktoken ~400 tok / 50 overlap)</li>
+              <li>Embed with OpenAI <code>text-embedding-3-small</code> + metadata prefix</li>
+              <li>Persist chunks + Claude Haiku metadata</li>
+              <li><strong>AWAITING_REVIEW</strong> — wait for human approval</li>
+              <li>User saves → status flips to <strong>READY</strong> → corpus-visible to RAG</li>
+            </ol>
+          </div>
+          <div class="card green">
+            <h4>Retrieval flow per draft / analysis</h4>
+            <ol style="padding-left:18px;">
+              <li>Embed query text (thread subject + body + user instructions)</li>
+              <li>pgvector top-K cosine search filtered on <code>status='ready'</code></li>
+              <li>Format <code>PRODUCT CONTEXT</code> block (chunk content + provenance)</li>
+              <li>Inject into AI prompt with strict-grounding + ambiguity guardrails</li>
+              <li>Persist retrieved chunks as <code>kb_sources</code> on the draft (audit trail)</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h4>Module layout</h4>
+            <ul>
+              <li><code>backend/knowledge/database.py</code> — separate engine</li>
+              <li><code>backend/knowledge/models/</code> — own Base + chunk + document</li>
+              <li><code>backend/knowledge/migrations/</code> — own Alembic chain</li>
+              <li><code>backend/knowledge/extractors/</code> — text-type extractors</li>
+              <li><code>backend/knowledge/video/</code> — video pipeline (see § 16)</li>
+              <li><code>backend/knowledge/services/</code> — ingestion, retrieval, embedding, chunker, metadata</li>
+              <li><code>backend/knowledge/repositories/</code> — document + chunk repos</li>
+            </ul>
+          </div>
+        </div>
+
+        <h4 style="margin-top:22px;">Per-document &amp; per-chunk affordances</h4>
+        <table>
+          <thead><tr><th>Affordance</th><th>What it does</th><th>Surface</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Metadata edit</strong></td><td>Override title, product, category, description that Haiku auto-extracted. Stored on <code>kb_documents</code>. Affects the prefix in every chunk's embedding input.</td><td>Review modal, left column.</td></tr>
+            <tr><td><strong>Search aliases</strong></td><td>Comma-separated synonyms / customer terms. Saving triggers an automatic re-embedding pass over every chunk in the doc so new terms take effect immediately.</td><td>Review modal, left column.</td></tr>
+            <tr><td><strong>Per-chunk edit</strong></td><td>Rewrite a chunk's content. The backend recomputes <code>token_count</code> via tiktoken and re-embeds via OpenAI in a single transaction — text and embedding always change together.</td><td>Chunk Explorer in review modal.</td></tr>
+            <tr><td><strong>Per-chunk delete</strong></td><td>Drop one chunk and decrement <code>kb_documents.chunk_count</code>. Two-tap confirmation to prevent accidents.</td><td>Chunk Explorer in review modal.</td></tr>
+            <tr><td><strong>Full-doc delete</strong></td><td>Cascade FK on <code>kb_chunks.document_id</code> takes care of the chunks; the document row is removed.</td><td>Doc list, Technical Info page.</td></tr>
+            <tr><td><strong>Re-review</strong></td><td>A doc in <code>READY</code> state can be opened again and re-saved; metadata edits propagate to the corpus.</td><td>"Edit" button next to ready docs.</td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="margin-top:22px;">Guardrails baked into the prompts</h4>
+        <div class="grid-2">
+          <div class="card warn">
+            <h4>Strict-grounding (no-context)</h4>
+            <p>When retrieval returns nothing, the prompt receives an explicit instruction not to invent product specs, model numbers, or technical values. The AI must acknowledge it doesn't have the doc and ask the sender for the model or spec sheet. Stops the "100 mph windload" hallucination scenario.</p>
+          </div>
+          <div class="card warn">
+            <h4>Ambiguity guard</h4>
+            <p>When retrieval returns chunks about multiple products and the sender hasn't named one, the prompt instructs the AI to ask which model rather than picking the first match. Stops the "answers about FXMP2X15 when the customer asked about FXMP3X15" scenario.</p>
+          </div>
+        </div>
+
+        <div class="note info" style="margin-top:14px;">
+          <strong>Threshold philosophy.</strong> The default <code>KB_SIMILARITY_THRESHOLD</code> is <code>0.0</code> — every top-K chunk is surfaced to both the AI and the user. The user (reading the Sources panel) is the actual relevance judge, with tier-coloured badges (strong / moderate / weak) for quick scanning. A pre-emptive threshold would hide information from a human-in-the-loop tool, defeating the audit trail.
+        </div>
+      </section>
+
+      <!-- ========= 16. VIDEO PIPELINE ========= -->
+      <section id="video-pipeline">
+        <h3>16. Video Ingestion Pipeline</h3>
+        <p class="lead">Local video files (mp4 / mov / webm / mkv / m4v, ≤ 500 MB) and YouTube URLs feed into the same downstream RAG pipeline as PDFs — but the upstream work is very different. Lives in <code>backend/knowledge/video/</code> as a separate sub-package so its heavy deps stay isolated.</p>
+
+        <div class="grid-3">
+          <div class="card accent">
+            <h4>Stage 1 — audio extraction</h4>
+            <p><code>audio.py</code>: ffmpeg subprocess converts video → mono PCM-16 WAV at 16 kHz. Hard 10-minute timeout per call. ffprobe returns the video duration in parallel for downstream frame planning.</p>
+          </div>
+          <div class="card accent">
+            <h4>Stage 2 — transcription</h4>
+            <p><code>transcription.py</code>: OpenAI Whisper API (<code>verbose_json</code>) returns per-segment timestamps. WAV over the 24 MB API cap is auto-recompressed to ogg/opus 32 kbps via ffmpeg. Cost: $0.006/min.</p>
+          </div>
+          <div class="card accent">
+            <h4>Stage 3 — scene detection</h4>
+            <p><code>frames.py</code>: scenedetect <code>ContentDetector(threshold=27)</code> identifies scene-change timestamps. Falls back to empty list silently when scenedetect isn't installed — pipeline degrades gracefully.</p>
+          </div>
+          <div class="card accent">
+            <h4>Stage 4 — frame selection</h4>
+            <p>Combine three sources: baseline every <code>KB_VIDEO_FRAME_INTERVAL_SEC</code> (10), scene-change timestamps, and transcript-referenced timestamps (phrases like "as you can see", "click here"). Deduplicate within 1.5 s windows, prefer highest-information reasons.</p>
+          </div>
+          <div class="card accent">
+            <h4>Stage 5 — frame extraction</h4>
+            <p>ffmpeg single-frame extract per selection (<code>-ss &lt;t&gt; -frames:v 1 -q:v 4</code>). Outputs JPEGs in a temp dir. Each frame carries its <code>reason</code> ("baseline" / "scene_change" / "transcript_ref") for diagnostics.</p>
+          </div>
+          <div class="card accent">
+            <h4>Stage 6 — OCR</h4>
+            <p>pytesseract reads text from each extracted frame. <code>is_text_heavy</code> heuristic (≥ 40 non-whitespace chars) decides whether to keep the OCR output. Failures are logged and skipped — OCR is enrichment, never a hard requirement.</p>
+          </div>
+        </div>
+
+        <h4 style="margin-top:22px;">Stage 7 — document assembly</h4>
+        <p>The orchestrator interleaves transcript segments and OCR snippets in a single timestamp-ordered timeline. Each line is prefixed with <code>[HH:MM:SS]</code>. OCR contributions get an explicit <code>[On-screen text]</code> marker so the embedding model can distinguish spoken content from written content. The resulting markdown-flavored text flows through the same chunker / embedder / metadata extractor as a PDF — no video-specific code paths past this point.</p>
+
+        <h4 style="margin-top:22px;">YouTube path</h4>
+        <p><code>youtube.py</code>: <code>yt-dlp</code> downloads the audio-only stream into a temp dir, names the file by video ID (filesystem-safe). The orchestrator then runs stages 2 + 7 only (no video frames available without re-downloading the video stream; we deliberately skip that to keep YouTube ingestion fast and cheap). The <code>source_url</code> column on <code>kb_documents</code> records the original URL for provenance.</p>
+
+        <div class="note info" style="margin-top:14px;">
+          <strong>What's deferred to v2.</strong> OpenAI Vision API analysis of key frames (visual reasoning beyond OCR), recursive summarization for long-form content (compressing intermediate transcripts to fit token budgets), and the structured 7-section output specified in the original brief. The current pipeline is audio-dominant with visual OCR as a supporting signal — covers 80%+ of typical product demos, tutorials, and walkthroughs at a fraction of the cost.
+        </div>
+      </section>
+
+      <!-- ========= 17. DRAFT ATTRIBUTION ========= -->
+      <section id="draft-attribution">
+        <h3>17. Draft Source Attribution</h3>
+        <p class="lead">Every generated draft is rendered with a visible audit trail of which Knowledge Base chunks the AI saw at generation time. The empty case is rendered as loudly as the populated case — silent "no sources" is the failure mode that hides the worst hallucinations.</p>
+
+        <div class="grid-2">
+          <div class="card green">
+            <h4>How it's persisted</h4>
+            <p><code>DraftService.generate_draft</code> calls <code>_build_kb_context</code>, which returns both the formatted <code>PRODUCT CONTEXT</code> block (for the prompt) and the raw <code>list[KbChunkMatch]</code> (for the audit trail) — same retrieval call, two consumers, no possibility of drift. After the provider returns, the matches are converted to <code>KbDraftSource</code> objects (with truncated content previews) and JSON-serialized into <code>drafts.kb_sources_json</code>. Provided by migration <code>0012</code>; column defaults to empty string so pre-feature drafts cleanly read as zero sources.</p>
+          </div>
+          <div class="card green">
+            <h4>How it's displayed</h4>
+            <p>The same <code>DraftKbSourcesPanel</code> component is rendered in two places: inside the draft modal (sources expanded by default — generation-time review), and below the saved draft on the thread page (sources collapsed — passive audit). Each chunk row shows: document title (with product name when distinct), chunk index, similarity %, tier-coloured badge (strong / moderate / weak). Clicking expands to the exact text the AI saw — preserved as a snapshot, so editing the underlying chunk later doesn't rewrite past audit trails.</p>
+          </div>
+        </div>
+
+        <h4 style="margin-top:22px;">The empty state</h4>
+        <p>When <code>kb_sources</code> is empty, the panel renders a tinted-orange warning rather than hiding. It enumerates the three possible information sources the AI could have used and labels each:</p>
+        <ul>
+          <li><strong>Knowledge base:</strong> not used. Either the corpus had nothing matching or the doc wasn't <code>READY</code>.</li>
+          <li><strong>Web search:</strong> never used. The disclaimer is explicit because users frequently assume LLM-powered tools must be searching the web. They aren't.</li>
+          <li><strong>Training knowledge:</strong> what the AI actually used. Generic information from when the model was trained — product specs may be wrong; verify before sending.</li>
+        </ul>
+
+        <div class="note danger" style="margin-top:14px;">
+          <strong>Why this matters.</strong> The most dangerous failure mode in an AI-grounded tool is a draft that <em>looks</em> grounded but isn't — confidently quoting a number that came from the model's training data rather than the user's documents. Without an explicit attribution panel, users have no way to spot this. With one, "no sources" becomes a visible warning the user can act on (re-upload doc, lower threshold, regenerate). Confidence + wrongness is the worst possible combination; attribution turns it into modesty + verifiability.
+        </div>
+      </section>
+
       <footer>
-        Inter-Email V3 — Architecture &amp; senior-dev handoff document &amp; feature inventory · Updated May 2026
+        Inter-Email V3 — Architecture &amp; senior-dev handoff document &amp; feature inventory · Updated with Knowledge Base + RAG + Video pipeline · May 2026
       </footer>
     </main>
   </div>

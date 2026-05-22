@@ -13,6 +13,7 @@ from api.app.routers import (
     auth,
     contacts,
     drafts,
+    email_accounts,
     gmail,
     health,
     knowledge,
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(threads.router, prefix="/api/v1", tags=["threads"])
     app.include_router(review.router, prefix="/api/v1", tags=["review"])
     app.include_router(drafts.router, prefix="/api/v1", tags=["drafts"])
+    app.include_router(email_accounts.router, prefix="/api/v1", tags=["email-accounts"])
     app.include_router(gmail.router, prefix="/api/v1", tags=["gmail"])
     app.include_router(settings_router.router, prefix="/api/v1", tags=["settings"])
     app.include_router(contacts.router, prefix="/api/v1", tags=["contacts"])

@@ -667,6 +667,16 @@ export function useUploadKbDocumentMutation() {
   });
 }
 
+export function useIngestYouTubeMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (url: string) => apiClient.ingestYouTubeUrl(url),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: KB_DOCUMENTS_KEY });
+    },
+  });
+}
+
 export function useFinalizeKbDocumentMutation() {
   const queryClient = useQueryClient();
   return useMutation({

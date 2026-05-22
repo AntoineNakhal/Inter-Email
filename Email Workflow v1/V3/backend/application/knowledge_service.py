@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 from backend.core.config import AppSettings
@@ -30,6 +31,7 @@ from backend.knowledge.domain.document import (
 )
 from backend.knowledge.extractors import (
     SUPPORTED_FILE_TYPES,
+    VIDEO_FILE_TYPE,
     file_type_for_filename,
 )
 from backend.knowledge.repositories.chunk_repository import KbChunkRepository
@@ -39,6 +41,7 @@ from backend.knowledge.services.embedding_service import (
     EmbeddingError,
     EmbeddingService,
 )
+from backend.knowledge.services.ingestion_service import build_embedding_input
 
 
 logger = logging.getLogger(__name__)
@@ -155,28 +158,33 @@ class KnowledgeService:
                 session.commit()
             return deleted
 
-    def create_pending_document(
+    def create_pending_document_from_path(
         self,
         *,
         filename: str,
-        content: bytes,
+        file_path: Path,
+        source_url: str | None = None,
     ) -> KbDocument:
-        """Validate the file, write a PENDING row, return its ID.
+        """Streaming-friendly variant — the file is already on disk.
 
-        The actual ingestion (chunk + embed + metadata) is deliberately
-        NOT done here — that's the worker's job. Splitting the two means
-        the HTTP request returns in <1s even for 50-page PDFs.
+        Used by the upload route to skip the in-memory buffer step that
+        used to OOM on 1 GB+ video uploads. We get the size from the
+        filesystem rather than from `len(bytes)`, and we never read the
+        file contents here — that's the worker's job.
+
+        The caller is responsible for placing the file at its final
+        staging path; we just validate type, size, and write the row.
         """
         self._require_enabled()
 
         if not filename:
             raise KnowledgeServiceError("Filename is required.")
-        if not content:
+        if not file_path.exists():
+            raise KnowledgeServiceError(f"Staged file is missing: {file_path}")
+
+        size_bytes = file_path.stat().st_size
+        if size_bytes <= 0:
             raise KnowledgeServiceError("Uploaded file is empty.")
-        if len(content) > self.settings.kb_max_upload_bytes:
-            raise KnowledgeServiceError(
-                f"File exceeds the {self.settings.kb_max_upload_bytes}-byte upload limit."
-            )
 
         file_type = file_type_for_filename(filename)
         if file_type is None:
@@ -185,11 +193,76 @@ class KnowledgeService:
                 f"Supported types: {', '.join(SUPPORTED_FILE_TYPES)}."
             )
 
+        max_bytes = (
+            self.settings.kb_video_max_upload_bytes
+            if file_type == VIDEO_FILE_TYPE
+            else self.settings.kb_max_upload_bytes
+        )
+        if size_bytes > max_bytes:
+            raise KnowledgeServiceError(
+                f"File exceeds the {max_bytes}-byte upload limit for "
+                f"{file_type} files."
+            )
+
+        with self._kb_session() as session:
+            document = KbDocumentRepository(session).create_pending(
+                filename=filename,
+                file_type=file_type,
+                size_bytes=size_bytes,
+                source_url=source_url,
+            )
+            session.commit()
+            return document
+
+    def create_pending_document(
+        self,
+        *,
+        filename: str,
+        content: bytes,
+        source_url: str | None = None,
+    ) -> KbDocument:
+        """Validate the file, write a PENDING row, return its ID.
+
+        Two size ceilings apply depending on file type:
+          * Video files: `kb_video_max_upload_bytes` (default 500 MB).
+          * Text-based files: `kb_max_upload_bytes` (default 100 MB).
+
+        The actual ingestion (chunk + embed + metadata, or video pipeline
+        for videos) is deliberately NOT done here — that's the worker's
+        job. Splitting the two means the HTTP request returns quickly.
+        """
+        self._require_enabled()
+
+        if not filename:
+            raise KnowledgeServiceError("Filename is required.")
+        if not content:
+            raise KnowledgeServiceError("Uploaded file is empty.")
+
+        file_type = file_type_for_filename(filename)
+        if file_type is None:
+            raise KnowledgeServiceError(
+                f"Unsupported file type for '{filename}'. "
+                f"Supported types: {', '.join(SUPPORTED_FILE_TYPES)}."
+            )
+
+        # Pick the right ceiling for this file type.
+        max_bytes = (
+            self.settings.kb_video_max_upload_bytes
+            if file_type == VIDEO_FILE_TYPE
+            else self.settings.kb_max_upload_bytes
+        )
+        if len(content) > max_bytes:
+            raise KnowledgeServiceError(
+                f"File exceeds the {max_bytes}-byte upload limit for "
+                f"{file_type} files."
+            )
+
         with self._kb_session() as session:
             document = KbDocumentRepository(session).create_pending(
                 filename=filename,
                 file_type=file_type,
                 size_bytes=len(content),
+                source_url=source_url,
             )
             session.commit()
             return document
@@ -206,6 +279,11 @@ class KnowledgeService:
         PROCESSING) — the user can only approve metadata that's actually
         been extracted. FAILED docs likewise can't be finalized; the user
         should re-upload instead.
+
+        If the user's edit changes `search_aliases`, we re-embed every
+        chunk of this document so the new aliases take effect at
+        retrieval time. The chunks' textual content is untouched — only
+        the embedding vectors are recomputed.
         """
         self._require_enabled()
         with self._kb_session() as session:
@@ -223,9 +301,132 @@ class KnowledgeService:
                     f"Document `{document_id}` cannot be finalized while in "
                     f"status {current.status.value!r}."
                 )
-            updated = repo.finalize(document_id, metadata=metadata)
+            updated, aliases_changed = repo.finalize(
+                document_id, metadata=metadata
+            )
             session.commit()
+            if aliases_changed:
+                self._reembed_document_chunks(updated)
             return updated
+
+    def _reembed_document_chunks(self, document: KbDocument) -> None:
+        """Recompute every chunk's embedding using the current doc
+        metadata (title / product / aliases).
+
+        Called from finalize_document only when aliases actually
+        changed — otherwise it's wasted API cost. One bulk embedding
+        call covers the whole doc; cost scales linearly with chunk
+        count but is dominated by API latency, not money.
+        """
+        logger.info(
+            "Re-embedding chunks for document %s after alias change.",
+            document.id,
+        )
+        embedding_service = EmbeddingService(self.settings)
+        with self._kb_session() as session:
+            chunk_repo = KbChunkRepository(session)
+            chunks = chunk_repo.list_for_document(document.id)
+            if not chunks:
+                return
+            inputs = [
+                build_embedding_input(
+                    chunk_content=chunk.content,
+                    doc_title=document.title,
+                    doc_product_name=document.product_name,
+                    doc_search_aliases=document.search_aliases,
+                )
+                for chunk in chunks
+            ]
+            try:
+                new_embeddings = embedding_service.embed_many(inputs)
+            except EmbeddingError as exc:
+                # Don't roll back the doc's metadata save — aliases are
+                # still useful in the UI even if re-embed fails. Surface
+                # the error so the user can retry by saving again.
+                raise KnowledgeServiceError(
+                    f"Aliases saved, but re-embedding failed: {exc}"
+                ) from exc
+            for chunk, embedding in zip(chunks, new_embeddings):
+                chunk_repo.update_content(
+                    chunk.id,
+                    content=chunk.content,
+                    token_count=chunk.token_count,
+                    embedding=embedding,
+                )
+            session.commit()
+
+    def create_youtube_document(self, *, url: str) -> tuple[KbDocument, str]:
+        """Stage a YouTube URL for ingestion.
+
+        Downloads the audio stream synchronously (yt-dlp is fast enough
+        for typical lengths that we don't need to background it before
+        even creating the doc row). The downloaded audio path is
+        returned alongside the new KbDocument so the caller can stash
+        it where the worker will read it later.
+
+        Note: the audio file ends up named per yt-dlp's template — e.g.
+        `<video_id>.webm`. The caller is responsible for relocating it
+        to the staging directory and triggering the ingestion job.
+        """
+        self._require_enabled()
+
+        from backend.knowledge.video import (  # local import to avoid pulling
+            YouTubeDownloadError,             # yt-dlp on every cold start
+            download_youtube_audio,
+        )
+
+        if not url or not url.strip():
+            raise KnowledgeServiceError("YouTube URL is required.")
+        cleaned_url = url.strip()
+        if not (
+            cleaned_url.startswith("http://") or cleaned_url.startswith("https://")
+        ):
+            raise KnowledgeServiceError("URL must start with http:// or https://.")
+
+        # Download into the cache dir's youtube subfolder. We don't put
+        # it in the kb_uploads staging dir yet because we want to record
+        # the doc row first (so the user sees something processing) and
+        # only THEN move the audio file to the staging location.
+        download_dir = Path(self.settings.cache_dir) / "youtube_downloads"
+        try:
+            # Pass the (optional) cookies file path so yt-dlp can
+            # bypass YouTube's bot-detection challenge when needed.
+            result = download_youtube_audio(
+                cleaned_url,
+                download_dir,
+                cookies_file=self.settings.kb_youtube_cookies_file or None,
+            )
+        except YouTubeDownloadError as exc:
+            raise KnowledgeServiceError(
+                f"Failed to download YouTube audio: {exc}"
+            ) from exc
+
+        size_bytes = result.audio_path.stat().st_size if result.audio_path.exists() else 0
+        if size_bytes > self.settings.kb_video_max_upload_bytes:
+            # Clean up the oversized file so we don't leak disk space.
+            try:
+                result.audio_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise KnowledgeServiceError(
+                f"YouTube audio is {size_bytes} bytes, exceeding the "
+                f"{self.settings.kb_video_max_upload_bytes}-byte limit. "
+                f"This usually means the video is very long."
+            )
+
+        with self._kb_session() as session:
+            document = KbDocumentRepository(session).create_pending(
+                # Use the yt-dlp-resolved title as the filename so the
+                # UI shows something meaningful. The audio file on disk
+                # has a different name (the YouTube video ID).
+                filename=f"{result.title}.{result.audio_path.suffix.lstrip('.') or 'webm'}",
+                file_type=VIDEO_FILE_TYPE,
+                size_bytes=size_bytes,
+                title=result.title,
+                source_url=result.source_url,
+            )
+            session.commit()
+            return document, str(result.audio_path)
 
     def delete_document(self, document_id: int) -> bool:
         self._require_enabled()

@@ -1,3 +1,4 @@
+import { KbDiagnosticPanel } from "../features/knowledge/KbDiagnosticPanel";
 import { KnowledgeBaseSection } from "../features/knowledge/KnowledgeBaseSection";
 
 /**
@@ -30,6 +31,8 @@ export function TechnicalInfoPage() {
 
       <div className="sp-body">
         <KnowledgeBaseSection />
+        <div className="sp-divider" />
+        <KbDiagnosticPanel />
       </div>
     </section>
   );

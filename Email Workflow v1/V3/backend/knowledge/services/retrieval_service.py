@@ -56,6 +56,7 @@ class RagRetrievalService:
         """
         cleaned = (text or "").strip()
         if not cleaned:
+            logger.info("RAG: empty query, skipping retrieval.")
             return []
 
         try:
@@ -66,11 +67,38 @@ class RagRetrievalService:
             )
             return []
 
-        return self.chunk_repository.search_similar(
+        # We pull the unfiltered top-K so we can log what was *close to*
+        # the threshold, not just what made it past. The actual filtering
+        # below applies the threshold for the returned value. This costs
+        # nothing extra at the DB level — same query, just no early-break.
+        raw = self.chunk_repository.search_similar(
             query_embedding=query_embedding,
             top_k=self.settings.kb_top_k,
-            similarity_threshold=self.settings.kb_similarity_threshold,
+            similarity_threshold=0.0,  # unfiltered for visibility
         )
+        kept = [m for m in raw if m.similarity >= self.settings.kb_similarity_threshold]
+
+        if not raw:
+            logger.warning(
+                "RAG: 0 results from KB. Either the corpus is empty or "
+                "every document is still in awaiting_review (only 'ready' "
+                "docs are searched)."
+            )
+        else:
+            top_scores = ", ".join(
+                f"{m.similarity:.3f} ({m.document_title}#{m.chunk.chunk_index})"
+                for m in raw[:5]
+            )
+            logger.info(
+                "RAG: %s candidates above 0.0, %s kept above threshold "
+                "%.2f. Top scores: %s",
+                len(raw),
+                len(kept),
+                self.settings.kb_similarity_threshold,
+                top_scores,
+            )
+
+        return kept
 
     @staticmethod
     def build_context_block(matches: list[KbChunkMatch]) -> str:

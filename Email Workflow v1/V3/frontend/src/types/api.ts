@@ -100,6 +100,16 @@ export type ReviewDecision = {
   updated_at: string | null;
 };
 
+export type KbDraftSource = {
+  document_id: number;
+  document_title: string;
+  product_name: string | null;
+  chunk_id: number;
+  chunk_index: number;
+  similarity: number;
+  content_preview: string;
+};
+
 export type DraftDocument = {
   subject: string;
   body: string;
@@ -107,6 +117,7 @@ export type DraftDocument = {
   model_name: string;
   used_fallback: boolean;
   created_at: string | null;
+  kb_sources: KbDraftSource[];
 };
 
 export type EmailThread = {
@@ -233,6 +244,7 @@ export type KbFinalizeRequest = {
   product_name: string | null;
   category: string | null;
   description: string | null;
+  search_aliases: string;
 };
 
 export type KbChunkSummary = {
@@ -251,6 +263,31 @@ export type KbChunkUpdateRequest = {
   content: string;
 };
 
+export type KbDiagnoseMatch = {
+  chunk_id: number;
+  chunk_index: number;
+  document_id: number;
+  document_title: string;
+  similarity: number;
+  preview: string;
+};
+
+export type KbDiagnoseResponse = {
+  kb_enabled: boolean;
+  kb_session_open: boolean;
+  documents_by_status: Record<string, number>;
+  documents_ready: number;
+  chunks_total: number;
+  query: string;
+  embedding_succeeded: boolean;
+  embedding_dim: number;
+  threshold: number;
+  top_k: number;
+  unfiltered_matches: KbDiagnoseMatch[];
+  matches_above_threshold: KbDiagnoseMatch[];
+  verdict: string;
+};
+
 export type KbDocument = {
   id: number;
   filename: string;
@@ -260,11 +297,19 @@ export type KbDocument = {
   product_name: string | null;
   category: string | null;
   description: string | null;
+  search_aliases: string;
+  source_url: string | null;
   status: KbIngestionStatus;
+  /** Current ingestion stage while status=processing. Null otherwise. */
+  progress_step: "extracting" | "chunking" | "embedding" | "persisting" | "metadata" | null;
   error_message: string | null;
   chunk_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type KbYouTubeIngestRequest = {
+  url: string;
 };
 
 export type KbDocumentListResponse = {

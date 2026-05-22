@@ -119,6 +119,17 @@ class AppSettings(BaseModel):
         "",
         alias="GMAIL_PUBSUB_VERIFICATION_TOKEN",
     )
+    # ------------------------------------------------------------------
+    # Outlook / Microsoft 365 OAuth
+    # ------------------------------------------------------------------
+    # Register an app at https://portal.azure.com → App registrations.
+    # Set redirect URI to <FRONTEND_APP_URL>/api/v1/email-accounts/outlook/callback
+    # and grant Mail.Read + Mail.Send + User.Read delegated permissions.
+    outlook_client_id: str = Field("", alias="OUTLOOK_CLIENT_ID")
+    outlook_client_secret: str = Field("", alias="OUTLOOK_CLIENT_SECRET")
+    # "common" = personal @outlook.com + any work/school 365 tenant.
+    outlook_tenant_id: str = Field("common", alias="OUTLOOK_TENANT_ID")
+
     auth_allowed_emails: str = Field("", alias="AUTH_ALLOWED_EMAILS")
     auth_admin_emails: str = Field("", alias="AUTH_ADMIN_EMAILS")
     auth_jwt_secret: str = Field("", alias="AUTH_JWT_SECRET")
@@ -151,10 +162,22 @@ class AppSettings(BaseModel):
         "text-embedding-3-small",
         alias="KB_EMBEDDING_MODEL",
     )
-    # Cosine-similarity floor. Below this, a chunk is considered too
-    # off-topic to inject into the prompt. Tune empirically per-corpus.
+    # Cosine-similarity floor for the retrieval pipeline.
+    #
+    # PHILOSOPHY: Default is 0.0 — we surface the top-K chunks to both
+    # the AI and the user no matter what. The user reviewing the draft
+    # is the actual relevance judge, not an arbitrary numeric threshold.
+    # A threshold here was hiding moderately-relevant chunks from view,
+    # which is the opposite of what an audit-trail panel is supposed to
+    # do.
+    #
+    # Set to a positive value (e.g. 0.30) only if you're seeing pure
+    # noise in your sources panel — that means your top-K is being
+    # padded with junk and there isn't enough genuinely relevant content
+    # to fill it. In that case you have a corpus problem, not a
+    # threshold problem.
     kb_similarity_threshold: float = Field(
-        0.75,
+        0.0,
         alias="KB_SIMILARITY_THRESHOLD",
     )
     # Max chunks returned by the retriever. 5 is enough to ground an
@@ -165,6 +188,35 @@ class AppSettings(BaseModel):
     # multi-hundred-page reference manuals. Hard ceiling exists so one
     # bad upload (a 5 GB scan, a runaway script) can't OOM the worker.
     kb_max_upload_bytes: int = Field(100 * 1024 * 1024, alias="KB_MAX_UPLOAD_BYTES")
+    # Separate, larger ceiling for video uploads. 2 GB covers roughly
+    # 3 hours of 1080p H.264 — enough for a typical training video or
+    # webinar. Raise via env var for longer content; lower if your
+    # storage volume is small. The upload route streams the file to
+    # disk in 1 MB chunks (never buffers the whole thing in memory),
+    # so the only real constraints here are disk space and Whisper API
+    # cost ($0.006/min ≈ $1.08 for a 3-hour video).
+    kb_video_max_upload_bytes: int = Field(
+        2 * 1024 * 1024 * 1024, alias="KB_VIDEO_MAX_UPLOAD_BYTES"
+    )
+    # Whisper model used for transcription via OpenAI's API. Only "whisper-1"
+    # is currently supported by OpenAI but kept configurable so swapping to
+    # a future model is one env var away.
+    kb_whisper_model: str = Field("whisper-1", alias="KB_WHISPER_MODEL")
+    # Frame sampling baseline (seconds). The video extractor samples one
+    # frame at this interval, then adds extra frames at scene changes and
+    # at timestamps where the transcript references visuals.
+    kb_video_frame_interval_sec: int = Field(
+        10, alias="KB_VIDEO_FRAME_INTERVAL_SEC"
+    )
+    # Path to a Netscape-format cookies file used by yt-dlp when YouTube
+    # asks for sign-in-to-confirm-you're-not-a-bot. Leave empty to skip;
+    # we already try the android client first which usually succeeds.
+    # Export cookies via a browser extension (e.g. "Get cookies.txt
+    # LOCALLY" for Chrome) while signed in to YouTube, then mount the
+    # file into the container and point this env var at it. See § 16.
+    kb_youtube_cookies_file: str = Field(
+        "", alias="KB_YOUTUBE_COOKIES_FILE"
+    )
 
     app_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
 
@@ -396,6 +448,9 @@ def get_settings() -> AppSettings:
         "GMAIL_PUBSUB_VERIFICATION_TOKEN": os.getenv(
             "GMAIL_PUBSUB_VERIFICATION_TOKEN", ""
         ),
+        "OUTLOOK_CLIENT_ID": os.getenv("OUTLOOK_CLIENT_ID", ""),
+        "OUTLOOK_CLIENT_SECRET": os.getenv("OUTLOOK_CLIENT_SECRET", ""),
+        "OUTLOOK_TENANT_ID": os.getenv("OUTLOOK_TENANT_ID", "common"),
         "AUTH_ALLOWED_EMAILS": os.getenv("AUTH_ALLOWED_EMAILS", ""),
         "AUTH_ADMIN_EMAILS": os.getenv("AUTH_ADMIN_EMAILS", ""),
         "AUTH_JWT_SECRET": os.getenv("AUTH_JWT_SECRET", ""),
@@ -409,12 +464,21 @@ def get_settings() -> AppSettings:
             "KB_EMBEDDING_MODEL",
             "text-embedding-3-small",
         ),
-        "KB_SIMILARITY_THRESHOLD": os.getenv("KB_SIMILARITY_THRESHOLD", "0.75"),
+        "KB_SIMILARITY_THRESHOLD": os.getenv("KB_SIMILARITY_THRESHOLD", "0.0"),
         "KB_TOP_K": os.getenv("KB_TOP_K", "5"),
         "KB_MAX_UPLOAD_BYTES": os.getenv(
             "KB_MAX_UPLOAD_BYTES",
             str(100 * 1024 * 1024),
         ),
+        "KB_VIDEO_MAX_UPLOAD_BYTES": os.getenv(
+            "KB_VIDEO_MAX_UPLOAD_BYTES",
+            str(2 * 1024 * 1024 * 1024),
+        ),
+        "KB_WHISPER_MODEL": os.getenv("KB_WHISPER_MODEL", "whisper-1"),
+        "KB_VIDEO_FRAME_INTERVAL_SEC": os.getenv(
+            "KB_VIDEO_FRAME_INTERVAL_SEC", "10"
+        ),
+        "KB_YOUTUBE_COOKIES_FILE": os.getenv("KB_YOUTUBE_COOKIES_FILE", ""),
     }
     return AppSettings.model_validate(raw_values)
 

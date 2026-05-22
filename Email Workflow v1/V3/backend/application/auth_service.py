@@ -1,4 +1,10 @@
-"""Google auth + JWT session workflow."""
+"""Email/password auth + JWT session workflow.
+
+Authentication (who you are) is now fully decoupled from email provider
+connections (what mailboxes you read). Users register with an email address
+and a password; they then connect Gmail / Outlook / iCloud / IMAP accounts
+separately through the email_account_service.
+"""
 
 from __future__ import annotations
 
@@ -6,48 +12,24 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import bcrypt as _bcrypt
+
 from backend.core.config import AppSettings
-from backend.core.crypto import decrypt_text, encrypt_text, hash_token
 from backend.core.jwt import decode_jwt, encode_jwt
+from backend.core.crypto import hash_token
 from backend.domain.user import AuthenticatedUser, UserRole
 from backend.persistence.repositories.user_repository import UserRepository
-from backend.providers.gmail.client import GmailReadonlyClient
 
 
-@dataclass(slots=True)
-class AuthFlowSession:
-    state: str
-    code_verifier: str
-    created_at: datetime
+def _hash_password(password: str) -> str:
+    return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
 
 
-class AuthFlowStateStore:
-    def __init__(self) -> None:
-        self._states: dict[str, AuthFlowSession] = {}
-
-    def create(self, code_verifier: str) -> str:
-        state = secrets.token_urlsafe(24)
-        self._states[state] = AuthFlowSession(
-            state=state,
-            code_verifier=code_verifier,
-            created_at=datetime.now(timezone.utc),
-        )
-        self._purge_expired()
-        return state
-
-    def consume(self, state: str) -> AuthFlowSession | None:
-        self._purge_expired()
-        return self._states.pop(state, None)
-
-    def _purge_expired(self) -> None:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
-        expired = [
-            key
-            for key, session in self._states.items()
-            if session.created_at < cutoff
-        ]
-        for key in expired:
-            self._states.pop(key, None)
+def _verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 
 @dataclass(slots=True)
@@ -63,82 +45,50 @@ class AuthService:
         *,
         settings: AppSettings,
         user_repository: UserRepository,
-        state_store: AuthFlowStateStore,
     ) -> None:
         self.settings = settings
         self.user_repository = user_repository
-        self.state_store = state_store
 
-    def build_login_url(self, redirect_uri: str) -> str:
-        gmail_client = GmailReadonlyClient(self.settings)
-        code_verifier = gmail_client.generate_code_verifier()
-        state = self.state_store.create(code_verifier)
-        return gmail_client.build_authorization_url(
-            redirect_uri=redirect_uri,
-            state=state,
-            code_verifier=code_verifier,
-        )
+    # ------------------------------------------------------------------ #
+    # Registration & login                                                 #
+    # ------------------------------------------------------------------ #
 
-    def finalize_google_login(
+    def register(
         self,
         *,
-        redirect_uri: str,
-        state: str,
-        code: str,
+        email: str,
+        password: str,
+        display_name: str,
     ) -> AuthSessionResult:
-        auth_session = self.state_store.consume(state)
-        if auth_session is None:
-            raise ValueError("The Google sign-in session expired. Start again.")
-
-        captured_credentials: dict[str, str] = {}
-        gmail_client = GmailReadonlyClient(
-            self.settings,
-            persist_credentials=lambda payload: captured_credentials.__setitem__(
-                "value",
-                payload,
-            ),
-        )
-        credentials_json = gmail_client.exchange_code_for_token(
-            redirect_uri=redirect_uri,
-            state=state,
-            code=code,
-            code_verifier=auth_session.code_verifier,
-        )
-        email = (gmail_client.get_profile_email() or "").strip().lower()
-        if not email:
-            raise RuntimeError("Google sign-in did not return an email address.")
-        if email not in self.settings.parsed_auth_allowed_emails:
-            raise PermissionError(f"{email} is not allowed to access this app.")
-
-        role = (
-            UserRole.ADMIN
-            if email in self.settings.parsed_auth_admin_emails
-            else UserRole.USER
-        )
-        encrypted_credentials = encrypt_text(
-            captured_credentials.get("value") or credentials_json,
-            self.settings.auth_token_encryption_key,
-        )
-        user = self.user_repository.upsert_google_user(
+        """Create a new account and return a live session."""
+        self._validate_password_strength(password)
+        role = self._role_for_email(email)
+        password_hash = _hash_password(password)
+        user = self.user_repository.create_user(
             email=email,
-            display_name=gmail_client.get_profile_name() or email.split("@")[0],
+            display_name=display_name,
             role=role,
-            google_subject=None,
-            gmail_token_encrypted=encrypted_credentials,
+            password_hash=password_hash,
         )
-        refresh_token = secrets.token_urlsafe(48)
-        self.user_repository.create_session(
-            user_id=user.id,
-            refresh_token_hash=hash_token(refresh_token),
-            expires_at=datetime.now(timezone.utc)
-            + timedelta(days=self.settings.auth_refresh_token_days),
-        )
+        return self._open_session(user)
+
+    def login(self, *, email: str, password: str) -> AuthSessionResult:
+        """Verify credentials and return a live session."""
+        model = self.user_repository.get_model_by_email(email)
+        # Verify against a dummy hash when user doesn't exist so timing is constant.
+        candidate_hash = model.password_hash if model else "$2b$12$invalidhashpaddinginvalidhashpaddinginvalidhashpadding00"
+        if not _verify_password(password, candidate_hash) or model is None:
+            raise ValueError("Invalid email or password.")
+        if not model.is_active:
+            raise PermissionError("This account has been deactivated.")
+        self.user_repository.update_last_login(model.id)
         self.user_repository.session.commit()
-        return AuthSessionResult(
-            user=user,
-            access_token=self._build_access_token(user),
-            refresh_token=refresh_token,
-        )
+        user = self.user_repository._to_domain(model)
+        return self._open_session(user)
+
+    # ------------------------------------------------------------------ #
+    # Session management                                                   #
+    # ------------------------------------------------------------------ #
 
     def refresh_access_token(self, refresh_token: str) -> AuthSessionResult:
         session_model = self.user_repository.get_session(hash_token(refresh_token))
@@ -149,7 +99,6 @@ class AuthService:
         user = self.user_repository.get_by_id(session_model.user_id)
         if user is None:
             raise ValueError("User no longer exists.")
-        self._ensure_user_allowed(user)
         self.user_repository.touch_session(session_model)
         self.user_repository.session.commit()
         return AuthSessionResult(
@@ -171,16 +120,25 @@ class AuthService:
         user = self.user_repository.get_by_id(user_id)
         if user is None:
             raise ValueError("User not found.")
-        self._ensure_user_allowed(user)
         return user
 
-    def decrypt_user_gmail_token(self, user: AuthenticatedUser) -> str:
-        model = self.user_repository.get_model_by_id(user.id)
-        if model is None or not model.gmail_token_encrypted:
-            raise ValueError("Google account is not connected for this user.")
-        return decrypt_text(
-            model.gmail_token_encrypted,
-            self.settings.auth_token_encryption_key,
+    # ------------------------------------------------------------------ #
+    # Internal helpers                                                     #
+    # ------------------------------------------------------------------ #
+
+    def _open_session(self, user: AuthenticatedUser) -> AuthSessionResult:
+        refresh_token = secrets.token_urlsafe(48)
+        self.user_repository.create_session(
+            user_id=user.id,
+            refresh_token_hash=hash_token(refresh_token),
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(days=self.settings.auth_refresh_token_days),
+        )
+        self.user_repository.session.commit()
+        return AuthSessionResult(
+            user=user,
+            access_token=self._build_access_token(user),
+            refresh_token=refresh_token,
         )
 
     def _build_access_token(self, user: AuthenticatedUser) -> str:
@@ -195,6 +153,14 @@ class AuthService:
             expires_in=timedelta(minutes=self.settings.auth_access_token_minutes),
         )
 
-    def _ensure_user_allowed(self, user: AuthenticatedUser) -> None:
-        if user.email not in self.settings.parsed_auth_allowed_emails:
-            raise PermissionError(f"{user.email} is no longer allowed.")
+    def _role_for_email(self, email: str) -> UserRole:
+        normalized = str(email or "").strip().lower()
+        admin_emails = self.settings.parsed_auth_admin_emails
+        if admin_emails and normalized in admin_emails:
+            return UserRole.ADMIN
+        return UserRole.USER
+
+    @staticmethod
+    def _validate_password_strength(password: str) -> None:
+        if len(password) < 8:
+            raise ValueError("Password must be at least 8 characters.")

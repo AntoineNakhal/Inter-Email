@@ -26,17 +26,30 @@ EXTRACTORS: dict[str, BaseExtractor] = {
     "md": PlainTextExtractor(),
 }
 
+# Extensions that route to the VIDEO pipeline instead of the text
+# extractors. Kept separate because video ingestion has a totally
+# different shape (async-ish, large files, needs a disk path, not just
+# bytes). The ingestion service branches on file_type to decide which
+# path to take.
+VIDEO_EXTENSIONS: frozenset[str] = frozenset({"mp4", "mov", "webm", "mkv", "m4v"})
+VIDEO_FILE_TYPE = "video"
+
 # Used by the upload router for client-friendly error messages.
-SUPPORTED_FILE_TYPES: tuple[str, ...] = tuple(EXTRACTORS.keys())
+# Includes "video" so the dropzone can advertise video support, even
+# though the registry above doesn't dispatch on it directly.
+SUPPORTED_FILE_TYPES: tuple[str, ...] = (*EXTRACTORS.keys(), VIDEO_FILE_TYPE)
 
 
 def file_type_for_filename(filename: str) -> str | None:
     """Resolve a canonical file_type from the filename's extension.
 
     Returns None for unsupported extensions so the caller can produce a
-    clean 400 error instead of crashing inside an extractor.
+    clean 400 error instead of crashing inside an extractor. Video
+    extensions all collapse to the single canonical type "video".
     """
     suffix = PurePosixPath(filename).suffix.lower().lstrip(".")
+    if suffix in VIDEO_EXTENSIONS:
+        return VIDEO_FILE_TYPE
     return suffix if suffix in EXTRACTORS else None
 
 

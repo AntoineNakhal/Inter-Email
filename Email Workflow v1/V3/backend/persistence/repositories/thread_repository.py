@@ -15,6 +15,7 @@ from backend.domain.thread import (
     AnalysisStatus,
     DraftDocument,
     EmailThread,
+    KbDraftSource,
     ReviewDecision,
     SeenState,
     ThreadAnalysis,
@@ -803,6 +804,31 @@ def _to_seen_state(model: ThreadStateModel | None) -> SeenState | None:
     )
 
 
+def _deserialize_kb_sources(raw: str | None) -> list[KbDraftSource]:
+    """Parse the JSON-encoded kb_sources_json column into domain objects.
+
+    Mirrors `draft_repository._deserialize_sources` — kept local so this
+    module has no cross-repository import dependency. Tolerant: returns []
+    on any parse error because sources are audit-trail enrichment, not
+    load-bearing draft data.
+    """
+    if not raw or not raw.strip():
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    sources: list[KbDraftSource] = []
+    for item in payload:
+        try:
+            sources.append(KbDraftSource.model_validate(item))
+        except Exception:
+            continue
+    return sources
+
+
 def _to_draft(model: DraftModel | None) -> DraftDocument | None:
     if model is None:
         return None
@@ -813,6 +839,7 @@ def _to_draft(model: DraftModel | None) -> DraftDocument | None:
         model_name=model.model_name,
         used_fallback=model.used_fallback,
         created_at=model.created_at,
+        kb_sources=_deserialize_kb_sources(model.kb_sources_json),
     )
 
 

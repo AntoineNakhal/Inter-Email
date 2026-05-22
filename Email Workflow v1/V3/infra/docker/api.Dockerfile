@@ -14,6 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxslt1-dev \
     libjpeg-dev \
     zlib1g-dev \
+    # Video pipeline binaries:
+    #   ffmpeg — audio extraction + frame extraction
+    #   tesseract-ocr — OCR on extracted frames
+    #   libgl1, libglib2.0-0 — opencv-python runtime deps
+    ffmpeg \
+    tesseract-ocr \
+    libgl1 \
+    libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY alembic.ini pyproject.toml README.md ./

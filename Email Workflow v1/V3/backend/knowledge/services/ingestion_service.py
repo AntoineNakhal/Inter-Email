@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from backend.core.config import AppSettings
 from backend.knowledge.domain.document import KbDocument, KbIngestionStatus
-from backend.knowledge.extractors import extract_text
+from backend.knowledge.extractors import VIDEO_FILE_TYPE, extract_text
+from backend.knowledge.models.document import KbDocumentModel
 from backend.knowledge.repositories.chunk_repository import KbChunkRepository
 from backend.knowledge.repositories.document_repository import KbDocumentRepository
 from backend.knowledge.services.chunker import TokenChunker
@@ -32,6 +34,40 @@ from backend.knowledge.services.metadata_service import (
     MetadataExtractionError,
     MetadataExtractionService,
 )
+from backend.knowledge.video import VideoIngestionError, VideoIngestionExtractor
+
+
+def build_embedding_input(
+    *,
+    chunk_content: str,
+    doc_title: str = "",
+    doc_product_name: str | None = None,
+    doc_search_aliases: str = "",
+) -> str:
+    """Compose the text that's actually sent to the embedding API.
+
+    We prefix every chunk with its parent document's title, product, and
+    user-provided aliases. This is the cheapest possible "metadata
+    fusion" technique: it makes a chunk retrievable by terms that appear
+    *anywhere* in the doc's metadata, even when those terms aren't in
+    the chunk's body. The chunk's `content` column stays untouched —
+    only the embedding sees the prefix.
+
+    Tradeoff: any change to a doc's title / product / aliases requires
+    re-embedding every chunk for that doc. We pay this cost on finalize
+    when aliases change. Cost per re-embed: $0.02 / 1M tokens × ~80k
+    tokens for a 200-chunk doc = $0.0016 and ~5 s wall time.
+    """
+    header_parts: list[str] = []
+    if doc_title:
+        header_parts.append(f"Document: {doc_title}")
+    if doc_product_name:
+        header_parts.append(f"Product: {doc_product_name}")
+    if doc_search_aliases:
+        header_parts.append(f"Also known as: {doc_search_aliases}")
+    if not header_parts:
+        return chunk_content
+    return "[" + " | ".join(header_parts) + "]\n\n" + chunk_content
 
 
 logger = logging.getLogger(__name__)
@@ -70,34 +106,85 @@ class IngestionService:
         content: bytes,
         filename: str,
         file_type: str,
+        source_path: Path | None = None,
     ) -> KbDocument:
         """Run the full pipeline for a single document.
 
-        The document row must already exist (created by the API in PENDING
-        state). On success it ends READY with chunks + metadata; on failure
-        it ends FAILED with `error_message` populated.
+        For text-based file types (pdf, pptx, ...) we dispatch to the
+        registry which takes raw bytes. For video, we dispatch to the
+        VideoIngestionExtractor which needs a file on disk (ffmpeg can't
+        consume bytes from memory reliably).
+
+        `source_path` is required for video; for text types we'd accept
+        either but we use the bytes path because callers already have
+        them in memory.
         """
         started = time.perf_counter()
         try:
+            # mark_processing also sets progress_step="extracting" — commit
+            # immediately so the polling endpoint sees it within ~1.5 s.
             self.document_repository.mark_processing(document_id)
             self.session.commit()
 
-            # 1) Extract — pure function over bytes; raises ExtractionError.
-            text = extract_text(content, file_type=file_type, filename=filename)
+            # 1) Extract — branches on file_type.
+            #    - Text types: registry function over bytes
+            #    - Video: dedicated pipeline (audio → transcript → frames → OCR)
+            if file_type == VIDEO_FILE_TYPE:
+                if source_path is None:
+                    raise IngestionError(
+                        "Video ingestion requires source_path (on-disk file)."
+                    )
+                video_extractor = VideoIngestionExtractor(self.settings)
+                try:
+                    video_result = video_extractor.ingest(source_path)
+                except VideoIngestionError as exc:
+                    raise IngestionError(str(exc)) from exc
+                text = video_result.text
+                logger.info(
+                    "Video pipeline done: %.1fs duration, %s segments, "
+                    "%s frames extracted (%s with text).",
+                    video_result.duration_seconds,
+                    video_result.transcript_segments,
+                    video_result.frames_extracted,
+                    video_result.frames_with_text,
+                )
+            else:
+                text = extract_text(content, file_type=file_type, filename=filename)
             if not text.strip():
                 raise IngestionError(
                     "Extracted text is empty — nothing to embed."
                 )
 
             # 2) Chunk
+            self.document_repository.update_progress_step(document_id, "chunking")
+            self.session.commit()
             text_chunks = self.chunker.chunk(text)
             if not text_chunks:
                 raise IngestionError("Chunker produced 0 chunks from non-empty text.")
 
-            # 3) Embed (one batched API call, surfaces EmbeddingError on failure)
-            embeddings = self.embedding_service.embed_many(
-                [chunk.content for chunk in text_chunks]
-            )
+            # 3) Embed — but on metadata-enriched text, not raw chunk
+            # content. The doc's title and (eventually) search_aliases
+            # are baked in so retrieval can find chunks by alternate
+            # names. At first ingestion title/product are still empty
+            # (Haiku hasn't run yet), so the prefix is mostly the
+            # filename — that's OK, finalize() will re-embed once aliases
+            # are set.
+            self.document_repository.update_progress_step(document_id, "embedding")
+            self.session.commit()
+            doc_model = self.session.get(KbDocumentModel, document_id)
+            doc_title = doc_model.title if doc_model else ""
+            doc_product = doc_model.product_name if doc_model else None
+            doc_aliases = doc_model.search_aliases if doc_model else ""
+            embedding_inputs = [
+                build_embedding_input(
+                    chunk_content=chunk.content,
+                    doc_title=doc_title,
+                    doc_product_name=doc_product,
+                    doc_search_aliases=doc_aliases,
+                )
+                for chunk in text_chunks
+            ]
+            embeddings = self.embedding_service.embed_many(embedding_inputs)
             if len(embeddings) != len(text_chunks):
                 raise IngestionError(
                     f"Embedding count mismatch: {len(embeddings)} vectors for "
@@ -106,6 +193,8 @@ class IngestionService:
 
             # 4) Persist chunks (clears any prior chunks for this doc first
             # so retries-in-place don't double-up).
+            self.document_repository.update_progress_step(document_id, "persisting")
+            self.session.commit()
             self.chunk_repository.delete_for_document(document_id)
             self.chunk_repository.bulk_insert(
                 document_id=document_id,
@@ -118,6 +207,8 @@ class IngestionService:
             # 5) Metadata via Haiku. Treated as best-effort: a failed
             # metadata call should NOT lose the embedded chunks (which are
             # the expensive part). So we catch + log + continue.
+            self.document_repository.update_progress_step(document_id, "metadata")
+            self.session.commit()
             metadata = None
             try:
                 metadata = self.metadata_service.extract(

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.application.queue_service import QueueService
 from backend.application.sync_progress_store import SyncProgressStore
+from backend.application.sync_timing_learner import SyncTimingLearner
 from backend.application.thread_analysis_service import ThreadAnalysisService
 from backend.domain.runtime_settings import RuntimeSettings
 from backend.domain.sync import SyncRunSummary, SyncStage, SyncStatus
@@ -48,6 +49,7 @@ class GmailSyncService:
         queue_service: QueueService,
         progress_store: SyncProgressStore,
         eta_progress_repository: EtaProgressRepository,
+        timing_learner: SyncTimingLearner | None = None,
     ) -> None:
         self.session = session
         self.runtime_settings = runtime_settings
@@ -58,6 +60,7 @@ class GmailSyncService:
         self.queue_service = queue_service
         self.progress_store = progress_store
         self.eta_progress_repository = eta_progress_repository
+        self.timing_learner = timing_learner
         self.contact_repository = (
             ContactRepository(session, thread_repository.user_id)
             if session is not None
@@ -150,6 +153,12 @@ class GmailSyncService:
         persisted_thread_count = 0
         analyzed_thread_count = 0
         ai_thread_count = 0
+        # Per-stage wall-clock timestamps for timing the learner.
+        _fetch_start: float = 0.0
+        _persist_start: float = 0.0
+        _analyze_start: float = 0.0
+        _summarize_start: float = 0.0
+
         try:
             sync_started_at = perf_counter()
             logger.info(
@@ -186,7 +195,8 @@ class GmailSyncService:
             if fetching_summary:
                 self._persist_stage_progress(run_id, fetching_summary)
 
-            fetch_started_at = perf_counter()
+            _fetch_start = perf_counter()
+            fetch_started_at = _fetch_start
             deleted_thread_ids: set[str] = set()
             new_history_id: str = ""
 
@@ -248,6 +258,7 @@ class GmailSyncService:
                 len(messages),
                 perf_counter() - fetch_started_at,
             )
+            _persist_start = perf_counter()
             persisting_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.PERSISTING,
@@ -340,6 +351,7 @@ class GmailSyncService:
             ai_thread_count = len(
                 [thread for thread in saved_threads if thread.included_in_ai]
             )
+            _analyze_start = perf_counter()
             analyzing_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.ANALYZING,
@@ -387,6 +399,7 @@ class GmailSyncService:
                 len(analyzed_threads),
                 perf_counter() - analysis_started_at,
             )
+            _summarize_start = perf_counter()
             summarizing_summary = self.progress_store.update(
                 run_id,
                 stage=SyncStage.SUMMARIZING,
@@ -432,11 +445,30 @@ class GmailSyncService:
                 status_message=result.status_message,
             )
             self.session.commit()
+            _sync_done = perf_counter()
             logger.info(
                 "Sync run %s completed in %.2fs",
                 run_id,
-                perf_counter() - sync_started_at,
+                _sync_done - sync_started_at,
             )
+            # Record real stage durations so the next run has learned averages.
+            if self.timing_learner is not None and _fetch_start > 0:
+                try:
+                    self.timing_learner.record_run(
+                        fetching_ms=(_persist_start - _fetch_start) * 1000,
+                        persisting_ms=(_analyze_start - _persist_start) * 1000,
+                        analyzing_ms=(_summarize_start - _analyze_start) * 1000,
+                        summarizing_ms=(_sync_done - _summarize_start) * 1000,
+                        thread_count=len(saved_threads),
+                    )
+                    self.timing_learner.save()
+                except Exception:
+                    logger.warning(
+                        "Sync run %s: failed to record timing data — "
+                        "next run will still work but ETA won't improve",
+                        run_id,
+                        exc_info=True,
+                    )
             return self.progress_store.complete(result)
         except SyncCancelledError:
             self.session.rollback()
@@ -753,6 +785,136 @@ class GmailSyncService:
             if thread.analysis_status == AnalysisStatus.SKIPPED:
                 thread.analysis_status = AnalysisStatus.PENDING
         return grouped_threads
+
+    def sync_supplemental_accounts(
+        self,
+        *,
+        lookback_days: int = 7,
+        max_results: int = 50,
+    ) -> int:
+        """Fetch and persist messages from all non-Gmail connected accounts.
+
+        Called after the main Gmail sync completes. Does not create a new sync
+        run record — threads are silently merged into the user's thread pool and
+        analyzed by the same AI pipeline.
+
+        Returns the total number of threads synced across all supplemental accounts.
+        """
+        from backend.core.config import get_settings
+        from backend.core.crypto import decrypt_text
+        from backend.persistence.repositories.email_account_repository import (
+            EmailAccountRepository,
+        )
+        from backend.providers.gmail.mapper import group_messages_by_thread
+
+        settings = get_settings()
+        user_id = self.thread_repository.user_id
+        accounts = EmailAccountRepository(self.session).list_models_for_user(user_id)
+
+        total_synced = 0
+        for account in accounts:
+            if account.provider == "gmail":
+                # Already handled by the main GmailSyncService run.
+                continue
+            if not account.credentials_encrypted:
+                logger.warning(
+                    "Supplemental sync: skipping %s (%s) — no credentials stored.",
+                    account.email_address,
+                    account.provider,
+                )
+                continue
+
+            try:
+                creds_json = decrypt_text(
+                    account.credentials_encrypted,
+                    settings.auth_token_encryption_key,
+                )
+                messages = self._fetch_from_provider(
+                    provider=account.provider,
+                    credentials_json=creds_json,
+                    lookback_days=lookback_days,
+                    max_results=max_results,
+                )
+                if not messages:
+                    logger.info(
+                        "Supplemental sync: no new messages from %s (%s)",
+                        account.email_address,
+                        account.provider,
+                    )
+                    continue
+
+                grouped = group_messages_by_thread(messages)
+                grouped = self._apply_runtime_ai_strategy(grouped)
+
+                saved: list = []
+                for thread in grouped:
+                    saved_thread = self.thread_repository.upsert_thread(thread)
+                    saved.append(saved_thread)
+                self.session.commit()
+
+                # Run AI analysis (no progress tracking — results appear silently).
+                mailbox_email = (
+                    self.runtime_settings.gmail_mailbox_email.strip() or None
+                )
+                analyzed = self.analysis_service.analyze_threads_with_progress(
+                    saved,
+                    progress_callback=lambda current, total, thread: None,
+                    persist_callback=lambda _thread: self.session.commit(),
+                    should_cancel=lambda: False,
+                    user_email=mailbox_email,
+                )
+                self.session.commit()
+                total_synced += len(analyzed)
+                logger.info(
+                    "Supplemental sync: %s threads synced from %s (%s)",
+                    len(analyzed),
+                    account.email_address,
+                    account.provider,
+                )
+            except Exception:
+                logger.warning(
+                    "Supplemental sync failed for %s (%s) — skipping.",
+                    account.email_address,
+                    account.provider,
+                    exc_info=True,
+                )
+
+        return total_synced
+
+    @staticmethod
+    def _fetch_from_provider(
+        *,
+        provider: str,
+        credentials_json: str,
+        lookback_days: int,
+        max_results: int,
+    ) -> list:
+        """Dispatch to the correct provider client and return InboundEmailMessage list."""
+        if provider in ("imap", "icloud"):
+            from backend.providers.imap.client import ImapClient
+
+            client = ImapClient(credentials_json)
+            return client.list_recent_messages(
+                lookback_days=lookback_days,
+                max_results=max_results,
+            )
+        if provider == "outlook":
+            from backend.core.config import get_settings
+            from backend.providers.outlook.client import OutlookClient
+
+            s = get_settings()
+            client = OutlookClient(
+                client_id=s.outlook_client_id or "",
+                client_secret=s.outlook_client_secret,
+                tenant_id=s.outlook_tenant_id or "common",
+                credentials_json=credentials_json,
+            )
+            return client.list_recent_messages(
+                lookback_days=lookback_days,
+                max_results=max_results,
+            )
+        logger.warning("Supplemental sync: unknown provider %r — skipping.", provider)
+        return []
 
     def ensure_watch(self, topic: str) -> None:
         """Register or renew a Pub/Sub watch for the connected Gmail account.

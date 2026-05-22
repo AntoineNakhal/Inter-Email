@@ -22,6 +22,7 @@ from backend.application.queue_service import QueueService
 from backend.application.review_service import ReviewService
 from backend.application.runtime_settings_service import RuntimeSettingsService
 from backend.application.sync_progress_store import SyncProgressStore
+from backend.application.sync_timing_learner import SyncTimingLearner
 from backend.application.thread_analysis_service import ThreadAnalysisService
 from backend.core.config import AppSettings, get_settings
 from backend.knowledge.database import (
@@ -85,7 +86,11 @@ class ServiceBundle:
 
 
 GMAIL_CONNECTION_STATE_STORE = GmailConnectionStateStore()
-SYNC_PROGRESS_STORE = SyncProgressStore()
+# Timing learner persists real per-stage durations to data/sync_timings.json
+# so ETA estimates improve with every completed sync run.
+from pathlib import Path as _Path
+SYNC_TIMING_LEARNER = SyncTimingLearner(_Path("./data"))
+SYNC_PROGRESS_STORE = SyncProgressStore(timing_learner=SYNC_TIMING_LEARNER)
 
 
 def build_service_bundle(
@@ -94,7 +99,14 @@ def build_service_bundle(
 ) -> ServiceBundle:
     settings = get_settings()
     auth_service = build_auth_service(session)
-    gmail_credentials = auth_service.decrypt_user_gmail_token(current_user)
+
+    # Try to get Gmail credentials — new users won't have any yet.
+    # The gmail_client is built without credentials in that case; it will
+    # raise a clear error only if the user actually tries to run a sync.
+    try:
+        gmail_credentials = _get_user_gmail_credentials(session, settings, current_user.id)
+    except Exception:
+        gmail_credentials = None
     gmail_client = GmailReadonlyClient(
         settings,
         credentials_json=gmail_credentials,
@@ -159,6 +171,7 @@ def build_service_bundle(
         queue_service=queue_service,
         progress_store=SYNC_PROGRESS_STORE,
         eta_progress_repository=eta_progress_repository,
+        timing_learner=SYNC_TIMING_LEARNER,
     )
     return ServiceBundle(
         settings=settings,
@@ -235,6 +248,33 @@ def build_service_bundle_for_user_id(
     if user is None:
         raise ValueError(f"User `{user_id}` was not found.")
     return build_service_bundle(session, user)
+
+
+def _get_user_gmail_credentials(
+    session: Session,
+    settings: AppSettings,
+    user_id: int,
+) -> str | None:
+    """Return decrypted Gmail credentials for a user, or None if not connected.
+
+    Checks the legacy gmail_token_encrypted field on the user row first
+    (existing users), then the new email_accounts table (new flow).
+    """
+    from backend.core.crypto import decrypt_text
+    from backend.persistence.repositories.email_account_repository import EmailAccountRepository
+
+    # 1. Legacy: gmail_token_encrypted directly on the user row
+    user_model = UserRepository(session).get_model_by_id(user_id)
+    if user_model and user_model.gmail_token_encrypted:
+        return decrypt_text(user_model.gmail_token_encrypted, settings.auth_token_encryption_key)
+
+    # 2. New: first active Gmail account in email_accounts table
+    accounts = EmailAccountRepository(session).list_active_for_provider("gmail")
+    for acc in accounts:
+        if acc.user_id == user_id and acc.credentials_encrypted:
+            return decrypt_text(acc.credentials_encrypted, settings.auth_token_encryption_key)
+
+    return None
 
 
 def _persist_user_gmail_credentials(

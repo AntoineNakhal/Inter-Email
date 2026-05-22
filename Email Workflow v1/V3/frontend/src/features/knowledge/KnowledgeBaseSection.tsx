@@ -2,14 +2,27 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
   useDeleteKbDocumentMutation,
+  useIngestYouTubeMutation,
   useKbDocuments,
   useUploadKbDocumentMutation,
 } from "../../hooks/useApi";
 import type { KbDocument, KbIngestionStatus } from "../../types/api";
 import { KbReviewModal } from "./KbReviewModal";
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".pptx", ".xlsx", ".txt", ".md"];
-const ACCEPTED_FILES_LABEL = "PDF, PowerPoint, Excel, TXT, Markdown";
+const ACCEPTED_EXTENSIONS = [
+  ".pdf",
+  ".pptx",
+  ".xlsx",
+  ".txt",
+  ".md",
+  ".mp4",
+  ".mov",
+  ".webm",
+  ".mkv",
+  ".m4v",
+];
+const ACCEPTED_FILES_LABEL =
+  "PDF, PowerPoint, Excel, TXT, Markdown · MP4, MOV, WEBM, MKV";
 
 /**
  * Drag-and-drop uploader + document list with a human-in-the-loop review
@@ -26,6 +39,7 @@ const ACCEPTED_FILES_LABEL = "PDF, PowerPoint, Excel, TXT, Markdown";
 export function KnowledgeBaseSection() {
   const { data, isLoading, error } = useKbDocuments();
   const uploadMutation = useUploadKbDocumentMutation();
+  const youtubeMutation = useIngestYouTubeMutation();
   const deleteMutation = useDeleteKbDocumentMutation();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -33,6 +47,8 @@ export function KnowledgeBaseSection() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [reviewDocumentId, setReviewDocumentId] = useState<number | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeError, setYoutubeError] = useState<string | null>(null);
 
   const documents = useMemo<KbDocument[]>(
     () => data?.documents ?? [],
@@ -185,6 +201,53 @@ export function KnowledgeBaseSection() {
               {uploadError}
             </p>
           ) : null}
+
+          <div className="kb-youtube-row">
+            <div className="kb-youtube-row__divider">or</div>
+            <form
+              className="kb-youtube-row__form"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const trimmed = youtubeUrl.trim();
+                if (!trimmed) return;
+                setYoutubeError(null);
+                try {
+                  const response = await youtubeMutation.mutateAsync(trimmed);
+                  setYoutubeUrl("");
+                  setReviewDocumentId(response.document.id);
+                } catch (err) {
+                  setYoutubeError(
+                    err instanceof Error
+                      ? err.message
+                      : "YouTube ingestion failed.",
+                  );
+                }
+              }}
+            >
+              <input
+                type="url"
+                className="kb-youtube-row__input"
+                placeholder="Paste a YouTube URL to ingest its audio"
+                value={youtubeUrl}
+                onChange={(event) => setYoutubeUrl(event.target.value)}
+                disabled={youtubeMutation.isPending}
+              />
+              <button
+                type="submit"
+                className="kb-btn kb-btn--primary"
+                disabled={youtubeMutation.isPending || !youtubeUrl.trim()}
+              >
+                {youtubeMutation.isPending
+                  ? "Downloading…"
+                  : "Ingest from YouTube"}
+              </button>
+            </form>
+            {youtubeError ? (
+              <p className="sp-alert" role="alert">
+                {youtubeError}
+              </p>
+            ) : null}
+          </div>
 
           <KbDocumentList
             documents={documents}

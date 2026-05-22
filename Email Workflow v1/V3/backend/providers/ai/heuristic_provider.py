@@ -26,6 +26,7 @@ from backend.domain.thread import (
 from backend.providers.ai.analysis_style import suggest_current_status
 from backend.providers.ai.action_style import (
     fit_needs_next_action_to_thread,
+    fit_next_action_to_thread,
     suggest_next_action,
 )
 from backend.providers.ai.base import AIProvider

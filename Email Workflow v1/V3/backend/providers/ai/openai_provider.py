@@ -107,6 +107,80 @@ class OpenAIProvider(AIProvider):
         return kb_context or ""
 
     @staticmethod
+    def _kb_no_context_block(kb_context: str) -> str:
+        """Strict-grounding guardrail when retrieval returned nothing.
+
+        The opposite of `_kb_ambiguity_block`: that one fires WHEN we have
+        multiple candidate products; this one fires when we have NONE.
+        Without it, the model happily invents product specs / model
+        numbers / values from its training data — exactly the bug the
+        user just caught (MPDP2X15AB hallucinated from FXMP2X15).
+
+        Only emitted when kb_context is empty — for non-product threads
+        we want the model to draft freely as before.
+        """
+        if kb_context:
+            return ""
+        return (
+            "STRICT GROUNDING — no documentation matched:\n"
+            "The Knowledge Base returned no product documentation for "
+            "this thread. If the inbound message asks about a specific "
+            "product, model number, SKU, technical spec, or capability, "
+            "you MUST NOT invent details. Specifically:\n"
+            "  - Do NOT quote a model number, SKU, or product code "
+            "unless the sender already wrote it themselves.\n"
+            "  - Do NOT quote numerical specs (wind load, weight, power, "
+            "frequency, dimensions, temperature ranges, etc.).\n"
+            "  - Do NOT describe technical features in a way that "
+            "implies you have the documentation.\n"
+            "Instead, draft a short reply that (a) acknowledges the "
+            "question, (b) says you don't have the specific documentation "
+            "on hand, and (c) offers to follow up with the product "
+            "datasheet or asks the sender to confirm the exact model "
+            "they're asking about.\n"
+            "For non-product threads (scheduling, logistics, general "
+            "questions, internal coordination), this rule does NOT apply "
+            "— draft normally.\n\n"
+        )
+
+    @staticmethod
+    def _kb_ambiguity_block(kb_context: str) -> str:
+        """Tell the model to refuse to commit when the docs cover multiple
+        variants the user didn't disambiguate.
+
+        This is the single most important guardrail when a knowledge base
+        contains a catalog with many similar products. Without it, the
+        model will happily pick the first matching spec and quote it
+        confidently — which is a hallucination by *omission* (the spec
+        exists, but for a different model than the user actually has).
+
+        Only emitted when there's a context block to hedge against —
+        otherwise it would just confuse the model on RAG-less drafts.
+        """
+        if not kb_context:
+            return ""
+        return (
+            "AMBIGUITY GUARD — read carefully:\n"
+            "If the inbound message asks about a product spec / feature / "
+            "behaviour and the PRODUCT CONTEXT above contains MULTIPLE "
+            "distinct products or models that could match — for example "
+            "multiple antennas, multiple SKUs, multiple revisions — and "
+            "the sender did not name a specific model, you MUST NOT pick "
+            "one and answer with its spec. Instead:\n"
+            "  (a) For analysis tasks: set next_action to ask the sender "
+            "which specific model they mean, and mention the candidates "
+            "you found.\n"
+            "  (b) For draft tasks: write a short clarifying reply that "
+            "lists the candidate models by name (taken from PRODUCT "
+            "CONTEXT) and asks which one applies. Do NOT include a spec "
+            "value in the body when you are asking for clarification.\n"
+            "Picking a 'best guess' spec when the docs show multiple "
+            "variants is a hallucination by omission — the value exists, "
+            "but for a different product than the sender has. Always "
+            "prefer asking over guessing.\n\n"
+        )
+
+    @staticmethod
     def _service_email_block() -> str:
         """Extra instructions injected for automated/transactional emails."""
         return (
@@ -129,6 +203,8 @@ class OpenAIProvider(AIProvider):
                 + (self._service_email_block() if is_service else "")
                 + self._user_overrides_block(request.user_overrides)
                 + self._kb_context_block(getattr(request, "kb_context", ""))
+                + self._kb_ambiguity_block(getattr(request, "kb_context", ""))
+                + self._kb_no_context_block(getattr(request, "kb_context", ""))
                 + "You are analyzing one email thread for an internal operations queue. "
                 "Ignore email signatures, confidentiality footers, and quoted reply history. "
                 "Anchor the analysis primarily on the latest meaningful message, using earlier messages only as context. "
@@ -262,6 +338,8 @@ class OpenAIProvider(AIProvider):
             system_prompt=(
                 self._user_perspective_block(request.user_email)
                 + self._kb_context_block(getattr(request, "kb_context", ""))
+                + self._kb_ambiguity_block(getattr(request, "kb_context", ""))
+                + self._kb_no_context_block(getattr(request, "kb_context", ""))
                 + "Draft a professional reply email for an Inter-Op workflow.\n"
                 "The payload contains two critical fields:\n"
                 "  - 'author': the person WRITING this reply (the inbox owner). "

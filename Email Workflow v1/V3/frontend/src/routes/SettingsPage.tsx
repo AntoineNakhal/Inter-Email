@@ -6,6 +6,7 @@ import {
   useSettings,
   useUpdateSettingsMutation,
 } from "../hooks/useApi";
+import { ConnectedAccounts } from "../features/email-accounts/ConnectedAccounts";
 import type { RuntimeSettingsUpdate, SettingsSummary } from "../types/api";
 
 const SETTINGS_DRAFT_KEY = "inter-op.v3.settings-draft";
@@ -418,55 +419,49 @@ export function SettingsPage() {
       : formState?.ai_mode === "claude"
         ? "Claude"
         : "OpenAI";
-  const gmailSummary = gmailStatus?.connected
-    ? "This is the mailbox the app will sync and analyze."
-    : gmailStatus?.credentials_configured
-      ? isAuthRequired
-        ? "Sign in with Google first, then the same account will be used for Gmail sync."
-        : "Connect a mailbox to start syncing."
-      : "Add your Gmail OAuth credentials to enable the connection.";
 
-  const gmailSection = (
-    <div className="sp-section">
-      <div className="sp-section__head">
-        <div>
-          <p className="sp-label">Gmail</p>
-          <p className="sp-section__title">
-            {gmailStatus?.connected ? gmailStatus.email_address ?? "Connected" : "Not connected"}
-          </p>
-        </div>
-        <span className={`pill ${gmailStatus?.connected ? "tone-positive" : "tone-watch"}`}>
-          {gmailStatus?.connected ? "Connected" : isAuthRequired ? "Sign in first" : "Needs connection"}
-        </span>
-      </div>
-      <p className="sp-hint">{gmailSummary}</p>
-      {gmailStatus?.connect_url && gmailStatus.credentials_configured ? (
-        <div>
-          <a className="sp-connect-btn" href={gmailStatus.connect_url}>
-            {gmailStatus.connected ? "Reconnect Gmail" : isAuthRequired ? "Sign in with Google" : "Connect Gmail"}
-          </a>
-        </div>
-      ) : null}
-      {((!gmailStatus?.connected && gmailStatus?.error_message) || !gmailStatus?.credentials_configured) ? (
-        <details className="sp-details">
-          <summary>Connection details</summary>
-          <div className="sp-details__body">
-            {gmailStatus?.error_message ? <p>{gmailStatus.error_message}</p> : null}
-            <p className="sp-path">Credentials: {gmailStatus?.credentials_path ?? "unknown"}</p>
-            <p className="sp-path">Token: {gmailStatus?.token_path ?? "unknown"}</p>
+  // Shown when the user must sign in before anything else works.
+  if (isAuthRequired) {
+    return (
+      <section className="page stack sp-page">
+        <div className="sp-header">
+          <div className="sp-header__left">
+            <p className="sp-header__eyebrow">Settings</p>
+            <h1 className="sp-header__title">Workspace</h1>
           </div>
-        </details>
-      ) : null}
-    </div>
-  );
+        </div>
+        <div className="sp-divider" />
+        <div className="sp-body">
+          <div className="sp-section">
+            <div className="sp-section__head">
+              <div>
+                <p className="sp-label">Authentication</p>
+                <p className="sp-section__title">Sign in required</p>
+              </div>
+              <span className="pill tone-watch">Locked</span>
+            </div>
+            <p className="sp-hint">
+              Sign in with your Google account to unlock settings, threads, sync, and AI analysis.
+            </p>
+            {gmailStatus?.connect_url ? (
+              <div>
+                <a className="sp-connect-btn" href={gmailStatus.connect_url}>Sign in with Google</a>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="page stack sp-page">
+      {/* ── Header ── */}
       <div className="sp-header">
         <div className="sp-header__left">
           <p className="sp-header__eyebrow">Settings</p>
           <h1 className="sp-header__title">Workspace</h1>
-          <p className="sp-header__sub">Connect Gmail, choose your AI mode, and changes save automatically.</p>
+          <p className="sp-header__sub">Changes save automatically.</p>
         </div>
         <div className="sp-header__status">
           <span className={`pill ${saveStatus.pillClass}`}>{saveStatus.title}</span>
@@ -475,17 +470,15 @@ export function SettingsPage() {
       </div>
       <div className="sp-divider" />
 
-      {gmailResult === "connected" ? (
-        <div className="sp-banner sp-banner--ok">Gmail connection updated successfully.</div>
+      {/* ── Banners ── */}
+      {(gmailResult === "connected" || searchParams.get("connected")) ? (
+        <div className="sp-banner sp-banner--ok">Account connected successfully.</div>
       ) : null}
       {authResult === "connected" ? (
-        <div className="sp-banner sp-banner--ok">Signed in successfully. Gmail is now tied to this account.</div>
+        <div className="sp-banner sp-banner--ok">Signed in successfully.</div>
       ) : null}
-      {authResult === "error" ? (
-        <div className="sp-banner sp-banner--err">{gmailMessage ?? "The Google sign-in flow failed."}</div>
-      ) : null}
-      {gmailResult === "error" ? (
-        <div className="sp-banner sp-banner--err">{gmailMessage ?? "The Gmail connection flow failed."}</div>
+      {(authResult === "error" || gmailResult === "error") ? (
+        <div className="sp-banner sp-banner--err">{gmailMessage ?? "The connection flow failed. Please try again."}</div>
       ) : null}
       {saveState === "error" ? (
         <div className="sp-banner sp-banner--err">
@@ -496,113 +489,120 @@ export function SettingsPage() {
         </div>
       ) : null}
 
-      {isAuthRequired ? (
-        <div className="sp-body">
-          {gmailSection}
-          <div className="sp-divider" />
-          <div className="sp-section">
-            <div className="sp-section__head">
-              <div>
-                <p className="sp-label">Workspace</p>
-                <p className="sp-section__title">Authentication required</p>
-              </div>
-              <span className="pill tone-watch">Locked</span>
+      <div className="sp-body">
+
+        {/* ── Section: Email accounts — renders immediately, has its own loading state ── */}
+        <div className="sp-section">
+          <div className="sp-section__head">
+            <div>
+              <p className="sp-label">Email accounts</p>
+              <p className="sp-section__title">Connected inboxes</p>
             </div>
-            <p className="sp-hint">
-              Sign in with your allowlisted Google account to unlock per-user settings, threads, sync, and ETA progress.
-            </p>
           </div>
+          <ConnectedAccounts connectedParam={searchParams.get("connected")} />
         </div>
-      ) : data && formState ? (
-        <div className="sp-body">
 
-          {gmailSection}
+        <div className="sp-divider" />
 
-          <div className="sp-divider" />
-
-          <div className="sp-section">
-            <div className="sp-section__head">
-              <div>
-                <p className="sp-label">AI mode</p>
-                <p className="sp-section__title">{activeModeLabel}</p>
-              </div>
+        {/* ── Section: AI mode — shown once settings have loaded ── */}
+        <div className="sp-section">
+          <div className="sp-section__head">
+            <div>
+              <p className="sp-label">AI mode</p>
+              <p className="sp-section__title">{formState ? activeModeLabel : "…"}</p>
             </div>
-            <div className="sp-toggle" role="tablist" aria-label="AI mode">
-              <span
-                aria-hidden="true"
-                className="sp-toggle__indicator"
-                style={{
-                  left: aiModeIndicator.left,
-                  top: aiModeIndicator.top,
-                  width: aiModeIndicator.width,
-                  height: aiModeIndicator.height,
-                  opacity: aiModeIndicator.ready ? 1 : 0,
-                  transition: aiModeIndicator.animate
-                    ? "left 260ms cubic-bezier(0.4,0,0.2,1), top 260ms cubic-bezier(0.4,0,0.2,1), width 260ms cubic-bezier(0.4,0,0.2,1), height 260ms cubic-bezier(0.4,0,0.2,1)"
-                    : "none",
-                }}
-              />
-              {([
-                { mode: "openai" as const, label: "OpenAI" },
-                { mode: "claude" as const, label: "Claude" },
-                { mode: "local" as const, label: "Local AI" },
-              ]).map((option, index) => {
-                const isActive = formState.ai_mode === option.mode;
-                return (
-                  <button
-                    key={option.mode}
-                    ref={(el) => { aiModeButtonRefs.current[index] = el; }}
-                    className="sp-toggle__btn"
-                    style={{ fontWeight: isActive ? 600 : 400, color: isActive ? "var(--text)" : "var(--muted)" }}
-                    type="button"
-                    onClick={() => setFormState((c) => c ? { ...c, ai_mode: option.mode, local_ai_force_all_threads: option.mode === "local" } : c)}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="sp-hint">All tasks (analysis, drafts, queue summary, CRM) route through your selected provider.</p>
-            {localModeNeedsModel ? <p className="sp-alert">Add a local model name before switching to Local AI.</p> : null}
           </div>
 
-          {formState.ai_mode === "local" ? (
+          {formState ? (
             <>
-              <div className="sp-divider" />
-              <div className="sp-section">
-                <div className="sp-section__head">
-                  <div>
-                    <p className="sp-label">Local agent</p>
-                    <p className="sp-section__title">Ollama setup</p>
-                  </div>
-                  <span className="pill tone-positive">Active</span>
-                </div>
-                <label className="sp-field">
-                  <span className="sp-field__label">Model name</span>
-                  <input
-                    type="text"
-                    value={formState.local_ai_model}
-                    onChange={(e) => setFormState((c) => c ? { ...c, local_ai_model: e.target.value } : c)}
-                    placeholder={localFallbackModel || "llama3.1:8b"}
-                    aria-invalid={localModeNeedsModel}
-                  />
-                </label>
-                <label className="sp-field">
-                  <span className="sp-field__label">Agent instructions</span>
-                  <textarea
-                    rows={5}
-                    value={formState.local_ai_agent_prompt}
-                    onChange={(e) => setFormState((c) => c ? { ...c, local_ai_agent_prompt: e.target.value } : c)}
-                    placeholder="You are my email workflow agent. Be concise, identify urgency, and always return a concrete next action."
-                  />
-                </label>
-                <p className="sp-hint">Local mode uses your Ollama agents for all tasks.</p>
+              <div className="sp-toggle" role="tablist" aria-label="AI mode">
+                <span
+                  aria-hidden="true"
+                  className="sp-toggle__indicator"
+                  style={{
+                    left: aiModeIndicator.left,
+                    top: aiModeIndicator.top,
+                    width: aiModeIndicator.width,
+                    height: aiModeIndicator.height,
+                    opacity: aiModeIndicator.ready ? 1 : 0,
+                    transition: aiModeIndicator.animate
+                      ? "left 260ms cubic-bezier(0.4,0,0.2,1), top 260ms cubic-bezier(0.4,0,0.2,1), width 260ms cubic-bezier(0.4,0,0.2,1), height 260ms cubic-bezier(0.4,0,0.2,1)"
+                      : "none",
+                  }}
+                />
+                {([
+                  { mode: "openai" as const, label: "OpenAI" },
+                  { mode: "claude" as const, label: "Claude" },
+                  { mode: "local" as const, label: "Local AI" },
+                ]).map((option, index) => {
+                  const isActive = formState.ai_mode === option.mode;
+                  return (
+                    <button
+                      key={option.mode}
+                      ref={(el) => { aiModeButtonRefs.current[index] = el; }}
+                      className="sp-toggle__btn"
+                      style={{ fontWeight: isActive ? 600 : 400, color: isActive ? "var(--text)" : "var(--muted)" }}
+                      type="button"
+                      onClick={() => setFormState((c) => c ? { ...c, ai_mode: option.mode, local_ai_force_all_threads: option.mode === "local" } : c)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
+
+              <p className="sp-hint">
+                {formState.ai_mode === "local"
+                  ? "All tasks route through your local Ollama instance. Nothing leaves your machine."
+                  : formState.ai_mode === "claude"
+                    ? "All tasks route through Anthropic's Claude API."
+                    : "All tasks route through OpenAI's API."}
+              </p>
+              {localModeNeedsModel ? <p className="sp-alert">Add an Ollama model name below before switching to Local AI.</p> : null}
             </>
-          ) : null}
+          ) : (
+            <p className="sp-hint" style={{ opacity: 0.5 }}>Loading…</p>
+          )}
+        </div>
 
-          <div className="sp-divider" />
+        {/* ── Section: Local AI config (conditional) ── */}
+        {formState?.ai_mode === "local" ? (
+          <>
+            <div className="sp-divider" />
+            <div className="sp-section">
+              <div className="sp-section__head">
+                <div>
+                  <p className="sp-label">Local AI</p>
+                  <p className="sp-section__title">Ollama configuration</p>
+                </div>
+              </div>
+              <label className="sp-field">
+                <span className="sp-field__label">Model name</span>
+                <input
+                  type="text"
+                  value={formState.local_ai_model}
+                  onChange={(e) => setFormState((c) => c ? { ...c, local_ai_model: e.target.value } : c)}
+                  placeholder={localFallbackModel || "llama3.1:8b"}
+                  aria-invalid={localModeNeedsModel}
+                />
+              </label>
+              <label className="sp-field">
+                <span className="sp-field__label">Agent instructions</span>
+                <textarea
+                  rows={5}
+                  value={formState.local_ai_agent_prompt}
+                  onChange={(e) => setFormState((c) => c ? { ...c, local_ai_agent_prompt: e.target.value } : c)}
+                  placeholder="You are my email workflow agent. Be concise, identify urgency, and always return a concrete next action."
+                />
+              </label>
+            </div>
+          </>
+        ) : null}
 
+        <div className="sp-divider" />
+
+        {/* ── Section: Technical details ── */}
+        {data && formState ? (
           <details className="sp-tech">
             <summary className="sp-tech__summary">Technical details</summary>
             <div className="sp-tech__grid">
@@ -613,15 +613,16 @@ export function SettingsPage() {
                 <p className="sp-tech__val">{(() => { const r = effectiveRouting(data, formState.ai_mode); return `Analysis ${r.thread_analysis} · queue ${r.queue} · drafts ${r.draft} · CRM ${r.crm}`; })()}</p>
               </div>
               <div><p className="sp-label">Ollama URL</p><p className="sp-path">{data.ollama_base_url}</p></div>
+              {gmailStatus?.error_message ? (
+                <div><p className="sp-label">Gmail error</p><p className="sp-path">{gmailStatus.error_message}</p></div>
+              ) : null}
             </div>
           </details>
+        ) : !isLoading ? (
+          <p className="sp-hint">Could not load settings. Refresh the page to try again.</p>
+        ) : null}
 
-        </div>
-      ) : !isLoading ? (
-        <div className="sp-body">
-          {gmailSection}
-        </div>
-      ) : null}
+      </div>
     </section>
   );
 }

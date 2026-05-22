@@ -7,6 +7,7 @@ import { faEnvelope, faSquare } from "@fortawesome/free-regular-svg-icons";
 import { faArrowLeft, faCopy, faPaperPlane, faScissors, faSliders, faSquareCheck, faThumbtack, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
 
 import { DraftComposer } from "../features/drafts/DraftComposer";
+import { DraftKbSourcesPanel } from "../features/drafts/DraftKbSourcesPanel";
 import { OverrideModal } from "../features/overrides/OverrideModal";
 import { useAnalyzeMutation, useDeleteDraftMutation, useDeleteOverrideMutation, usePinMutation, useSaveOverrideMutation, useSeenMutation, useSplitThreadMutation, useThread } from "../hooks/useApi";
 import { formatDate } from "../lib/format";
@@ -234,7 +235,14 @@ function DraftBlock({
   threadId,
   participants,
 }: {
-  draft: { subject: string; body: string };
+  // Pull in the full DraftDocument-shaped fields we render — including
+  // kb_sources, so the audit-trail panel can be reused on the thread
+  // page (visible without having to re-open the modal).
+  draft: {
+    subject: string;
+    body: string;
+    kb_sources?: import("../types/api").KbDraftSource[];
+  };
   threadId: string;
   participants: string[];
 }) {
@@ -330,6 +338,7 @@ function DraftBlock({
         </button>
         <pre className="td-analysis__draft-body">{draft.body}</pre>
       </div>
+      <DraftKbSourcesPanel sources={draft.kb_sources ?? []} />
       {sendError && <p style={{ fontSize: "0.75rem", color: "var(--alert)", margin: 0 }}>{sendError}</p>}
     </div>
   );

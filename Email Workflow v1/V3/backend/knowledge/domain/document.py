@@ -27,6 +27,11 @@ class KbDocumentMetadata(BaseModel):
     product_name: str | None = None
     category: str | None = None
     description: str | None = None
+    # User-provided. Free-form comma-separated terms that get baked into
+    # the chunks' embedding inputs so the doc is retrievable by alternate
+    # / customer-side names. Defaults to "" so legacy domain calls keep
+    # working unchanged.
+    search_aliases: str = ""
 
 
 class KbDocument(BaseModel):
@@ -40,7 +45,11 @@ class KbDocument(BaseModel):
     product_name: str | None = None
     category: str | None = None
     description: str | None = None
+    search_aliases: str = ""
+    source_url: str | None = None
     status: KbIngestionStatus
+    # Current ingestion stage. Only set while status=processing; None otherwise.
+    progress_step: str | None = None
     error_message: str | None = None
     chunk_count: int = 0
     created_at: datetime

@@ -142,6 +142,25 @@ class ReviewDecision(BaseModel):
     updated_at: datetime | None = None
 
 
+class KbDraftSource(BaseModel):
+    """One Knowledge Base chunk that was injected into the draft prompt.
+
+    Persisted alongside the draft so the user can later see *which*
+    product-doc snippets the AI grounded its reply on. We deliberately
+    store a snippet rather than just the chunk_id — chunk content can be
+    edited or deleted by the user, but the draft's audit trail must keep
+    showing what the AI actually saw at generation time.
+    """
+
+    document_id: int
+    document_title: str
+    product_name: str | None = None
+    chunk_id: int
+    chunk_index: int
+    similarity: float
+    content_preview: str  # first ~280 chars, what was visible to the AI
+
+
 class DraftDocument(BaseModel):
     """Draft response linked to one thread."""
 
@@ -151,6 +170,7 @@ class DraftDocument(BaseModel):
     model_name: str = "deterministic-fallback"
     used_fallback: bool = False
     created_at: datetime | None = None
+    kb_sources: list[KbDraftSource] = Field(default_factory=list)
 
 
 class EmailThread(BaseModel):

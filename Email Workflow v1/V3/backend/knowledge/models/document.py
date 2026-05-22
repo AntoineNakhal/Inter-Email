@@ -54,19 +54,34 @@ class KbDocumentModel(KbBase, KbTimestampMixin):
     # Original filename + MIME-ish type. Use `file_type` to dispatch the
     # extractor; `filename` is kept verbatim for the UI.
     filename: Mapped[str] = mapped_column(String(500))
-    file_type: Mapped[str] = mapped_column(String(32))  # pdf, pptx, xlsx, txt, md
+    file_type: Mapped[str] = mapped_column(String(32))  # pdf, pptx, xlsx, txt, md, video, youtube
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    # External source URL — populated for YouTube ingestion (the original
+    # video URL) and any future remote source type. Local-file uploads
+    # keep this NULL.
+    source_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
     # Human / AI metadata. `title` defaults to filename until Haiku rewrites it.
     title: Mapped[str] = mapped_column(String(500), default="")
     product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # User-editable comma-separated aliases / synonyms / customer-side names.
+    # Example: "HF tactical deployable, portable HF antenna, deployable
+    # field antenna". Prepended to every chunk's embedding input so a
+    # query phrased in customer terminology can still retrieve a chunk
+    # whose body uses the manufacturer's SKU. Empty by default.
+    search_aliases: Mapped[str] = mapped_column(Text, default="")
 
     # Pipeline state.
     status: Mapped[KbIngestionStatus] = mapped_column(
         Enum(KbIngestionStatus, name="kb_ingestion_status"),
         default=KbIngestionStatus.PENDING,
     )
+    # Current ingestion step — populated while status=processing so the UI
+    # can render a real progress bar instead of a spinner.
+    # Values: "extracting" | "chunking" | "embedding" | "persisting" | "metadata"
+    # NULL when not processing (pending / awaiting_review / ready / failed).
+    progress_step: Mapped[str | None] = mapped_column(String(32), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)

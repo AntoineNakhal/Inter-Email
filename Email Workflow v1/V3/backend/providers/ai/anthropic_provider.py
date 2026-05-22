@@ -132,27 +132,88 @@ class AnthropicProvider(OpenAIProvider):
         Parse a JSON object from the model's response.
 
         Claude is reliable about returning bare JSON when instructed, but
-        occasionally wraps it in ```json fences. We trim those defensively
-        before json.loads to avoid spurious provider errors that would
-        push us to the heuristic fallback.
+        in practice we've seen three failure modes that all used to push
+        us straight to the heuristic fallback:
+
+          1. Triple-backtick fences:      ```json\n{...}\n```
+          2. Prose preamble or trailing text around the object
+          3. Two adjacent objects (rare, usually retry artifacts)
+
+        We strip fences, then carve out the first balanced `{...}` window
+        and parse only that. Net effect: minor model formatting hiccups
+        no longer trigger fallback drafts.
         """
         text = content.strip()
+
+        # 1) Strip code fences if present.
         if text.startswith("```"):
-            # Drop the first fence line (```json or ```) and the trailing fence.
             lines = text.splitlines()
             if lines and lines[0].startswith("```"):
                 lines = lines[1:]
             if lines and lines[-1].strip().startswith("```"):
                 lines = lines[:-1]
             text = "\n".join(lines).strip()
+
+        # 2) Try a strict parse first — fastest path when the model
+        #    returned exactly what we asked for.
         try:
             parsed = json.loads(text or "{}")
-        except json.JSONDecodeError as exc:
-            raise AIProviderError(
-                f"Anthropic returned non-JSON content: {exc}"
-            ) from exc
+        except json.JSONDecodeError:
+            # 3) Fallback: locate the first {...} window and parse it.
+            #    Uses a brace counter to handle nested objects correctly.
+            window = _extract_first_json_object(text)
+            if window is None:
+                raise AIProviderError(
+                    "Anthropic returned non-JSON content (no JSON object found)."
+                )
+            try:
+                parsed = json.loads(window)
+            except json.JSONDecodeError as exc:
+                raise AIProviderError(
+                    f"Anthropic returned non-JSON content: {exc}"
+                ) from exc
+
         if not isinstance(parsed, dict):
             raise AIProviderError(
                 "Anthropic returned a non-object JSON payload."
             )
         return parsed
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the substring of `text` containing the first balanced
+    `{...}` block, or None if no such block exists.
+
+    Why a hand-rolled scan instead of `text[text.find('{'):text.rfind('}')+1]`?
+    Because rfind picks the LAST closing brace in the string, which
+    breaks when the model emits two objects (`{...}{...}`) — we'd
+    concatenate them into `{...}{...}` and json.loads would still fail.
+    A brace counter stops at the matching `}` of the first `{`, which
+    is what we want.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if escape:
+            escape = False
+            continue
+        if char == "\\":
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None

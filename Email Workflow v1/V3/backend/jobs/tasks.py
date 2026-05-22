@@ -50,7 +50,13 @@ async def ingest_kb_document(
         if not path.exists():
             raise FileNotFoundError(f"KB staging file missing: {path}")
 
-        content = path.read_bytes()
+        # Video files can be large (hundreds of MB). We skip the
+        # bytes-into-memory read for those and pass the path through
+        # so ffmpeg streams from disk. Text files stay small enough
+        # to keep the existing bytes-based path.
+        from backend.knowledge.extractors import VIDEO_FILE_TYPE
+        is_video = file_type == VIDEO_FILE_TYPE
+        content = b"" if is_video else path.read_bytes()
         ingestion = IngestionService(
             session=session,
             document_repository=KbDocumentRepository(session),
@@ -65,6 +71,7 @@ async def ingest_kb_document(
             content=content,
             filename=filename,
             file_type=file_type,
+            source_path=path if is_video else None,
         )
     except Exception:
         # IngestionService already marks the doc FAILED + commits, so all

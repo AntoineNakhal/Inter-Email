@@ -6,7 +6,8 @@ import logging
 
 from backend.domain.analysis import DraftReplyRequest
 from backend.domain.runtime_settings import RuntimeSettings
-from backend.domain.thread import DraftDocument, EmailThread
+from backend.domain.thread import DraftDocument, EmailThread, KbDraftSource
+from backend.knowledge.domain.chunk import KbChunkMatch
 from backend.knowledge.services.retrieval_service import RagRetrievalService
 from backend.persistence.repositories.draft_repository import DraftRepository
 from backend.persistence.repositories.thread_repository import ThreadRepository
@@ -53,6 +54,10 @@ class DraftService:
         # email address prefix (e.g. "a.nakhal" → wrong first name guess).
         user_name = self.runtime_settings.gmail_mailbox_name.strip() or None
 
+        # Resolve KB matches once and reuse them for both the prompt and
+        # the audit trail. Returning ([] , "") when RAG is off keeps the
+        # downstream code branch-free.
+        kb_matches, kb_context = self._build_kb_context(thread, user_instructions)
         request = DraftReplyRequest(
             thread=thread,
             selected_date=selected_date,
@@ -60,7 +65,7 @@ class DraftService:
             user_instructions=user_instructions,
             user_email=user_email,
             user_name=user_name,
-            kb_context=self._build_kb_context(thread, user_instructions),
+            kb_context=kb_context,
         )
         provider = self.provider_router.provider_for_task("draft_reply")
         try:
@@ -71,6 +76,17 @@ class DraftService:
             draft = self.provider_router.fallback_provider().draft_reply(request)
             if not self._has_meaningful_draft(draft):
                 raise AIProviderError("Draft generation returned empty content.")
+        # Attach the source list AFTER the provider returns. Providers
+        # can't fabricate this — it always reflects what we actually
+        # retrieved, regardless of what the model claims to have used.
+        draft.kb_sources = _matches_to_sources(kb_matches)
+        logger.info(
+            "RAG: persisting draft for thread %s with %s source(s) "
+            "(kb_matches=%s).",
+            external_thread_id,
+            len(draft.kb_sources),
+            len(kb_matches),
+        )
         return self.draft_repository.save(external_thread_id, draft)
 
     def latest_draft(self, external_thread_id: str) -> DraftDocument | None:
@@ -84,15 +100,20 @@ class DraftService:
         self,
         thread: EmailThread,
         user_instructions: str,
-    ) -> str:
-        """Look up product context in the KB for this draft, if RAG is wired.
+    ) -> tuple[list[KbChunkMatch], str]:
+        """Look up product context in the KB for this draft.
 
-        We blend the thread text with the user's instructions in the query
-        so a "include the spec sheet for the X20" instruction reliably pulls
-        the right chunks even if the X20 isn't mentioned in the thread.
+        Returns BOTH the raw matches (for audit trail / persistence as
+        kb_sources on the draft) and the formatted prompt block. Both
+        are derived from the same retrieval call so they can never drift.
         """
         if self.rag_service is None:
-            return ""
+            logger.info(
+                "RAG: skipped for draft on thread %s — rag_service is None "
+                "(KB disabled or KB session failed to open).",
+                thread.external_thread_id,
+            )
+            return [], ""
         query_text = "\n\n".join(
             part for part in [
                 thread.subject or "",
@@ -100,12 +121,55 @@ class DraftService:
                 user_instructions or "",
             ] if part
         )
+        logger.info(
+            "RAG: invoking retrieval for draft on thread %s (query length=%s chars).",
+            thread.external_thread_id,
+            len(query_text),
+        )
         try:
             matches = self.rag_service.retrieve_for_text(query_text)
         except Exception:
             logger.exception(
-                "RAG retrieval failed for draft on thread %s — proceeding without context.",
+                "RAG retrieval raised for draft on thread %s — proceeding without context.",
                 thread.external_thread_id,
             )
-            return ""
-        return self.rag_service.build_context_block(matches)
+            return [], ""
+        logger.info(
+            "RAG: retrieval returned %s matches for draft on thread %s.",
+            len(matches),
+            thread.external_thread_id,
+        )
+        return matches, self.rag_service.build_context_block(matches)
+
+
+# ── helpers ────────────────────────────────────────────────────────────
+# Module-level so the function is unit-testable without spinning up the
+# full DraftService dependency chain.
+def _matches_to_sources(matches: list[KbChunkMatch]) -> list[KbDraftSource]:
+    """Convert retrieval matches into the audit-trail shape we persist.
+
+    We snapshot the chunk content (truncated) at this moment so the
+    "Sources" panel still tells a coherent story even if the user later
+    edits or deletes the chunk in the KB.
+    """
+    sources: list[KbDraftSource] = []
+    for match in matches:
+        sources.append(
+            KbDraftSource(
+                document_id=match.chunk.document_id,
+                document_title=match.document_title,
+                product_name=match.document_product_name,
+                chunk_id=match.chunk.id,
+                chunk_index=match.chunk.chunk_index,
+                similarity=round(match.similarity, 4),
+                content_preview=_preview(match.chunk.content, 280),
+            )
+        )
+    return sources
+
+
+def _preview(text: str, max_chars: int) -> str:
+    collapsed = " ".join((text or "").split())
+    if len(collapsed) <= max_chars:
+        return collapsed
+    return collapsed[: max_chars - 1].rstrip() + "…"

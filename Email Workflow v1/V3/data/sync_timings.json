@@ -1,0 +1,18 @@
+{
+  "fetching": {
+    "avg_ms": 6084.467914000925,
+    "samples": 1
+  },
+  "persisting": {
+    "avg_ms": 1595.1165080005012,
+    "samples": 1
+  },
+  "summarizing": {
+    "avg_ms": 5871.121958000003,
+    "samples": 1
+  },
+  "analyzing_ms_per_thread": {
+    "avg_ms": 1647.60138929167,
+    "samples": 1
+  }
+}

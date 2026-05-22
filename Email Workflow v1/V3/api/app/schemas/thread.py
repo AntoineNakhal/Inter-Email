@@ -97,6 +97,20 @@ class ReviewDecisionResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class KbDraftSourceResponse(BaseModel):
+    """One Knowledge Base chunk that was injected into the draft prompt.
+    Mirrors `backend.domain.thread.KbDraftSource` 1:1 — kept as its own
+    API class so we can evolve the wire shape independently."""
+
+    document_id: int
+    document_title: str
+    product_name: str | None = None
+    chunk_id: int
+    chunk_index: int
+    similarity: float
+    content_preview: str
+
+
 class DraftResponse(BaseModel):
     subject: str
     body: str
@@ -104,6 +118,7 @@ class DraftResponse(BaseModel):
     model_name: str
     used_fallback: bool
     created_at: datetime | None = None
+    kb_sources: list[KbDraftSourceResponse] = Field(default_factory=list)
 
 
 class ThreadResponse(BaseModel):
@@ -248,6 +263,14 @@ class ThreadResponse(BaseModel):
                     model_name=thread.latest_draft.model_name,
                     used_fallback=thread.latest_draft.used_fallback,
                     created_at=thread.latest_draft.created_at,
+                    # Forward the audit-trail. Without this, the thread
+                    # page reads a draft with an empty kb_sources even
+                    # when the DB row has them populated — the bug that
+                    # made the panel always say "no sources used".
+                    kb_sources=[
+                        KbDraftSourceResponse(**source.model_dump())
+                        for source in thread.latest_draft.kb_sources
+                    ],
                 )
                 if thread.latest_draft
                 else None

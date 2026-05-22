@@ -4889,6 +4889,56 @@ pre {
   color: var(--muted);
 }
 
+/* YouTube URL alternative input under the dropzone */
+.kb-youtube-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.kb-youtube-row__divider {
+  text-align: center;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted, #5b6675);
+  position: relative;
+  margin: 0.3rem 0 0.1rem;
+}
+
+.kb-youtube-row__divider::before,
+.kb-youtube-row__divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 1.4rem);
+  border-top: 0.5px solid var(--border);
+}
+
+.kb-youtube-row__divider::before { left: 0; }
+.kb-youtube-row__divider::after  { right: 0; }
+
+.kb-youtube-row__form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.kb-youtube-row__input {
+  flex: 1;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--surface, #fff);
+}
+
+.kb-youtube-row__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .kb-list {
   list-style: none;
   margin: 0;
@@ -5138,6 +5188,86 @@ pre {
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text);
+}
+
+/* ── KB ingestion progress bar ───────────────────────────────────────── */
+.kb-progress {
+  padding: 1.2rem 1.4rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.kb-progress__bar-wrap {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(20, 32, 44, 0.09);
+  overflow: hidden;
+}
+
+.kb-progress__bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6 0%, #6366f1 100%);
+  transition: width 0.35s ease;
+}
+
+.kb-progress__label {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text, #1a202c);
+}
+
+.kb-progress__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kb-progress__step {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.8rem;
+  color: var(--muted, #5b6675);
+}
+
+.kb-progress__step-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(20, 32, 44, 0.15);
+  transition: background 0.2s;
+}
+
+.kb-progress__step--done .kb-progress__step-dot {
+  background: #22c55e;
+}
+
+.kb-progress__step--active {
+  color: var(--text, #1a202c);
+  font-weight: 500;
+}
+
+.kb-progress__step--active .kb-progress__step-dot {
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.kb-progress__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted, #5b6675);
+  line-height: 1.5;
+  padding: 0.5rem 0.65rem;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 6px;
+  border-left: 3px solid rgba(245, 158, 11, 0.45);
 }
 
 .kb-modal__foot {
@@ -5396,4 +5526,436 @@ pre {
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+/* ── RAG attribution panel inside the draft composer ────────────────── */
+.draft-sources {
+  margin-top: 1rem;
+  padding: 0.95rem 1.05rem 1rem;
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  background: rgba(20, 32, 44, 0.025);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.draft-sources__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.draft-sources__count {
+  font-size: 0.75rem;
+  color: var(--muted, #5b6675);
+  background: rgba(20, 32, 44, 0.06);
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+}
+
+.draft-sources__hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted, #5b6675);
+  line-height: 1.45;
+}
+
+.draft-sources__list {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.draft-sources__item {
+  background: var(--surface, #fff);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.draft-sources__row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.85rem;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text, #1a202c);
+  text-align: left;
+  cursor: pointer;
+}
+
+.draft-sources__row:hover {
+  background: rgba(20, 32, 44, 0.04);
+}
+
+.draft-sources__title {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-sources__meta {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.draft-sources__chunk-tag {
+  font-size: 0.72rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--muted, #5b6675);
+  background: rgba(20, 32, 44, 0.05);
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.draft-sources__similarity {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.draft-sources__similarity--strong {
+  color: rgb(28, 110, 60);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.draft-sources__similarity--moderate {
+  color: rgb(146, 64, 14);
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.draft-sources__similarity--weak {
+  color: rgb(107, 114, 128);
+  background: rgba(107, 114, 128, 0.12);
+}
+
+.draft-sources__excerpt {
+  margin: 0;
+  padding: 0.7rem 0.95rem 0.85rem;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--text, #1a202c);
+  background: rgba(20, 32, 44, 0.03);
+  border-top: 0.5px solid var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Empty-state variant: tinted background to signal "warning, not info"
+   without screaming. Keeps the eyebrow heading consistent with the
+   normal state so the panel feels like the same component. */
+.draft-sources--empty {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.draft-sources__none {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text, #1a202c);
+}
+
+/* Top-line verdict — the one-sentence answer to "where did this come from?".
+   Bigger and bolder than body copy so it's the first thing you read. */
+.draft-sources__verdict {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text, #1a202c);
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.12);
+  border-left: 3px solid rgba(245, 158, 11, 0.6);
+}
+
+.draft-sources__verdict--ok {
+  background: rgba(34, 139, 84, 0.10);
+  border-left-color: rgba(34, 139, 84, 0.6);
+}
+
+/* Three-bullet breakdown of where the AI's information could come from.
+   Helps users understand the system's capabilities without reading docs. */
+.draft-sources__facts {
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.draft-sources__facts li {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text, #1a202c);
+}
+
+/* ── KB sources panel (draft modal & thread audit trail) ─────────────── */
+.kb-sources {
+  margin-top: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface, #fff);
+}
+
+.kb-sources--empty {
+  padding: 0.7rem 1rem;
+  background: rgba(20, 32, 44, 0.025);
+}
+
+.kb-sources__empty-label {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted, #5b6675);
+}
+
+.kb-sources__heading {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #5b6675);
+  background: rgba(20, 32, 44, 0.03);
+  border-bottom: 1px solid var(--border);
+}
+
+.kb-sources__heading-icon {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.kb-sources__badge {
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted, #5b6675);
+  background: rgba(20, 32, 44, 0.08);
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.kb-sources__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kb-sources__item {
+  border-bottom: 1px solid var(--border);
+}
+
+.kb-sources__item:last-child {
+  border-bottom: none;
+}
+
+.kb-sources__trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.9rem;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text, #1a202c);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.kb-sources__trigger:hover {
+  background: rgba(20, 32, 44, 0.04);
+}
+
+.kb-sources__item--open .kb-sources__trigger {
+  background: rgba(20, 32, 44, 0.04);
+}
+
+.kb-sources__doc-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-sources__chevron {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--muted, #5b6675);
+  transition: transform 0.18s ease;
+}
+
+.kb-sources__chevron--open {
+  transform: rotate(180deg);
+}
+
+.kb-sources__body {
+  margin: 0;
+  padding: 0.75rem 0.9rem 0.9rem;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: var(--text, #1a202c);
+  background: rgba(20, 32, 44, 0.025);
+  border-top: 1px solid var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── In-app RAG diagnostic panel (Technical Info) ────────────────────── */
+.kb-diag__row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.kb-diag__input {
+  flex: 1;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--surface, #fff);
+}
+
+.kb-diag__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.kb-diag__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.6rem;
+  padding: 0.95rem 1.05rem 1.05rem;
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  background: rgba(20, 32, 44, 0.025);
+}
+
+.kb-diag__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.6rem 1rem;
+  margin: 0;
+}
+
+.kb-diag__facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.kb-diag__facts dt {
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #5b6675);
+}
+
+.kb-diag__facts dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text, #1a202c);
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-diag__matches > p {
+  margin: 0 0 0.5rem;
+}
+
+.kb-diag__matches > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.kb-diag__match {
+  padding: 0.65rem 0.85rem;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.kb-diag__match-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.kb-diag__match-sim {
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent, #1a6ef5);
+  min-width: 3.5rem;
+}
+
+.kb-diag__match-title {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text, #1a202c);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-diag__match-tag {
+  font-size: 0.72rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--muted, #5b6675);
+  background: rgba(20, 32, 44, 0.05);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.kb-diag__match-pill {
+  font-size: 0.65rem;
+}
+
+.kb-diag__match-preview {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text, #1a202c);
+  background: rgba(20, 32, 44, 0.03);
+  padding: 0.5rem 0.65rem;
+  border-radius: 5px;
 }

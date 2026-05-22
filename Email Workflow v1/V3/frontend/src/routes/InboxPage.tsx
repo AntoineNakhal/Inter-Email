@@ -81,7 +81,7 @@ function workflowBucket(thread: EmailThread): WorkflowBucket {
 function stageLabel(stage: string): string {
   const labels: Record<string, string> = {
     queued: "Preparing refresh",
-    fetching: "Fetching Gmail",
+    fetching: "Fetching emails",
     persisting: "Grouping threads",
     analyzing: "Analyzing actions",
     summarizing: "Building summary",
@@ -349,8 +349,8 @@ function EmptyInboxState({ syncing = false }: { syncing?: boolean }) {
       <h3>{syncing ? "Checking for new email" : "No email in your local inbox yet"}</h3>
       <p className="summary-text">
         {syncing
-          ? "We are checking Gmail now. If nothing new is found, this view will stay empty without a loading skeleton."
-          : "Your local queue is currently empty. Refresh Gmail when you want to pull the latest messages into the app."}
+          ? "We are checking your inboxes now. If nothing new is found, this view will stay empty without a loading skeleton."
+          : "Your local queue is currently empty. Refresh Inbox when you want to pull the latest messages into the app."}
       </p>
     </section>
   );
@@ -771,7 +771,7 @@ export function InboxPage() {
                 ? "Cancel refresh"
                 : isSyncSettling
                   ? "Refreshing inbox..."
-                  : "Refresh Gmail"}
+                  : "Refresh Inbox"}
           </button>
         </div>
       </div>

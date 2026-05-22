@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.knowledge.domain.chunk import KbChunk, KbChunkMatch
 from backend.knowledge.models.chunk import KbChunkModel
-from backend.knowledge.models.document import KbDocumentModel
+from backend.knowledge.models.document import KbDocumentModel, KbIngestionStatus
 
 
 class KbChunkRepository:
@@ -132,7 +132,7 @@ class KbChunkRepository:
         query_embedding: list[float],
         top_k: int,
         similarity_threshold: float,
-        document_status_filter: str | None = "ready",
+        document_status_filter: KbIngestionStatus | None = KbIngestionStatus.READY,
     ) -> list[KbChunkMatch]:
         """Top-K cosine similarity search against the corpus.
 
@@ -140,8 +140,13 @@ class KbChunkRepository:
           * pgvector's `<=>` operator returns COSINE DISTANCE in [0, 2].
             similarity = 1 - distance, so similarity ∈ [-1, 1] in theory,
             and ∈ [0, 1] for non-negative embedding spaces (which OpenAI's are).
-          * We filter on document.status='ready' so chunks belonging to a
-            document still being ingested or one that failed don't leak in.
+          * We filter on document.status=READY so chunks belonging to a
+            document still being ingested, awaiting review, or failed
+            don't leak in. IMPORTANT: this MUST be the Python enum, not
+            a bare string. Postgres stores the enum's NAME ("READY"),
+            so comparing against the lowercase string "ready" silently
+            matches zero rows. Past versions of this code had that bug
+            and it filtered the entire corpus out of every retrieval.
         """
         if top_k <= 0:
             return []
@@ -157,7 +162,7 @@ class KbChunkRepository:
             .order_by(distance)
             .limit(top_k)
         )
-        if document_status_filter:
+        if document_status_filter is not None:
             stmt = stmt.where(KbDocumentModel.status == document_status_filter)
 
         results = self.session.execute(stmt).all()

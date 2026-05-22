@@ -18,5 +18,10 @@ class DraftModel(Base, TimestampMixin):
     provider_name: Mapped[str] = mapped_column(String(64), default="heuristic")
     model_name: Mapped[str] = mapped_column(String(128), default="deterministic-fallback")
     used_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Stored as a JSON-encoded list of KbDraftSource objects. We use a
+    # plain Text column rather than a Postgres JSON type so the same
+    # schema works on both Postgres (prod) and SQLite (some test setups).
+    # Empty string means "no sources" — easier to default than NULL.
+    kb_sources_json: Mapped[str] = mapped_column(Text, default="")
 
     thread: Mapped["EmailThreadModel"] = relationship(back_populates="drafts")

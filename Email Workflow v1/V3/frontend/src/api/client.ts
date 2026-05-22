@@ -5,10 +5,12 @@ import type {
   KbChunkListResponse,
   KbChunkSummary,
   KbChunkUpdateRequest,
+  KbDiagnoseResponse,
   KbDocument,
   KbDocumentListResponse,
   KbFinalizeRequest,
   KbUploadResponse,
+  KbYouTubeIngestRequest,
   QueueDashboardResponse,
   RuntimeSettingsUpdate,
   SettingsSummary,
@@ -244,6 +246,11 @@ export const apiClient = {
     form.append("file", file);
     return multipartPost<KbUploadResponse>("/knowledge/documents", form);
   },
+  ingestYouTubeUrl: (url: string) =>
+    request<KbUploadResponse>("/knowledge/youtube", {
+      method: "POST",
+      body: JSON.stringify({ url } satisfies KbYouTubeIngestRequest),
+    }),
   finalizeKbDocument: (documentId: number, payload: KbFinalizeRequest) =>
     request<KbDocument>(`/knowledge/documents/${documentId}/finalize`, {
       method: "POST",
@@ -251,4 +258,8 @@ export const apiClient = {
     }),
   deleteKbDocument: (documentId: number) =>
     request<void>(`/knowledge/documents/${documentId}`, { method: "DELETE" }),
+  diagnoseRag: (query: string) =>
+    request<KbDiagnoseResponse>(
+      `/knowledge/diagnose?query=${encodeURIComponent(query)}`,
+    ),
 };
