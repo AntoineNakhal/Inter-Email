@@ -139,7 +139,7 @@ class OutlookClient:
             "$top": str(min(max_results, 100)),
             "$select": (
                 "id,conversationId,subject,from,toRecipients,"
-                "receivedDateTime,bodyPreview,body"
+                "receivedDateTime,bodyPreview,body,internetMessageHeaders"
             ),
             "$orderby": "receivedDateTime desc",
         }
@@ -237,6 +237,31 @@ class OutlookClient:
 # Module-level parsing helper
 # ---------------------------------------------------------------------------
 
+_SERVICE_SENDER_PREFIXES = (
+    "noreply@", "no-reply@", "donotreply@", "do-not-reply@",
+    "notifications@", "notification@", "alert@", "alerts@",
+    "mailer@", "bounce@", "support@", "help@", "info@",
+    "newsletter@", "news@", "updates@", "update@",
+    "marketing@", "promo@", "promotions@",
+    "invoice@", "billing@", "receipt@", "payment@", "statements@",
+    "orders@", "confirm@", "confirmation@",
+)
+
+
+def _is_service_email(headers: dict[str, str], from_address: str) -> bool:
+    """Detect bulk / automated / marketing email using RFC standard headers."""
+    if headers.get("List-Unsubscribe") or headers.get("List-Unsubscribe-Post"):
+        return True
+    precedence = (headers.get("Precedence") or "").strip().lower()
+    if precedence in ("bulk", "list", "junk"):
+        return True
+    auto_submitted = (headers.get("Auto-Submitted") or "").strip().lower()
+    if auto_submitted and auto_submitted != "no":
+        return True
+    from_lower = from_address.lower()
+    return any(prefix in from_lower for prefix in _SERVICE_SENDER_PREFIXES)
+
+
 def _outlook_msg_to_inbound(raw: dict) -> "object | None":
     """Convert a Microsoft Graph message dict into an InboundEmailMessage."""
     from email.utils import format_datetime
@@ -274,11 +299,29 @@ def _outlook_msg_to_inbound(raw: dict) -> "object | None":
     body_content = body_info.get("content", "")
     body_type = (body_info.get("contentType") or "text").lower()
 
-    body_html = body_content if body_type == "html" else ""
-    body_text = body_content if body_type != "html" else ""
+    if body_type == "html":
+        body_html = body_content
+        # Extract plain text from HTML so the AI pipeline has full body content.
+        # _group_combined_text in mapper.py only reads body_text, not body_html.
+        try:
+            from backend.core.email_text import extract_text_from_html
+            body_text = extract_text_from_html(body_content)
+        except Exception:
+            body_text = snippet  # fallback to preview if extraction fails
+    else:
+        body_html = ""
+        body_text = body_content
 
     message_id = raw.get("id", "")
     thread_id = raw.get("conversationId") or message_id
+
+    # Parse internet headers for service-email detection.
+    inet_headers: dict[str, str] = {
+        h["name"]: h["value"]
+        for h in (raw.get("internetMessageHeaders") or [])
+        if h.get("name") and h.get("value")
+    }
+    service = _is_service_email(inet_headers, from_email)
 
     return InboundEmailMessage(
         external_message_id=f"outlook:{message_id}",
@@ -291,5 +334,5 @@ def _outlook_msg_to_inbound(raw: dict) -> "object | None":
         body_text=body_text[:50_000],
         body_html=body_html[:200_000],
         label_ids=[],
-        is_service_email=False,
+        is_service_email=service,
     )

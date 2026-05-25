@@ -127,7 +127,9 @@ class GmailSyncService:
             if mailbox:
                 active = self.sync_repository.get_active_run_for_account(mailbox)
                 return self.sync_repository.get_run(active.id) if active else None
-            return self.sync_repository.get_latest_run()
+            # No mailbox configured — only block if a run is actively running.
+            latest = self.sync_repository.get_latest_run()
+            return latest if latest and latest.status == SyncStatus.RUNNING else None
         return self.progress_store.running()
 
     def cancel_run(self, run_id: int) -> SyncRunSummary | None:
@@ -843,6 +845,14 @@ class GmailSyncService:
                     )
                     continue
 
+                # Tag messages sent by this account's owner with "SENT" so the
+                # mapper can correctly set latest_from_me / waiting_on_us.
+                # Gmail uses its own SENT label; non-Gmail providers need this.
+                owner_email = account.email_address.lower()
+                for msg in messages:
+                    if owner_email in msg.from_address.lower() and "SENT" not in msg.label_ids:
+                        msg.label_ids = list(msg.label_ids) + ["SENT"]
+
                 grouped = group_messages_by_thread(messages)
                 grouped = self._apply_runtime_ai_strategy(grouped)
 
@@ -853,15 +863,14 @@ class GmailSyncService:
                 self.session.commit()
 
                 # Run AI analysis (no progress tracking — results appear silently).
-                mailbox_email = (
-                    self.runtime_settings.gmail_mailbox_email.strip() or None
-                )
+                # Use the specific account's email so the AI knows who "you" are
+                # in this mailbox (not just the Gmail address from runtime settings).
                 analyzed = self.analysis_service.analyze_threads_with_progress(
                     saved,
                     progress_callback=lambda current, total, thread: None,
                     persist_callback=lambda _thread: self.session.commit(),
                     should_cancel=lambda: False,
-                    user_email=mailbox_email,
+                    user_email=account.email_address or None,
                 )
                 self.session.commit()
                 total_synced += len(analyzed)

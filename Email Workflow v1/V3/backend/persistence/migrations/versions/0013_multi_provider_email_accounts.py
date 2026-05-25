@@ -30,14 +30,37 @@ depends_on = None
 
 def upgrade() -> None:
     # ------------------------------------------------------------------ #
-    # 1. Add password_hash to users                                       #
+    # 1. Add password_hash to users (if not already present)             #
     # ------------------------------------------------------------------ #
-    with op.batch_alter_table("users") as batch_op:
-        batch_op.add_column(sa.Column("password_hash", sa.Text(), nullable=True))
+    conn = op.get_bind()
+    existing_cols = {
+        row[0]
+        for row in conn.execute(
+            sa.text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'users'"
+            )
+        )
+    }
+    if "password_hash" not in existing_cols:
+        with op.batch_alter_table("users") as batch_op:
+            batch_op.add_column(sa.Column("password_hash", sa.Text(), nullable=True))
 
     # ------------------------------------------------------------------ #
-    # 2. Create email_accounts table                                      #
+    # 2. Create email_accounts table (if not already present)            #
     # ------------------------------------------------------------------ #
+    existing_tables = {
+        row[0]
+        for row in conn.execute(
+            sa.text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'public'"
+            )
+        )
+    }
+    if "email_accounts" in existing_tables:
+        return
+
     op.create_table(
         "email_accounts",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),

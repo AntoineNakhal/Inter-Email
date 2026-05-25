@@ -24,12 +24,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY alembic.ini pyproject.toml README.md ./
+COPY pyproject.toml README.md ./
+RUN pip install --no-cache-dir ".[postgres]"
+
+COPY alembic.ini ./
 COPY backend ./backend
 COPY api ./api
 COPY data ./data
-
-RUN pip install --no-cache-dir -e ".[postgres]"
 
 EXPOSE 8000
 
