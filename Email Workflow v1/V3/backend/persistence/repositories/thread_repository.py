@@ -80,6 +80,25 @@ class ThreadRepository:
         ).all()
         return {str(mid) for mid in rows if mid}
 
+    def _build_account_email_map(self) -> dict[str, str]:
+        """Return {provider: email_address} for all connected accounts of this user.
+
+        Returns an empty dict if the email_accounts table does not exist yet or
+        the import fails, so callers can treat account_email as None gracefully.
+        """
+        try:
+            from backend.persistence.repositories.email_account_repository import EmailAccountRepository
+            accounts = EmailAccountRepository(self.session).list_models_for_user(self.user_id)
+            return {acct.provider: acct.email_address for acct in accounts}
+        except Exception:
+            logger.warning(
+                "ThreadRepository: could not build account_email_map for user %s — "
+                "account_email will be None on all threads.",
+                self.user_id,
+                exc_info=True,
+            )
+            return {}
+
     def list_threads(self) -> list[EmailThread]:
 
         query = (
@@ -96,7 +115,8 @@ class ThreadRepository:
             .order_by(EmailThreadModel.latest_message_date.desc())
         )
         models = self.session.scalars(query).all()
-        return [self._to_domain(model) for model in models]
+        account_email_map = self._build_account_email_map()
+        return [self._to_domain(model, account_email_map=account_email_map) for model in models]
 
     def get_thread(self, external_thread_id: str) -> EmailThread | None:
 
@@ -116,7 +136,10 @@ class ThreadRepository:
             )
         )
         model = self.session.scalar(query)
-        return self._to_domain(model) if model else None
+        if model is None:
+            return None
+        account_email_map = self._build_account_email_map()
+        return self._to_domain(model, account_email_map=account_email_map)
 
     def upsert_thread(
         self,
@@ -241,6 +264,8 @@ class ThreadRepository:
             message_model.is_forwarded = message.is_forwarded
             if message.original_gmail_thread_id:
                 message_model.original_gmail_thread_id = message.original_gmail_thread_id
+            if message.web_link:
+                message_model.web_link = message.web_link
             if message_progress_callback is not None:
                 message_progress_callback(saved_message_count, total_messages)
 
@@ -593,9 +618,13 @@ class ThreadRepository:
                 draft.created_at = thread.latest_draft.created_at
             self.session.add(draft)
 
-    def _to_domain(self, model: EmailThreadModel) -> EmailThread:
+    def _to_domain(
+        self,
+        model: EmailThreadModel,
+        account_email_map: dict[str, str] | None = None,
+    ) -> EmailThread:
         latest_draft = model.drafts[0] if model.drafts else None
-        return EmailThread(
+        domain_obj = EmailThread(
             external_thread_id=model.external_thread_id,
             source_thread_ids=_load_json_list(model.source_thread_ids_json) or [model.external_thread_id],
             grouping_reason=model.grouping_reason or "gmail_thread_id",
@@ -616,6 +645,7 @@ class ThreadRepository:
                     label_ids=_load_json_list(message.label_ids_json),
                     is_forwarded=bool(message.is_forwarded),
                     original_gmail_thread_id=message.original_gmail_thread_id or "",
+                    web_link=message.web_link or "",
                 )
                 for message in model.messages
             ],
@@ -645,6 +675,18 @@ class ThreadRepository:
             latest_draft=_to_draft(latest_draft),
             override=_to_override(model.override),
         )
+        # Derive provider from the external_thread_id prefix (e.g. "outlook:xxx" → "outlook").
+        # Gmail thread IDs are stored as raw hex without a prefix (legacy format), so
+        # anything without a colon is assumed to be Gmail.
+        raw_tid = getattr(domain_obj, 'external_thread_id', '') or ''
+        if ':' in raw_tid:
+            domain_obj.provider = raw_tid.split(':', 1)[0]
+        else:
+            domain_obj.provider = "gmail"
+        # Populate account_email from the provider map when available.
+        if account_email_map and domain_obj.provider:
+            domain_obj.account_email = account_email_map.get(domain_obj.provider)
+        return domain_obj
 
     def split_thread(self, external_thread_id: str, user_id: int) -> list[EmailThread]:
         """Split a merged thread back into its original Gmail threads.

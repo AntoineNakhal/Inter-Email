@@ -113,7 +113,7 @@ async def run_sync(
         # every progress_store.update() call returns a valid summary and
         # _persist_stage_progress() writes live progress to the DB.
         services.sync_service.progress_store.start(run_id, source)
-        services.sync_service.sync_recent_threads(
+        services.sync_service.sync_all_accounts(
             run_id=run_id,
             source=source,
             max_results=max_results,
@@ -122,24 +122,6 @@ async def run_sync(
         topic = services.settings.gmail_pubsub_topic
         if topic:
             services.sync_service.ensure_watch(topic)
-        # Sync all other connected accounts (Outlook, iCloud, IMAP) after Gmail.
-        try:
-            supplemental_count = services.sync_service.sync_supplemental_accounts(
-                lookback_days=lookback_days,
-                max_results=max_results,
-            )
-            if supplemental_count:
-                logger.info(
-                    "Sync run %s: %s additional thread(s) from supplemental accounts.",
-                    run_id,
-                    supplemental_count,
-                )
-        except Exception:
-            logger.warning(
-                "Sync run %s: supplemental account sync failed (non-fatal).",
-                run_id,
-                exc_info=True,
-            )
     except Exception:
         logger.exception("Gmail sync failed in worker (run_id=%s)", run_id)
     finally:

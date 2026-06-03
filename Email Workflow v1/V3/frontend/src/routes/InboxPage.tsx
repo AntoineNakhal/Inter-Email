@@ -12,6 +12,11 @@ import {
 import { Link } from "react-router-dom";
 
 import { ThreadCard } from "../components/ThreadCard";
+
+function providerLabel(p: string): string {
+  const labels: Record<string, string> = { gmail: "Gmail", outlook: "Outlook", icloud: "iCloud", imap: "IMAP" };
+  return labels[p] ?? (p ? p.charAt(0).toUpperCase() + p.slice(1) : "Unknown");
+}
 import {
   useAcknowledgeAllMutation,
   useAcknowledgeBatchMutation,
@@ -373,81 +378,16 @@ function SyncProgressBar({
   threadCount: number;
   aiThreadCount: number;
 }) {
-  const [animatedProgress, setAnimatedProgress] = useState(progressPercent);
-  const [displayedEtaMs, setDisplayedEtaMs] = useState<number | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const progressRef = useRef(progressPercent);
-  const progressSnapshotRef = useRef(progressPercent);
-  const etaSnapshotMsRef = useRef<number | null>(
-    etaSeconds !== null ? etaSeconds * 1000 : null,
-  );
-  const snapshotStartedAtRef = useRef<number>(performance.now());
-
-  useEffect(() => {
-    progressRef.current = animatedProgress;
-  }, [animatedProgress]);
-
-  useEffect(() => {
-    const currentVisibleProgress = progressRef.current;
-    const nextBaseProgress = Math.max(currentVisibleProgress, progressPercent);
-    progressSnapshotRef.current = nextBaseProgress;
-    etaSnapshotMsRef.current = etaSeconds !== null ? etaSeconds * 1000 : null;
-    snapshotStartedAtRef.current = performance.now();
-
-    if (!isRunning) {
-      setAnimatedProgress(nextBaseProgress);
-      setDisplayedEtaMs(etaSnapshotMsRef.current);
-      return;
-    }
-
-    setDisplayedEtaMs(etaSnapshotMsRef.current);
-  }, [etaSeconds, isRunning, progressPercent]);
-
-  useEffect(() => {
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    if (!isRunning) {
-      setAnimatedProgress(Math.max(progressRef.current, progressPercent));
-      return;
-    }
-
-    const tick = (timestamp: number) => {
-      const snapshotProgress = progressSnapshotRef.current;
-      const snapshotEtaMs = etaSnapshotMsRef.current;
-      const elapsed = timestamp - snapshotStartedAtRef.current;
-
-      if (snapshotEtaMs === null || snapshotEtaMs <= 0) {
-        setDisplayedEtaMs(null);
-        setAnimatedProgress(snapshotProgress);
-        return;
-      }
-
-      const remainingMs = Math.max(0, snapshotEtaMs - elapsed);
-      const ratio = Math.min(1, elapsed / snapshotEtaMs);
-      const projectedProgress =
-        snapshotProgress + (100 - snapshotProgress) * ratio;
-      const nextProgress = Math.max(progressRef.current, projectedProgress);
-
-      setDisplayedEtaMs(remainingMs);
-      setAnimatedProgress(Math.min(99, nextProgress));
-      animationFrameRef.current = requestAnimationFrame(tick);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isRunning, progressPercent]);
-
+  // The bar position is driven exclusively by the server's progress_percent.
+  // A CSS transition handles the smooth movement so we don't need rAF.
+  // The ETA label shows exactly what the server computed — no client-side
+  // countdown that would drift and jump between polls.
   const displayedPercent = isRunning
-    ? Math.max(0, Math.min(99, Math.floor(animatedProgress)))
-    : Math.max(0, Math.min(100, Math.round(animatedProgress)));
+    ? Math.max(0, Math.min(99, progressPercent))
+    : Math.max(0, Math.min(100, progressPercent));
 
-  const etaLabel = displayedEtaMs ? formatEta(displayedEtaMs) : null;
+  const etaLabel =
+    etaSeconds !== null && etaSeconds > 0 ? formatEta(etaSeconds * 1000) : null;
 
   return (
     <div className="sync-bar">
@@ -461,7 +401,7 @@ function SyncProgressBar({
       <div className="sync-bar__track" aria-hidden="true">
         <span
           className={`sync-bar__fill ${isRunning ? "sync-bar__fill--running" : ""}`}
-          style={{ width: `${animatedProgress}%` }}
+          style={{ width: `${displayedPercent}%`, transition: "width 0.9s ease-out" }}
         />
       </div>
       <div className="sync-bar__stats">
@@ -502,6 +442,7 @@ export function InboxPage() {
   const [priorityFilter, setPriorityFilter] =
     useState<PriorityFilterValue>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
   const [syncLookbackDays, setSyncLookbackDays] = useState(7);
   const handledCompletionRunIdRef = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(search);
@@ -617,6 +558,20 @@ export function InboxPage() {
     });
   }, [queueThreads]);
 
+  const accountOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: Array<{ value: string; label: string }> = [{ value: "all", label: "All accounts" }];
+    for (const t of queueThreads) {
+      const key = t.provider && t.account_email ? `${t.provider}:${t.account_email}` : t.provider || "";
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        const label = t.account_email ? `${providerLabel(t.provider)} – ${t.account_email}` : providerLabel(t.provider);
+        opts.push({ value: key, label });
+      }
+    }
+    return opts;
+  }, [queueThreads]);
+
   const filteredThreads = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
 
@@ -628,9 +583,11 @@ export function InboxPage() {
       (priorityFilter === "all" ||
         normalizedUrgency(thread) === priorityFilter) &&
       (categoryFilter === "all" ||
-        normalizedCategory(thread) === categoryFilter),
+        normalizedCategory(thread) === categoryFilter) &&
+      (accountFilter === "all" ||
+        (`${thread.provider}:${thread.account_email}` === accountFilter || thread.provider === accountFilter)),
     );
-  }, [categoryFilter, deferredSearch, priorityFilter, queueThreads]);
+  }, [accountFilter, categoryFilter, deferredSearch, priorityFilter, queueThreads]);
 
   const sections = useMemo(
     () => sectionedThreads(filteredThreads),
@@ -639,7 +596,8 @@ export function InboxPage() {
   const hasActiveFilters =
     deferredSearch.trim().length > 0 ||
     priorityFilter !== "all" ||
-    categoryFilter !== "all";
+    categoryFilter !== "all" ||
+    accountFilter !== "all";
 
   const actNowCount = filteredThreads.filter(
     (thread) => workflowBucket(thread) === "act-now",
@@ -830,6 +788,14 @@ export function InboxPage() {
               </select>
               <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
             </label>
+            {accountOptions.length > 1 && (
+              <label className="select-field">
+                <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
+                  {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <FontAwesomeIcon icon={faChevronDown} className="select-field__icon" />
+              </label>
+            )}
             <button
               className={`inbox-toolbar__clear${hasActiveFilters ? "" : " inbox-toolbar__clear--inactive"}`}
               type="button"
@@ -839,6 +805,7 @@ export function InboxPage() {
                 setSearch("");
                 setPriorityFilter("all");
                 setCategoryFilter("all");
+                setAccountFilter("all");
               }}
             >
               Clear

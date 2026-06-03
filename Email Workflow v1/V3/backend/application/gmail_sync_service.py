@@ -138,433 +138,6 @@ class GmailSyncService:
             return None
         return self.progress_store.request_cancel(run_id)
 
-    def sync_recent_threads(
-        self,
-        run_id: int,
-        source: str,
-        max_results: int,
-        lookback_days: int = 7,
-    ) -> SyncRunSummary:
-        run = self.sync_repository.get_run_model(run_id)
-        if run is None:
-            raise ValueError(f"Sync run `{run_id}` was not found.")
-
-        snapshot_threads = self.thread_repository.list_threads()
-        self.progress_store.capture_snapshot(run_id, snapshot_threads)
-        fetched_message_count = 0
-        persisted_thread_count = 0
-        analyzed_thread_count = 0
-        ai_thread_count = 0
-        # Per-stage wall-clock timestamps for timing the learner.
-        _fetch_start: float = 0.0
-        _persist_start: float = 0.0
-        _analyze_start: float = 0.0
-        _summarize_start: float = 0.0
-
-        try:
-            sync_started_at = perf_counter()
-            logger.info(
-                "Sync run %s started source=%s max_results=%s lookback_days=%s",
-                run_id,
-                source,
-                max_results,
-                lookback_days,
-            )
-            # ------------------------------------------------------------------
-            # Fetch phase: incremental (history) or full (bootstrap / expiry)
-            # ------------------------------------------------------------------
-            stored_history_id = self.runtime_settings.gmail_history_id.strip()
-            # Use incremental only when a cursor exists AND the user hasn't
-            # requested a longer window than the default 7-day rolling window.
-            # A longer lookback means they want a real full re-fetch (e.g. "last month").
-            force_full = lookback_days > 7
-            fetch_mode = "incremental" if (stored_history_id and not force_full) else "bootstrap"
-
-            fetch_status_message = (
-                "Fetching changes since last sync."
-                if fetch_mode == "incremental"
-                else f"Full fetch — last {lookback_days} days."
-                if force_full
-                else "Full fetch — bootstrapping incremental sync."
-            )
-            fetching_summary = self.progress_store.update(
-                run_id,
-                stage=SyncStage.FETCHING,
-                status_message=fetch_status_message,
-                stage_unit_current=0,
-                stage_unit_total=0,
-            )
-            if fetching_summary:
-                self._persist_stage_progress(run_id, fetching_summary)
-
-            _fetch_start = perf_counter()
-            fetch_started_at = _fetch_start
-            deleted_thread_ids: set[str] = set()
-            new_history_id: str = ""
-
-            if fetch_mode == "incremental":
-                try:
-                    messages, new_history_id, deleted_thread_ids = (
-                        self.gmail_client.list_messages_since_history(
-                            start_history_id=stored_history_id,
-                            source=source,
-                            max_results=max_results,
-                        )
-                    )
-                    logger.info(
-                        "Sync run %s incremental fetch: %s messages, "
-                        "%s deleted thread(s) in %.2fs",
-                        run_id,
-                        len(messages),
-                        len(deleted_thread_ids),
-                        perf_counter() - fetch_started_at,
-                    )
-                except HistoryExpiredError:
-                    logger.warning(
-                        "Sync run %s: historyId %r expired — falling back to full fetch.",
-                        run_id,
-                        stored_history_id,
-                    )
-                    fetch_mode = "bootstrap"
-
-            if fetch_mode == "bootstrap":
-                # For a manual longer-window fetch, skip the known-IDs filter so
-                # every thread in the requested window is re-evaluated. Threads
-                # with unchanged content will reuse their cached analysis; only
-                # new or changed threads get re-analyzed.
-                known_message_ids = (
-                    set()
-                    if force_full
-                    else self.thread_repository.get_known_message_ids()
-                )
-                messages = self.gmail_client.list_recent_messages(
-                    max_results=max_results,
-                    source=source,
-                    lookback_days=lookback_days,
-                    known_message_ids=known_message_ids,
-                )
-                new_history_id = self.gmail_client.get_current_history_id()
-                logger.info(
-                    "Sync run %s bootstrap fetch: %s messages, historyId=%r in %.2fs",
-                    run_id,
-                    len(messages),
-                    new_history_id,
-                    perf_counter() - fetch_started_at,
-                )
-
-            fetched_message_count = len(messages)
-            self._raise_if_cancel_requested(run_id)
-            logger.info(
-                "Sync run %s fetched %s Gmail messages in %.2fs",
-                run_id,
-                len(messages),
-                perf_counter() - fetch_started_at,
-            )
-            _persist_start = perf_counter()
-            persisting_summary = self.progress_store.update(
-                run_id,
-                stage=SyncStage.PERSISTING,
-                status_message=f"Fetched {len(messages)} messages. Grouping threads.",
-                fetched_message_count=len(messages),
-                thread_count=0,
-                stage_unit_current=0,
-                stage_unit_total=len(messages),
-            )
-            if persisting_summary:
-                self._persist_stage_progress(run_id, persisting_summary)
-            grouping_started_at = perf_counter()
-            grouped_threads = group_messages_by_thread(messages)
-            grouped_threads = self._apply_runtime_ai_strategy(grouped_threads)
-            self._raise_if_cancel_requested(run_id)
-            logger.info(
-                "Sync run %s grouped %s threads in %.2fs",
-                run_id,
-                len(grouped_threads),
-                perf_counter() - grouping_started_at,
-            )
-            saved_threads = self._persist_threads_with_progress(
-                run_id=run_id,
-                grouped_threads=grouped_threads,
-                fetched_message_count=len(messages),
-            )
-
-            # Clean up threads that were fully deleted from Gmail.
-            # deleted_thread_ids are IDs where Gmail reported a messageDeleted
-            # event. Those that didn't come back as saved_threads are gone.
-            if deleted_thread_ids:
-                saved_thread_id_set = {t.external_thread_id for t in saved_threads}
-                truly_deleted = [
-                    tid for tid in deleted_thread_ids
-                    if tid not in saved_thread_id_set
-                ]
-                if truly_deleted:
-                    self.thread_repository.delete_threads(truly_deleted)
-                    logger.info(
-                        "Sync run %s removed %s locally-deleted thread(s): %s",
-                        run_id,
-                        len(truly_deleted),
-                        truly_deleted[:5],
-                    )
-
-            self.session.commit()
-            self._raise_if_cancel_requested(run_id)
-
-            # Persist the new history cursor so the next sync is incremental.
-            # Done immediately after persisting threads, before analysis, so
-            # a crash during analysis doesn't lose the cursor.
-            if new_history_id:
-                from backend.persistence.repositories.runtime_settings_repository import (
-                    RuntimeSettingsRepository,
-                )
-                RuntimeSettingsRepository(
-                    self.session,
-                    self.thread_repository.user_id,
-                ).update_gmail_history_id(
-                    new_history_id
-                )
-                self.session.commit()
-                logger.info(
-                    "Sync run %s persisted new historyId=%r", run_id, new_history_id
-                )
-
-            # Threads skipped at fetch time (already-known message IDs) may
-            # still need re-analysis if the active AI provider changed since
-            # they were last analyzed (e.g. heuristic → Claude). Merge them
-            # into the analysis batch, deduplicating by thread ID.
-            active_provider = self.analysis_service.provider_router.provider_for_task("thread_analysis").name
-            stale_threads = self.thread_repository.get_threads_with_stale_analysis(active_provider)
-            saved_ids = {t.external_thread_id for t in saved_threads}
-            stale_new = [t for t in stale_threads if t.external_thread_id not in saved_ids]
-            if stale_new:
-                logger.info(
-                    "Sync run %s found %s thread(s) with stale analysis for provider %s",
-                    run_id,
-                    len(stale_new),
-                    active_provider,
-                )
-                # Mark them pending so the reuse check in ThreadAnalysisService
-                # treats them as needing fresh analysis.
-                for thread in stale_new:
-                    thread.analysis_status = AnalysisStatus.PENDING
-                    thread.included_in_ai = True
-                saved_threads = saved_threads + stale_new
-
-            persisted_thread_count = len(saved_threads)
-            ai_thread_count = len(
-                [thread for thread in saved_threads if thread.included_in_ai]
-            )
-            _analyze_start = perf_counter()
-            analyzing_summary = self.progress_store.update(
-                run_id,
-                stage=SyncStage.ANALYZING,
-                status_message=(
-                    f"Analyzing {len(saved_threads)} threads with your local AI agent."
-                    if self.runtime_settings.local_ai_enabled
-                    else f"Analyzing {len(saved_threads)} threads for next actions."
-                ),
-                fetched_message_count=len(messages),
-                thread_count=len(saved_threads),
-                ai_thread_count=ai_thread_count,
-                stage_unit_current=0,
-                stage_unit_total=len(saved_threads),
-            )
-            if analyzing_summary:
-                self._persist_stage_progress(run_id, analyzing_summary)
-            analysis_started_at = perf_counter()
-            # Pull the connected mailbox owner so analysis prompts know
-            # whose perspective to take. Falls back to None if no mailbox
-            # is connected yet — providers handle that by skipping the
-            # user-perspective preamble entirely.
-            mailbox_email = (
-                self.runtime_settings.gmail_mailbox_email.strip() or None
-            )
-            analyzed_threads = self.analysis_service.analyze_threads_with_progress(
-                saved_threads,
-                progress_callback=lambda current, total, thread: self._update_analysis_progress(
-                    run_id=run_id,
-                    current=current,
-                    total=total,
-                    fetched_message_count=len(messages),
-                    thread_count=len(saved_threads),
-                    ai_thread_count=ai_thread_count,
-                    external_thread_id=thread.external_thread_id,
-                ),
-                persist_callback=lambda _thread: self.session.commit(),
-                should_cancel=lambda: self.progress_store.is_cancel_requested(run_id),
-                user_email=mailbox_email,
-            )
-            self._raise_if_cancel_requested(run_id)
-            analyzed_thread_count = len(analyzed_threads)
-            logger.info(
-                "Sync run %s analyzed %s threads in %.2fs",
-                run_id,
-                len(analyzed_threads),
-                perf_counter() - analysis_started_at,
-            )
-            _summarize_start = perf_counter()
-            summarizing_summary = self.progress_store.update(
-                run_id,
-                stage=SyncStage.SUMMARIZING,
-                status_message="Building your queue summary.",
-                fetched_message_count=len(messages),
-                thread_count=len(analyzed_threads),
-                ai_thread_count=len(
-                    [thread for thread in analyzed_threads if thread.included_in_ai]
-                ),
-                stage_unit_current=0,
-                stage_unit_total=1,
-            )
-            if summarizing_summary:
-                self._persist_stage_progress(run_id, summarizing_summary)
-            summary_started_at = perf_counter()
-            queue_summary = self.queue_service.summarize_threads(analyzed_threads)
-            self._raise_if_cancel_requested(run_id)
-            logger.info(
-                "Sync run %s built queue summary in %.2fs",
-                run_id,
-                perf_counter() - summary_started_at,
-            )
-            result = self.sync_repository.complete_run(
-                run=run,
-                status=SyncStatus.COMPLETED,
-                fetched_message_count=len(messages),
-                thread_count=len(analyzed_threads),
-                ai_thread_count=ai_thread_count,
-                queue_summary=queue_summary,
-            )
-            result.threads = analyzed_threads
-            result.status_message = "Inbox refresh complete."
-            result.stage = SyncStage.COMPLETED
-            result.progress_percent = 100
-            result.completed_at = datetime.now(timezone.utc)
-            self.eta_progress_repository.update_sync_phase(
-                run_id=run_id,
-                stage=SyncStage.COMPLETED,
-                status=SyncStatus.COMPLETED,
-                eta_seconds=0,
-                progress_current=result.thread_count,
-                progress_total=result.thread_count,
-                status_message=result.status_message,
-            )
-            self.session.commit()
-            _sync_done = perf_counter()
-            logger.info(
-                "Sync run %s completed in %.2fs",
-                run_id,
-                _sync_done - sync_started_at,
-            )
-            # Record real stage durations so the next run has learned averages.
-            if self.timing_learner is not None and _fetch_start > 0:
-                try:
-                    self.timing_learner.record_run(
-                        fetching_ms=(_persist_start - _fetch_start) * 1000,
-                        persisting_ms=(_analyze_start - _persist_start) * 1000,
-                        analyzing_ms=(_summarize_start - _analyze_start) * 1000,
-                        summarizing_ms=(_sync_done - _summarize_start) * 1000,
-                        thread_count=len(saved_threads),
-                    )
-                    self.timing_learner.save()
-                except Exception:
-                    logger.warning(
-                        "Sync run %s: failed to record timing data — "
-                        "next run will still work but ETA won't improve",
-                        run_id,
-                        exc_info=True,
-                    )
-            return self.progress_store.complete(result)
-        except SyncCancelledError:
-            self.session.rollback()
-            cancelled_run_model = self.sync_repository.get_run_model(run_id)
-            restored_threads = self.thread_repository.restore_threads_snapshot(
-                snapshot_threads,
-            )
-            cancelled_run = self.sync_repository.complete_run(
-                run=cancelled_run_model or run,
-                status=SyncStatus.CANCELLED,
-                fetched_message_count=fetched_message_count,
-                thread_count=len(restored_threads),
-                ai_thread_count=0,
-                error_message=None,
-            )
-            cancelled_run.threads = restored_threads
-            cancelled_run.status_message = (
-                "Inbox refresh cancelled. Restored the previous local inbox."
-            )
-            cancelled_run.completed_at = datetime.now(timezone.utc)
-            self.eta_progress_repository.update_sync_phase(
-                run_id=run_id,
-                stage=SyncStage.CANCELLED,
-                status=SyncStatus.CANCELLED,
-                eta_seconds=0,
-                progress_current=0,
-                progress_total=0,
-                status_message=cancelled_run.status_message,
-            )
-            self.session.commit()
-            logger.info("Sync run %s cancelled and previous snapshot restored", run_id)
-            return self.progress_store.cancel(
-                run_id,
-                source=source,
-                status_message=cancelled_run.status_message,
-                fetched_message_count=fetched_message_count,
-                thread_count=len(restored_threads),
-                ai_thread_count=0,
-            )
-        except Exception as exc:
-            self.session.rollback()
-            try:
-                failed_run_model = self.sync_repository.get_run_model(run_id)
-                if failed_run_model is not None:
-                    failed_run = self.sync_repository.complete_run(
-                        run=failed_run_model,
-                        status=SyncStatus.FAILED,
-                        fetched_message_count=fetched_message_count,
-                        thread_count=analyzed_thread_count or persisted_thread_count,
-                        ai_thread_count=ai_thread_count,
-                        error_message=str(exc),
-                    )
-                    self.eta_progress_repository.update_sync_phase(
-                        run_id=run_id,
-                        stage=SyncStage.FAILED,
-                        status=SyncStatus.FAILED,
-                        eta_seconds=0,
-                        progress_current=0,
-                        progress_total=0,
-                        status_message="Inbox refresh failed.",
-                    )
-                    self.session.commit()
-                else:
-                    failed_run = None
-            except Exception:
-                self.session.rollback()
-                failed_run = None
-                logger.exception(
-                    "Sync run %s could not record failure state after rollback",
-                    run_id,
-                )
-            self.progress_store.fail(
-                run_id,
-                source=source,
-                error_message=str(exc),
-                fetched_message_count=(
-                    failed_run.fetched_message_count
-                    if failed_run is not None
-                    else fetched_message_count
-                ),
-                thread_count=(
-                    failed_run.thread_count
-                    if failed_run is not None
-                    else analyzed_thread_count or persisted_thread_count
-                ),
-                ai_thread_count=(
-                    failed_run.ai_thread_count
-                    if failed_run is not None
-                    else ai_thread_count
-                ),
-            )
-            logger.exception("Sync run %s failed", run_id)
-            raise
-
     def _update_analysis_progress(
         self,
         *,
@@ -788,107 +361,556 @@ class GmailSyncService:
                 thread.analysis_status = AnalysisStatus.PENDING
         return grouped_threads
 
-    def sync_supplemental_accounts(
+    def sync_all_accounts(
         self,
-        *,
+        run_id: int,
+        source: str,
+        max_results: int,
         lookback_days: int = 7,
-        max_results: int = 50,
-    ) -> int:
-        """Fetch and persist messages from all non-Gmail connected accounts.
+    ) -> SyncRunSummary:
+        """Unified sync entry point for all connected email providers.
 
-        Called after the main Gmail sync completes. Does not create a new sync
-        run record — threads are silently merged into the user's thread pool and
-        analyzed by the same AI pipeline.
-
-        Returns the total number of threads synced across all supplemental accounts.
+        Replaces the Gmail-first + supplemental split. Discovers every connected
+        account (Gmail, Outlook, iCloud, IMAP), fetches them in a single FETCHING
+        stage, persists and analyzes in one batch, and tracks progress across all
+        providers in a single progress bar.
         """
         from backend.core.config import get_settings
         from backend.core.crypto import decrypt_text
-        from backend.persistence.repositories.email_account_repository import (
-            EmailAccountRepository,
-        )
-        from backend.providers.gmail.mapper import group_messages_by_thread
+        from backend.persistence.repositories.email_account_repository import EmailAccountRepository
+        from backend.persistence.repositories.runtime_settings_repository import RuntimeSettingsRepository
+        from collections import defaultdict
 
-        settings = get_settings()
-        user_id = self.thread_repository.user_id
-        accounts = EmailAccountRepository(self.session).list_models_for_user(user_id)
+        run = self.sync_repository.get_run_model(run_id)
+        if run is None:
+            raise ValueError(f"Sync run `{run_id}` was not found.")
 
-        total_synced = 0
-        for account in accounts:
-            if account.provider == "gmail":
-                # Already handled by the main GmailSyncService run.
-                continue
-            if not account.credentials_encrypted:
-                logger.warning(
-                    "Supplemental sync: skipping %s (%s) — no credentials stored.",
-                    account.email_address,
-                    account.provider,
-                )
-                continue
+        snapshot_threads = self.thread_repository.list_threads()
+        self.progress_store.capture_snapshot(run_id, snapshot_threads)
+        fetched_message_count = 0
+        persisted_thread_count = 0
+        analyzed_thread_count = 0
+        ai_thread_count = 0
+        _fetch_start: float = 0.0
+        _persist_start: float = 0.0
+        _analyze_start: float = 0.0
+        _summarize_start: float = 0.0
 
-            try:
-                creds_json = decrypt_text(
-                    account.credentials_encrypted,
-                    settings.auth_token_encryption_key,
-                )
-                messages = self._fetch_from_provider(
-                    provider=account.provider,
-                    credentials_json=creds_json,
-                    lookback_days=lookback_days,
-                    max_results=max_results,
-                )
-                if not messages:
+        try:
+            sync_started_at = perf_counter()
+            logger.info(
+                "Sync run %s started (all accounts) source=%s max_results=%s lookback_days=%s",
+                run_id,
+                source,
+                max_results,
+                lookback_days,
+            )
+
+            settings = get_settings()
+            user_id = self.thread_repository.user_id
+            accounts = EmailAccountRepository(self.session).list_models_for_user(user_id)
+
+            # Build a map of provider prefix -> owner email for analysis routing.
+            # e.g. {"gmail": "user@gmail.com", "outlook": "user@hotmail.com"}
+            account_email_map: dict[str, str] = {}
+            for acct in accounts:
+                account_email_map[acct.provider] = acct.email_address
+
+            # Gmail fallback from runtime settings (covers users who authenticated
+            # via OAuth but have no row in email_accounts yet).
+            gmail_fallback = self.runtime_settings.gmail_mailbox_email.strip()
+            if gmail_fallback and "gmail" not in account_email_map:
+                account_email_map["gmail"] = gmail_fallback
+
+            has_gmail = bool(gmail_fallback or account_email_map.get("gmail"))
+            non_gmail_accounts = [a for a in accounts if a.provider != "gmail" and a.credentials_encrypted]
+            total_account_count = (1 if has_gmail else 0) + len(non_gmail_accounts)
+            if total_account_count == 0:
+                total_account_count = 1  # avoid division by zero; Gmail path always runs
+
+            # ------------------------------------------------------------------
+            # FETCHING phase
+            # ------------------------------------------------------------------
+            fetching_summary = self.progress_store.update(
+                run_id,
+                stage=SyncStage.FETCHING,
+                status_message="Fetching email accounts.",
+                stage_unit_current=0,
+                stage_unit_total=total_account_count,
+            )
+            if fetching_summary:
+                self._persist_stage_progress(run_id, fetching_summary)
+
+            _fetch_start = perf_counter()
+            all_messages: list = []
+            deleted_thread_ids: set[str] = set()
+            new_gmail_history_id: str = ""
+            accounts_fetched = 0
+
+            # --- Gmail ---
+            stored_history_id = self.runtime_settings.gmail_history_id.strip()
+            force_full = lookback_days > 7
+            fetch_mode = "incremental" if (stored_history_id and not force_full) else "bootstrap"
+            fetch_status_message = (
+                "Fetching Gmail — changes since last sync."
+                if fetch_mode == "incremental"
+                else f"Fetching Gmail — last {lookback_days} days."
+                if force_full
+                else "Fetching Gmail — bootstrapping incremental sync."
+            )
+            fetching_gmail_summary = self.progress_store.update(
+                run_id,
+                stage=SyncStage.FETCHING,
+                status_message=fetch_status_message,
+                stage_unit_current=accounts_fetched,
+                stage_unit_total=total_account_count,
+            )
+            if fetching_gmail_summary:
+                self._persist_stage_progress(run_id, fetching_gmail_summary)
+
+            fetch_started_at = perf_counter()
+            gmail_messages: list = []
+
+            if fetch_mode == "incremental":
+                try:
+                    gmail_messages, new_gmail_history_id, deleted_thread_ids = (
+                        self.gmail_client.list_messages_since_history(
+                            start_history_id=stored_history_id,
+                            source=source,
+                            max_results=max_results,
+                        )
+                    )
                     logger.info(
-                        "Supplemental sync: no new messages from %s (%s)",
+                        "Sync run %s Gmail incremental fetch: %s messages, "
+                        "%s deleted thread(s) in %.2fs",
+                        run_id,
+                        len(gmail_messages),
+                        len(deleted_thread_ids),
+                        perf_counter() - fetch_started_at,
+                    )
+                except HistoryExpiredError:
+                    logger.warning(
+                        "Sync run %s: historyId %r expired — falling back to full fetch.",
+                        run_id,
+                        stored_history_id,
+                    )
+                    fetch_mode = "bootstrap"
+
+            if fetch_mode == "bootstrap":
+                known_message_ids = (
+                    set()
+                    if force_full
+                    else self.thread_repository.get_known_message_ids()
+                )
+                gmail_messages = self.gmail_client.list_recent_messages(
+                    max_results=max_results,
+                    source=source,
+                    lookback_days=lookback_days,
+                    known_message_ids=known_message_ids,
+                )
+                new_gmail_history_id = self.gmail_client.get_current_history_id()
+                logger.info(
+                    "Sync run %s Gmail bootstrap fetch: %s messages, historyId=%r in %.2fs",
+                    run_id,
+                    len(gmail_messages),
+                    new_gmail_history_id,
+                    perf_counter() - fetch_started_at,
+                )
+
+            all_messages.extend(gmail_messages)
+            accounts_fetched += 1
+            self._raise_if_cancel_requested(run_id)
+
+            # --- Non-Gmail accounts ---
+            for account in non_gmail_accounts:
+                acct_status_summary = self.progress_store.update(
+                    run_id,
+                    stage=SyncStage.FETCHING,
+                    status_message=f"Fetching {account.provider.capitalize()} — last {lookback_days} days.",
+                    stage_unit_current=accounts_fetched,
+                    stage_unit_total=total_account_count,
+                )
+                if acct_status_summary:
+                    self._persist_stage_progress(run_id, acct_status_summary)
+
+                try:
+                    creds_json = decrypt_text(
+                        account.credentials_encrypted,
+                        settings.auth_token_encryption_key,
+                    )
+                    try:
+                        import json as _json
+                        _json.loads(creds_json)
+                    except (ValueError, TypeError) as _e:
+                        logger.warning(
+                            "Sync run %s: corrupted credentials for %s (%s) — skipping.",
+                            run_id,
+                            account.email_address,
+                            account.provider,
+                        )
+                        accounts_fetched += 1
+                        continue
+                    provider_messages = self._fetch_from_provider(
+                        provider=account.provider,
+                        credentials_json=creds_json,
+                        lookback_days=lookback_days,
+                        max_results=max_results,
+                    )
+                    # Tag SENT messages for non-Gmail providers.
+                    owner_email = account.email_address.lower()
+                    for msg in provider_messages:
+                        if owner_email in msg.from_address.lower() and "SENT" not in msg.label_ids:
+                            msg.label_ids = list(msg.label_ids) + ["SENT"]
+                    all_messages.extend(provider_messages)
+                    logger.info(
+                        "Sync run %s fetched %s messages from %s (%s) in %.2fs",
+                        run_id,
+                        len(provider_messages),
                         account.email_address,
                         account.provider,
+                        perf_counter() - fetch_started_at,
                     )
-                    continue
+                except Exception:
+                    logger.warning(
+                        "Sync run %s: fetch failed for %s (%s) — skipping.",
+                        run_id,
+                        account.email_address,
+                        account.provider,
+                        exc_info=True,
+                    )
 
-                # Tag messages sent by this account's owner with "SENT" so the
-                # mapper can correctly set latest_from_me / waiting_on_us.
-                # Gmail uses its own SENT label; non-Gmail providers need this.
-                owner_email = account.email_address.lower()
-                for msg in messages:
-                    if owner_email in msg.from_address.lower() and "SENT" not in msg.label_ids:
-                        msg.label_ids = list(msg.label_ids) + ["SENT"]
+                accounts_fetched += 1
+                self._raise_if_cancel_requested(run_id)
 
-                grouped = group_messages_by_thread(messages)
-                grouped = self._apply_runtime_ai_strategy(grouped)
+            fetched_message_count = len(all_messages)
+            logger.info(
+                "Sync run %s fetched %s total messages across %s account(s) in %.2fs",
+                run_id,
+                fetched_message_count,
+                accounts_fetched,
+                perf_counter() - _fetch_start,
+            )
 
-                saved: list = []
-                for thread in grouped:
-                    saved_thread = self.thread_repository.upsert_thread(thread)
-                    saved.append(saved_thread)
+            # ------------------------------------------------------------------
+            # PERSISTING phase
+            # ------------------------------------------------------------------
+            # Group messages first so we know the exact thread count before
+            # emitting the first PERSISTING progress update — this gives the
+            # ETA engine a precise value instead of falling back to 0 (which
+            # would make the ANALYZING estimate look like ~4 s for 1 thread).
+            grouped_threads = group_messages_by_thread(all_messages)
+            grouped_threads = self._apply_runtime_ai_strategy(grouped_threads)
+            self._raise_if_cancel_requested(run_id)
+
+            _persist_start = perf_counter()
+            persisting_summary = self.progress_store.update(
+                run_id,
+                stage=SyncStage.PERSISTING,
+                status_message=(
+                    f"Fetched {fetched_message_count} messages. "
+                    f"Saving {len(grouped_threads)} threads."
+                ),
+                fetched_message_count=fetched_message_count,
+                thread_count=len(grouped_threads),
+                stage_unit_current=0,
+                stage_unit_total=fetched_message_count,
+            )
+            if persisting_summary:
+                self._persist_stage_progress(run_id, persisting_summary)
+
+            saved_threads = self._persist_threads_with_progress(
+                run_id=run_id,
+                grouped_threads=grouped_threads,
+                fetched_message_count=fetched_message_count,
+            )
+
+            # Clean up threads deleted from Gmail.
+            if deleted_thread_ids:
+                saved_thread_id_set = {t.external_thread_id for t in saved_threads}
+                truly_deleted = [
+                    tid for tid in deleted_thread_ids
+                    if tid not in saved_thread_id_set
+                ]
+                if truly_deleted:
+                    self.thread_repository.delete_threads(truly_deleted)
+                    logger.info(
+                        "Sync run %s removed %s locally-deleted thread(s): %s",
+                        run_id,
+                        len(truly_deleted),
+                        truly_deleted[:5],
+                    )
+
+            self.session.commit()
+            self._raise_if_cancel_requested(run_id)
+
+            # Persist new Gmail history cursor before analysis.
+            if new_gmail_history_id:
+                RuntimeSettingsRepository(
+                    self.session,
+                    self.thread_repository.user_id,
+                ).update_gmail_history_id(new_gmail_history_id)
                 self.session.commit()
-
-                # Run AI analysis (no progress tracking — results appear silently).
-                # Use the specific account's email so the AI knows who "you" are
-                # in this mailbox (not just the Gmail address from runtime settings).
-                analyzed = self.analysis_service.analyze_threads_with_progress(
-                    saved,
-                    progress_callback=lambda current, total, thread: None,
-                    persist_callback=lambda _thread: self.session.commit(),
-                    should_cancel=lambda: False,
-                    user_email=account.email_address or None,
-                )
-                self.session.commit()
-                total_synced += len(analyzed)
                 logger.info(
-                    "Supplemental sync: %s threads synced from %s (%s)",
-                    len(analyzed),
-                    account.email_address,
-                    account.provider,
-                )
-            except Exception:
-                logger.warning(
-                    "Supplemental sync failed for %s (%s) — skipping.",
-                    account.email_address,
-                    account.provider,
-                    exc_info=True,
+                    "Sync run %s persisted new historyId=%r", run_id, new_gmail_history_id
                 )
 
-        return total_synced
+            # Merge stale-analysis threads (provider changed since last analyzed).
+            active_provider = self.analysis_service.provider_router.provider_for_task("thread_analysis").name
+            stale_threads = self.thread_repository.get_threads_with_stale_analysis(active_provider)
+            saved_ids = {t.external_thread_id for t in saved_threads}
+            stale_new = [t for t in stale_threads if t.external_thread_id not in saved_ids]
+            if stale_new:
+                logger.info(
+                    "Sync run %s found %s thread(s) with stale analysis for provider %s",
+                    run_id,
+                    len(stale_new),
+                    active_provider,
+                )
+                for thread in stale_new:
+                    thread.analysis_status = AnalysisStatus.PENDING
+                    thread.included_in_ai = True
+                saved_threads = saved_threads + stale_new
+
+            persisted_thread_count = len(saved_threads)
+            ai_thread_count = len([t for t in saved_threads if t.included_in_ai])
+
+            # ------------------------------------------------------------------
+            # ANALYZING phase — group by provider, analyze each group separately
+            # so the correct user_email is used per provider.
+            # ------------------------------------------------------------------
+            _analyze_start = perf_counter()
+            analyzing_summary = self.progress_store.update(
+                run_id,
+                stage=SyncStage.ANALYZING,
+                status_message=(
+                    f"Analyzing {len(saved_threads)} threads with your local AI agent."
+                    if self.runtime_settings.local_ai_enabled
+                    else f"Analyzing {len(saved_threads)} threads for next actions."
+                ),
+                fetched_message_count=fetched_message_count,
+                thread_count=len(saved_threads),
+                ai_thread_count=ai_thread_count,
+                stage_unit_current=0,
+                stage_unit_total=len(saved_threads),
+            )
+            if analyzing_summary:
+                self._persist_stage_progress(run_id, analyzing_summary)
+
+            # Group saved threads by provider prefix (tid prefix before ':').
+            threads_by_provider: dict[str, list] = defaultdict(list)
+            for t in saved_threads:
+                tid = t.external_thread_id or ""
+                prefix = tid.split(":")[0] if ":" in tid else "gmail"
+                threads_by_provider[prefix].append(t)
+
+            analysis_total = len(saved_threads)
+            analysis_current = 0
+            analyzed_threads: list = []
+            analysis_started_at = perf_counter()
+
+            for provider_prefix, group_threads in threads_by_provider.items():
+                provider_user_email = account_email_map.get(provider_prefix) or None
+
+                def _make_progress_callback(offset: int):
+                    def _cb(current: int, total: int, thread) -> None:
+                        self._update_analysis_progress(
+                            run_id=run_id,
+                            current=offset + current,
+                            total=analysis_total,
+                            fetched_message_count=fetched_message_count,
+                            thread_count=len(saved_threads),
+                            ai_thread_count=ai_thread_count,
+                            external_thread_id=thread.external_thread_id,
+                        )
+                    return _cb
+
+                group_analyzed = self.analysis_service.analyze_threads_with_progress(
+                    group_threads,
+                    progress_callback=_make_progress_callback(analysis_current),
+                    persist_callback=lambda _thread: self.session.commit(),
+                    should_cancel=lambda: self.progress_store.is_cancel_requested(run_id),
+                    user_email=provider_user_email,
+                )
+                analyzed_threads.extend(group_analyzed)
+                analysis_current += len(group_threads)
+
+            self._raise_if_cancel_requested(run_id)
+            analyzed_thread_count = len(analyzed_threads)
+            logger.info(
+                "Sync run %s analyzed %s threads in %.2fs",
+                run_id,
+                analyzed_thread_count,
+                perf_counter() - analysis_started_at,
+            )
+
+            # ------------------------------------------------------------------
+            # SUMMARIZING phase
+            # ------------------------------------------------------------------
+            _summarize_start = perf_counter()
+            summarizing_summary = self.progress_store.update(
+                run_id,
+                stage=SyncStage.SUMMARIZING,
+                status_message="Building your queue summary.",
+                fetched_message_count=fetched_message_count,
+                thread_count=len(analyzed_threads),
+                ai_thread_count=len([t for t in analyzed_threads if t.included_in_ai]),
+                stage_unit_current=0,
+                stage_unit_total=1,
+            )
+            if summarizing_summary:
+                self._persist_stage_progress(run_id, summarizing_summary)
+            summary_started_at = perf_counter()
+            queue_summary = self.queue_service.summarize_threads(analyzed_threads)
+            self._raise_if_cancel_requested(run_id)
+            logger.info(
+                "Sync run %s built queue summary in %.2fs",
+                run_id,
+                perf_counter() - summary_started_at,
+            )
+
+            # ------------------------------------------------------------------
+            # COMPLETED
+            # ------------------------------------------------------------------
+            result = self.sync_repository.complete_run(
+                run=run,
+                status=SyncStatus.COMPLETED,
+                fetched_message_count=fetched_message_count,
+                thread_count=len(analyzed_threads),
+                ai_thread_count=ai_thread_count,
+                queue_summary=queue_summary,
+            )
+            result.threads = analyzed_threads
+            result.status_message = "Inbox refresh complete."
+            result.stage = SyncStage.COMPLETED
+            result.progress_percent = 100
+            result.completed_at = datetime.now(timezone.utc)
+            self.eta_progress_repository.update_sync_phase(
+                run_id=run_id,
+                stage=SyncStage.COMPLETED,
+                status=SyncStatus.COMPLETED,
+                eta_seconds=0,
+                progress_current=result.thread_count,
+                progress_total=result.thread_count,
+                status_message=result.status_message,
+            )
+            self.session.commit()
+            _sync_done = perf_counter()
+            logger.info(
+                "Sync run %s (all accounts) completed in %.2fs",
+                run_id,
+                _sync_done - sync_started_at,
+            )
+            if self.timing_learner is not None and _fetch_start > 0:
+                try:
+                    self.timing_learner.record_run(
+                        fetching_ms=(_persist_start - _fetch_start) * 1000,
+                        persisting_ms=(_analyze_start - _persist_start) * 1000,
+                        analyzing_ms=(_summarize_start - _analyze_start) * 1000,
+                        summarizing_ms=(_sync_done - _summarize_start) * 1000,
+                        thread_count=len(saved_threads),
+                    )
+                    self.timing_learner.save()
+                except Exception:
+                    logger.warning(
+                        "Sync run %s: failed to record timing data — "
+                        "next run will still work but ETA won't improve",
+                        run_id,
+                        exc_info=True,
+                    )
+            return self.progress_store.complete(result)
+
+        except SyncCancelledError:
+            self.session.rollback()
+            cancelled_run_model = self.sync_repository.get_run_model(run_id)
+            restored_threads = self.thread_repository.restore_threads_snapshot(
+                snapshot_threads,
+            )
+            cancelled_run = self.sync_repository.complete_run(
+                run=cancelled_run_model or run,
+                status=SyncStatus.CANCELLED,
+                fetched_message_count=fetched_message_count,
+                thread_count=len(restored_threads),
+                ai_thread_count=0,
+                error_message=None,
+            )
+            cancelled_run.threads = restored_threads
+            cancelled_run.status_message = (
+                "Inbox refresh cancelled. Restored the previous local inbox."
+            )
+            cancelled_run.completed_at = datetime.now(timezone.utc)
+            self.eta_progress_repository.update_sync_phase(
+                run_id=run_id,
+                stage=SyncStage.CANCELLED,
+                status=SyncStatus.CANCELLED,
+                eta_seconds=0,
+                progress_current=0,
+                progress_total=0,
+                status_message=cancelled_run.status_message,
+            )
+            self.session.commit()
+            logger.info("Sync run %s cancelled and previous snapshot restored", run_id)
+            return self.progress_store.cancel(
+                run_id,
+                source=source,
+                status_message=cancelled_run.status_message,
+                fetched_message_count=fetched_message_count,
+                thread_count=len(restored_threads),
+                ai_thread_count=0,
+            )
+        except Exception as exc:
+            self.session.rollback()
+            try:
+                failed_run_model = self.sync_repository.get_run_model(run_id)
+                if failed_run_model is not None:
+                    failed_run = self.sync_repository.complete_run(
+                        run=failed_run_model,
+                        status=SyncStatus.FAILED,
+                        fetched_message_count=fetched_message_count,
+                        thread_count=analyzed_thread_count or persisted_thread_count,
+                        ai_thread_count=ai_thread_count,
+                        error_message=str(exc),
+                    )
+                    self.eta_progress_repository.update_sync_phase(
+                        run_id=run_id,
+                        stage=SyncStage.FAILED,
+                        status=SyncStatus.FAILED,
+                        eta_seconds=0,
+                        progress_current=0,
+                        progress_total=0,
+                        status_message="Inbox refresh failed.",
+                    )
+                    self.session.commit()
+                else:
+                    failed_run = None
+            except Exception:
+                self.session.rollback()
+                failed_run = None
+                logger.exception(
+                    "Sync run %s could not record failure state after rollback",
+                    run_id,
+                )
+            self.progress_store.fail(
+                run_id,
+                source=source,
+                error_message=str(exc),
+                fetched_message_count=(
+                    failed_run.fetched_message_count
+                    if failed_run is not None
+                    else fetched_message_count
+                ),
+                thread_count=(
+                    failed_run.thread_count
+                    if failed_run is not None
+                    else analyzed_thread_count or persisted_thread_count
+                ),
+                ai_thread_count=(
+                    failed_run.ai_thread_count
+                    if failed_run is not None
+                    else ai_thread_count
+                ),
+            )
+            logger.exception("Sync run %s failed", run_id)
+            raise
 
     @staticmethod
     def _fetch_from_provider(

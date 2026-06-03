@@ -18,7 +18,7 @@ const LOCAL_CACHE_GC_MS = 30 * 60 * 1000;
  * No other hook should fire data requests until this resolves to a user object.
  */
 export function useCurrentUser(): { user: CurrentUserResponse | null; isLoading: boolean } {
-  const { data, isLoading } = useQuery<CurrentUserResponse | null>({
+  const { data, isLoading, isFetching } = useQuery<CurrentUserResponse | null>({
     queryKey: ["current-user"],
     queryFn: async () => {
       try {
@@ -33,7 +33,10 @@ export function useCurrentUser(): { user: CurrentUserResponse | null; isLoading:
     retry: false, // don't hammer /auth/me on failure
     refetchOnWindowFocus: false,
   });
-  return { user: data ?? null, isLoading };
+  // Include isFetching so AppShell waits for background refetches to complete
+  // before deciding to redirect. Without this, a stale null cache causes an
+  // immediate redirect to /login right after a successful login (race condition).
+  return { user: data ?? null, isLoading: isLoading || isFetching };
 }
 
 export function useThreads() {

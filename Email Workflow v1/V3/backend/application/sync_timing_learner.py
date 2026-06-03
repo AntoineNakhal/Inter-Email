@@ -13,7 +13,8 @@ JSON schema (data/sync_timings.json):
   "fetching":   {"avg_ms": 4100.0, "samples": 5},
   "persisting": {"avg_ms": 3200.0, "samples": 5},
   "summarizing":{"avg_ms": 1900.0, "samples": 5},
-  "analyzing_ms_per_thread": {"avg_ms": 2800.0, "samples": 5}
+  "analyzing_ms_per_thread": {"avg_ms": 2800.0, "samples": 5},
+  "last_thread_count": 42
 }
 
 `analyzing_ms_per_thread` stores time-per-thread so the estimate
@@ -97,6 +98,15 @@ class SyncTimingLearner:
             {"avg_ms": _FIRST_RUN_DEFAULTS_MS["analyzing_ms_per_thread"]},
         )["avg_ms"]
 
+    def last_thread_count(self) -> int:
+        """Thread count from the most recent completed run.
+
+        Used as a prior when the current run hasn't reached PERSISTING yet
+        (so thread_count is still 0) — gives a realistic initial ETA instead
+        of estimating for just 1 thread.
+        """
+        return int(self._data.get("last_thread_count", 0))
+
     def has_history(self) -> bool:
         """True once at least one real sync has been recorded."""
         return bool(self._data)
@@ -125,6 +135,11 @@ class SyncTimingLearner:
             ms_per_thread = analyzing_ms / thread_count
             self._update_stage("analyzing_ms_per_thread", ms_per_thread)
 
+        # Always update last_thread_count — used as ETA prior on the next run
+        # before we know how many threads the current run will produce.
+        if thread_count > 0:
+            self._data["last_thread_count"] = thread_count
+
         logger.info(
             "SyncTimingLearner recorded run: fetch=%.0fms persist=%.0fms "
             "analyze=%.0fms (%d threads → %.0fms/thread) summarize=%.0fms",
@@ -147,11 +162,16 @@ class SyncTimingLearner:
             )
 
     def initial_eta_seconds(self, thread_count: int = 0) -> int:
-        """Full-run ETA from learned averages, used at sync start."""
+        """Full-run ETA from learned averages, used at sync start.
+
+        If thread_count is unknown (0), falls back to the last run's thread
+        count so the bar starts with a realistic estimate rather than 4 seconds.
+        """
+        effective_threads = thread_count or self.last_thread_count() or 1
         total_ms = (
             self.avg_stage_ms(SyncStage.FETCHING)
             + self.avg_stage_ms(SyncStage.PERSISTING)
-            + self.avg_stage_ms(SyncStage.ANALYZING, thread_count)
+            + self.avg_stage_ms(SyncStage.ANALYZING, effective_threads)
             + self.avg_stage_ms(SyncStage.SUMMARIZING)
         )
         return max(1, ceil(total_ms / 1000))
@@ -164,11 +184,13 @@ class SyncTimingLearner:
         """Minimum ETA: sum of all stages AFTER the current one.
 
         This prevents the ETA from dropping to near-zero while there
-        are still one or two slow stages ahead.
+        are still one or two slow stages ahead.  If thread_count is still
+        unknown, use the last run's count as a floor prior.
         """
+        effective_threads = thread_count or self.last_thread_count() or 1
         current_index = _TRACKED.index(current_stage) if current_stage in _TRACKED else -1
         remaining_ms = sum(
-            self.avg_stage_ms(s, thread_count)
+            self.avg_stage_ms(s, effective_threads)
             for s in _TRACKED[current_index + 1 :]
         )
         return ceil(remaining_ms / 1000)

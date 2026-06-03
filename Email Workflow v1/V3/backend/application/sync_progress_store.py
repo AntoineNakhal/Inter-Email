@@ -24,6 +24,18 @@ STAGE_ORDER: tuple[SyncStage, ...] = (
     SyncStage.SUMMARIZING,
 )
 
+# Each active stage owns an exclusive band of the progress bar.
+# The bar can NEVER exceed a stage's ceiling while that stage is active,
+# preventing the "stuck at 99% while 22/40 analyzed" problem.
+# Transitions are seamless because each stage starts at the previous one's ceiling.
+STAGE_PROGRESS_RANGES: dict[SyncStage, tuple[int, int]] = {
+    SyncStage.QUEUED:      (0,   2),
+    SyncStage.FETCHING:    (2,  22),
+    SyncStage.PERSISTING:  (22, 42),
+    SyncStage.ANALYZING:   (42, 92),
+    SyncStage.SUMMARIZING: (92, 99),
+}
+
 
 @dataclass
 class _RunTimingState:
@@ -60,8 +72,6 @@ class SyncProgressStore:
 
     def start(self, run_id: int, source: str) -> SyncRunSummary:
         now = datetime.now(timezone.utc)
-        # Start at 0 — no fake percentage before we have any real data.
-        initial_eta = self._initial_eta_seconds()
         summary = SyncRunSummary(
             run_id=run_id,
             status=SyncStatus.RUNNING,
@@ -70,7 +80,7 @@ class SyncProgressStore:
             progress_percent=0,
             stage_unit_current=0,
             stage_unit_total=0,
-            eta_seconds=initial_eta,
+            eta_seconds=None,   # no ETA until ANALYZING — we have no real data yet
             status_message="Sync queued.",
             fetched_message_count=0,
             thread_count=0,
@@ -137,17 +147,24 @@ class SyncProgressStore:
 
             self._advance_timing_state(timing, updated)
             computed_eta_seconds = self._estimate_eta_seconds(updated, timing)
-            computed_progress = self._estimate_progress_percent(
-                updated,
-                timing,
-                computed_eta_seconds,
+            computed_progress = self._estimate_progress_percent(updated, timing)
+
+            # Stage-range ceiling: bar can never exceed this stage's max.
+            lo, hi = STAGE_PROGRESS_RANGES.get(updated.stage, (0, 99))
+
+            # On a stage transition, reset the previous_progress anchor to the
+            # new stage's floor — a stale high value from the prior stage must
+            # not block accurate display in the new stage.
+            effective_previous = (
+                lo if updated.stage != current.stage else previous_progress
             )
+
             updated.progress_percent = max(
-                previous_progress,
+                effective_previous,
                 progress_percent if progress_percent is not None else 0,
                 computed_progress,
             )
-            updated.progress_percent = min(99, updated.progress_percent)
+            updated.progress_percent = min(hi, updated.progress_percent)
             updated.eta_seconds = computed_eta_seconds
             self._runs[run_id] = updated
             self._latest_run_id = run_id
@@ -297,12 +314,6 @@ class SyncProgressStore:
 
     # ── estimation helpers ──────────────────────────────────────────────
 
-    def _initial_eta_seconds(self) -> int:
-        if self._learner is not None:
-            return self._learner.initial_eta_seconds()
-        # Fallback when no learner — sum of built-in defaults.
-        return 34
-
     def _avg_stage_ms(self, stage: SyncStage, thread_count: int = 0) -> float:
         """Average duration for a stage from the learner, with fallbacks."""
         if self._learner is not None:
@@ -394,67 +405,99 @@ class SyncProgressStore:
             + prior * prior_weight
         ) / (timing.observed_unit_samples + prior_weight)
 
+    def _effective_thread_count(self, timing: _RunTimingState, summary: SyncRunSummary) -> int:
+        """Best available thread count for ETA estimation.
+
+        Priority:
+        1. Already known from PERSISTING/ANALYZING updates in this run.
+        2. Last run's count from the learner (good prior while FETCHING).
+        3. Fall back to 1 so we never multiply by 0.
+        """
+        known = timing.thread_count or summary.thread_count or 0
+        if known > 0:
+            return known
+        if self._learner is not None:
+            last = self._learner.last_thread_count()
+            if last > 0:
+                return last
+        return 1
+
     def _estimate_eta_seconds(
         self,
         summary: SyncRunSummary,
         timing: _RunTimingState,
-    ) -> int:
-        if summary.stage not in STAGE_ORDER:
-            return 0
+    ) -> int | None:
+        """Compute remaining seconds, or None if we have no real data yet.
 
-        thread_count = timing.thread_count or summary.thread_count or 0
-        remaining_ms = 0.0
-        current_index = STAGE_ORDER.index(summary.stage)
-
-        stage_elapsed_ms = max(
-            0.0,
-            (datetime.now(timezone.utc) - timing.stage_started_at).total_seconds() * 1000,
-        )
-
-        if summary.stage == SyncStage.ANALYZING and summary.stage_unit_total > 0:
+        ETA is only shown once ANALYZING starts — before that we don't know
+        how many threads there are so any number would be a guess.
+        During ANALYZING: remaining_threads × blended_ms_per_thread (+ summarizing).
+        During SUMMARIZING: learned average for that stage.
+        All other stages: None (frontend shows nothing).
+        """
+        if summary.stage == SyncStage.ANALYZING:
+            if summary.stage_unit_total <= 0:
+                return None  # haven't started yet, no thread count
             blended_ms_per_unit = self._blended_analyze_ms_per_unit(timing)
-            if summary.stage_unit_current < summary.stage_unit_total:
-                current_unit_elapsed_ms = max(
-                    0.0,
-                    (
-                        datetime.now(timezone.utc)
-                        - (timing.unit_started_at or datetime.now(timezone.utc))
-                    ).total_seconds() * 1000,
-                )
-                remaining_ms += (
-                    max(blended_ms_per_unit - current_unit_elapsed_ms, 0.0)
-                    + max(summary.stage_unit_total - summary.stage_unit_current - 1, 0)
-                    * blended_ms_per_unit
-                )
-        else:
-            current_stage_duration_ms = self._avg_stage_ms(summary.stage, thread_count)
-            remaining_ms += max(current_stage_duration_ms - stage_elapsed_ms, 0.0)
+            remaining_threads = max(0, summary.stage_unit_total - summary.stage_unit_current)
+            remaining_ms = remaining_threads * blended_ms_per_unit
+            # Add SUMMARIZING time so the ETA stays honest at the tail end.
+            thread_count = self._effective_thread_count(timing, summary)
+            remaining_ms += self._avg_stage_ms(SyncStage.SUMMARIZING, thread_count)
+            return max(0, ceil(remaining_ms / 1000))
 
-        # Future stages — use learned averages, not hardcoded constants.
-        for future_stage in STAGE_ORDER[current_index + 1:]:
-            remaining_ms += self._avg_stage_ms(future_stage, thread_count)
+        if summary.stage == SyncStage.SUMMARIZING:
+            thread_count = self._effective_thread_count(timing, summary)
+            stage_elapsed_ms = max(
+                0.0,
+                (datetime.now(timezone.utc) - timing.stage_started_at).total_seconds() * 1000,
+            )
+            remaining_ms = max(
+                0.0,
+                self._avg_stage_ms(SyncStage.SUMMARIZING, thread_count) - stage_elapsed_ms,
+            )
+            return max(0, ceil(remaining_ms / 1000))
 
-        raw_eta = ceil(remaining_ms / 1000)
-
-        # Apply ETA floor: never go below sum of remaining stages' averages.
-        floor = self._eta_floor_seconds(summary.stage, thread_count)
-        return max(raw_eta, floor)
+        # QUEUED / FETCHING / PERSISTING — no reliable data yet, hide ETA.
+        return None
 
     def _estimate_progress_percent(
         self,
         summary: SyncRunSummary,
         timing: _RunTimingState,
-        eta_seconds: int,
     ) -> int:
-        elapsed_seconds = max(
-            0.0,
-            (datetime.now(timezone.utc) - timing.run_started_at).total_seconds(),
-        )
-        total_estimated_seconds = elapsed_seconds + max(0, eta_seconds)
-        if total_estimated_seconds <= 0:
+        """Map current sync state to a progress percentage using stage ranges.
+
+        Each stage owns a fixed band of the bar (see STAGE_PROGRESS_RANGES).
+        Within a stage we interpolate using:
+          1. Real unit counts (threads analyzed, messages saved) — most accurate.
+          2. Time elapsed vs. learned stage average — fallback, capped at 80% of
+             the stage band so the bar never "finishes" a stage by time alone.
+
+        This replaces the old elapsed/(elapsed+eta) formula, which caused the
+        bar to rush to 99% whenever the ETA was underestimated.
+        """
+        stage_range = STAGE_PROGRESS_RANGES.get(summary.stage)
+        if stage_range is None:
             return 0
-        # Never return 0 after the run has actually started (stage ≠ QUEUED).
-        raw = int(round((elapsed_seconds / total_estimated_seconds) * 100))
-        if summary.stage != SyncStage.QUEUED and raw == 0:
-            return 1
-        return raw
+
+        lo, hi = stage_range
+
+        # Primary: use real unit counts (most accurate signal).
+        if summary.stage_unit_total > 0:
+            unit_fraction = min(1.0, summary.stage_unit_current / summary.stage_unit_total)
+            return lo + int(unit_fraction * (hi - lo))
+
+        # Fallback: time-elapsed fraction within the stage.
+        thread_count = self._effective_thread_count(timing, summary)
+        avg_stage_s = self._avg_stage_ms(summary.stage, thread_count) / 1000
+        if avg_stage_s > 0:
+            stage_elapsed = max(
+                0.0,
+                (datetime.now(timezone.utc) - timing.stage_started_at).total_seconds(),
+            )
+            # Cap at 80% of the stage band — never visually "finish" by time alone.
+            time_fraction = min(0.8, stage_elapsed / avg_stage_s)
+            return lo + int(time_fraction * (hi - lo))
+
+        return lo

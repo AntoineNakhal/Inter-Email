@@ -61,6 +61,7 @@ class InboundEmailMessage(BaseModel):
     body_html: str = ""   # text/html MIME part — used for display when present
     label_ids: list[str] = Field(default_factory=list)
     is_service_email: bool = False  # automated/transactional sender detected at fetch time
+    web_link: str = ""  # direct URL from provider (e.g. Outlook Graph API webLink)
 
 
 class ThreadMessage(BaseModel):
@@ -78,6 +79,9 @@ class ThreadMessage(BaseModel):
     # The Gmail thread ID this message originally belonged to before grouping.
     # Used by the split-thread action to re-separate merged threads.
     original_gmail_thread_id: str = ""
+    # Direct URL to open this message in the provider's web client.
+    # Populated for Outlook (Graph API webLink); empty string for Gmail/IMAP.
+    web_link: str = ""
 
 
 class ThreadAnalysis(BaseModel):
@@ -205,6 +209,8 @@ class EmailThread(BaseModel):
     signature: str = ""
     is_new: bool = False
     is_service_email: bool = False  # automated/transactional sender
+    provider: str = ""          # e.g. "gmail", "outlook", "imap", "icloud"
+    account_email: str | None = None  # which connected account this thread belongs to
     last_synced_at: datetime | None = None
     last_analyzed_at: datetime | None = None
     analysis: ThreadAnalysis | None = None

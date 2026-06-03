@@ -40,7 +40,7 @@ def _run_push_sync_job(run_id: int, source: str, max_results: int) -> None:
         if run_model is None:
             raise ValueError(f"Sync run `{run_id}` was not found.")
         services = build_service_bundle_for_user_id(session, run_model.user_id)
-        services.sync_service.sync_recent_threads(
+        services.sync_service.sync_all_accounts(
             run_id=run_id,
             source=source,
             max_results=max_results,

@@ -28,7 +28,7 @@ def main() -> None:
     with session_factory() as session:
         connected_users = UserRepository(session).list_connected_users()
         if not connected_users:
-            raise RuntimeError("No authenticated Gmail users are connected.")
+            raise RuntimeError("No users found.")
         services = build_service_bundle_for_user_id(session, connected_users[0].id)
         sync_service = services.sync_service
         sync_repository = SyncRepository(session)
@@ -41,7 +41,7 @@ def main() -> None:
         run_summary = sync_service.create_run(source=settings.gmail_thread_source)
         run_id = run_summary.run_id
 
-        result = sync_service.sync_recent_threads(
+        result = sync_service.sync_all_accounts(
             run_id=run_id,
             source=settings.gmail_thread_source,
             max_results=settings.gmail_max_results,

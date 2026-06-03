@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueueDashboard, useAcknowledgeAllMutation, useCurrentUser } from "../hooks/useApi";
 
@@ -87,12 +87,30 @@ export function AppShell() {
     return () => window.removeEventListener("resize", measure);
   }, [activeIndex, location.pathname]);
 
-  // Auth gate: redirect to /login if not authenticated.
-  if (authLoading) return null;
-  if (!user) {
-    navigate("/login", { replace: true });
-    return null;
+  // Auth gate: redirect to /login when definitely not authenticated.
+  // navigate() must live in useEffect — calling it in the render body
+  // causes React to loop in Strict Mode / concurrent rendering.
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/login", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
+
+  // While the session check is in flight, show the shell skeleton so
+  // the page is never blank. Once authLoading resolves we either render
+  // the children (user found) or the useEffect above redirects to login.
+  if (authLoading) {
+    return (
+      <div className="app-shell">
+        <aside className="sidebar" />
+        <main className="main-content" style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: "0.9rem" }}>
+          Loading…
+        </main>
+      </div>
+    );
   }
+
+  if (!user) return null; // redirect is in progress via useEffect above
 
   return (
     <div className="app-shell">

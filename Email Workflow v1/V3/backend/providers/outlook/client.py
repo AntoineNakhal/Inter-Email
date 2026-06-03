@@ -139,7 +139,7 @@ class OutlookClient:
             "$top": str(min(max_results, 100)),
             "$select": (
                 "id,conversationId,subject,from,toRecipients,"
-                "receivedDateTime,bodyPreview,body,internetMessageHeaders"
+                "receivedDateTime,bodyPreview,body,internetMessageHeaders,webLink"
             ),
             "$orderby": "receivedDateTime desc",
         }
@@ -158,6 +158,76 @@ class OutlookClient:
             if inbound is not None:
                 results.append(inbound)
         return results
+
+    # ------------------------------------------------------------------ #
+    # Sending                                                              #
+    # ------------------------------------------------------------------ #
+
+    def get_profile_email(self) -> str:
+        """Return the connected account's email address."""
+        email, _ = self.get_profile()
+        return email
+
+    def send_reply(
+        self,
+        *,
+        conversation_id: str,
+        to: str,
+        subject: str,
+        body: str,
+        signature_html: str = "",
+    ) -> str:
+        """Send a reply into an existing conversation via Microsoft Graph.
+
+        Uses POST /me/sendMail with the conversationId set so the message
+        is threaded under the same conversation in Outlook.
+
+        Returns the sent message ID (empty string if not returned by Graph).
+        """
+        import json as _json
+        import urllib.request
+
+        access_token = self._get_valid_access_token()
+
+        # Build the HTML body — append signature when available.
+        html_body = body.replace("\n", "<br>")
+        if signature_html:
+            html_body = f"{html_body}<br><br>{signature_html}"
+
+        payload = {
+            "message": {
+                "subject": subject,
+                "conversationId": conversation_id,
+                "body": {
+                    "contentType": "HTML",
+                    "content": html_body,
+                },
+                "toRecipients": [
+                    {"emailAddress": {"address": addr.strip()}}
+                    for addr in to.split(",")
+                    if addr.strip()
+                ],
+            },
+            "saveToSentItems": "true",
+        }
+
+        data = _json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{_GRAPH_BASE}/me/sendMail",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        # Graph returns 202 Accepted with no body on success.
+        with urllib.request.urlopen(req) as resp:
+            _ = resp.read()
+
+        # Graph doesn't return the sent message ID from /sendMail directly.
+        # Return a placeholder so callers have a consistent interface.
+        return f"outlook-sent:{conversation_id}"
 
     # ------------------------------------------------------------------ #
     # Internal helpers                                                     #
@@ -314,6 +384,7 @@ def _outlook_msg_to_inbound(raw: dict) -> "object | None":
 
     message_id = raw.get("id", "")
     thread_id = raw.get("conversationId") or message_id
+    web_link = raw.get("webLink") or ""
 
     # Parse internet headers for service-email detection.
     inet_headers: dict[str, str] = {
@@ -326,6 +397,7 @@ def _outlook_msg_to_inbound(raw: dict) -> "object | None":
     return InboundEmailMessage(
         external_message_id=f"outlook:{message_id}",
         external_thread_id=f"outlook:{thread_id}",
+        web_link=web_link,
         subject=subject,
         from_address=from_addr,
         to_address=to_addr,

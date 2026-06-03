@@ -40,8 +40,29 @@ function workflowTone(thread: {
   return "tone-neutral";
 }
 
-function gmailThreadUrl(threadId: string) {
-  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
+function webmailUrl(threadId: string, provider: string, messages?: { message_id: string; web_link: string }[]): string | null {
+  const rawId = threadId.includes(':') ? threadId.split(':').slice(1).join(':') : threadId;
+  switch (provider) {
+    case 'gmail':
+      return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(rawId)}`;
+    case 'outlook': {
+      // Use the webLink from Graph API — it already contains the correct URL
+      // for the user's account type (personal outlook.live.com vs work office365).
+      const lastMsg = messages && messages.length > 0 ? messages[messages.length - 1] : null;
+      if (lastMsg?.web_link) return lastMsg.web_link;
+      // Fallback: inbox homepage (shown for threads synced before this change).
+      return 'https://outlook.live.com/mail/0/';
+    }
+    case 'icloud':
+      return 'https://www.icloud.com/mail/';
+    default:
+      return null; // IMAP and unknown providers have no web client
+  }
+}
+
+function openInLabel(provider: string): string {
+  const labels: Record<string, string> = { gmail: 'Open in Gmail', outlook: 'Open in Outlook', icloud: 'Open in iCloud Mail' };
+  return labels[provider] ?? 'Open in mail client';
 }
 
 /**
@@ -619,16 +640,21 @@ export function ThreadDetailPage() {
         <div className="td-messages">
           <div className="td-messages__header">
             <p className="td-messages__label">Conversation · {thread.message_count} message{thread.message_count !== 1 ? "s" : ""}</p>
-            <a
-              className="td-icon-action"
-              href={gmailThreadUrl(thread.thread_id)}
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label="Open in Gmail"
-              title="Open in Gmail"
-            >
-              <FontAwesomeIcon icon={faEnvelope} />
-            </a>
+            {(() => {
+              const mailUrl = webmailUrl(thread.thread_id, thread.provider ?? '', thread.messages);
+              return mailUrl !== null ? (
+                <a
+                  className="td-icon-action"
+                  href={mailUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  aria-label={openInLabel(thread.provider ?? '')}
+                  title={openInLabel(thread.provider ?? '')}
+                >
+                  <FontAwesomeIcon icon={faEnvelope} />
+                </a>
+              ) : null;
+            })()}
           </div>
           <div className="td-messages__list">
             {thread.messages.map((message, index) => (

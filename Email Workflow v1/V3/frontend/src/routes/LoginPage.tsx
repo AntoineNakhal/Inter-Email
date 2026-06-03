@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,9 @@ export function LoginPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail ?? "Login failed.");
       }
+      // Invalidate the cached session check so AppShell fetches a fresh
+      // /auth/me instead of acting on a stale null from a previous visit.
+      await queryClient.invalidateQueries({ queryKey: ["current-user"] });
       navigate("/home", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed.");

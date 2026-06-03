@@ -22,6 +22,7 @@ export type ThreadMessage = {
   cleaned_body: string;
   is_forwarded: boolean;
   original_gmail_thread_id: string;
+  web_link: string;  // direct URL from provider (Outlook webLink); empty for Gmail/IMAP
 };
 
 export type ThreadAnalysis = {
@@ -141,6 +142,8 @@ export type EmailThread = {
   signature: string;
   is_new: boolean;
   is_service_email: boolean;
+  provider: string;
+  account_email: string | null;
   // Merge transparency
   grouping_reason: string;
   merge_signals: string[];

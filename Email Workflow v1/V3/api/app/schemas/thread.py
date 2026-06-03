@@ -44,6 +44,7 @@ class ThreadMessageResponse(BaseModel):
     cleaned_body: str = ""
     is_forwarded: bool = False
     original_gmail_thread_id: str = ""
+    web_link: str = ""  # direct URL from provider (Outlook webLink, empty for Gmail/IMAP)
 
 
 class ThreadAnalysisResponse(BaseModel):
@@ -140,6 +141,8 @@ class ThreadResponse(BaseModel):
     signature: str
     is_new: bool = False
     is_service_email: bool = False
+    provider: str = ""
+    account_email: str | None = None
     # Merge transparency
     grouping_reason: str = "gmail_thread_id"
     merge_signals: list[str] = Field(default_factory=list)
@@ -174,6 +177,8 @@ class ThreadResponse(BaseModel):
             signature=thread.signature,
             is_new=thread.is_new,
             is_service_email=thread.is_service_email,
+            provider=thread.provider,
+            account_email=thread.account_email,
             grouping_reason=thread.grouping_reason,
             merge_signals=thread.merge_signals,
             source_thread_ids=thread.source_thread_ids,
@@ -188,6 +193,7 @@ class ThreadResponse(BaseModel):
                     cleaned_body=message.cleaned_body,
                     is_forwarded=message.is_forwarded,
                     original_gmail_thread_id=message.original_gmail_thread_id,
+                    web_link=message.web_link,
                 )
                 for message in thread.messages
             ],

@@ -114,6 +114,9 @@ class ThreadMessageModel(Base, TimestampMixin):
     cleaned_body: Mapped[str] = mapped_column(Text, default="")
     label_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     is_forwarded: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Direct URL to open this message in the provider's web client.
+    # Populated for Outlook (Graph API webLink); empty string for Gmail/IMAP.
+    web_link: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
     thread: Mapped["EmailThreadModel"] = relationship(back_populates="messages")
 

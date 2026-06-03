@@ -530,6 +530,7 @@ def _to_thread_message(message: InboundEmailMessage) -> ThreadMessage:
         label_ids=message.label_ids,
         is_forwarded=is_forwarded,
         original_gmail_thread_id=message.external_thread_id,
+        web_link=message.web_link,
     )
 
 

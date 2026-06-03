@@ -5,6 +5,16 @@ import { faThumbtack } from "@fortawesome/free-solid-svg-icons";
 import type { EmailThread } from "../types/api";
 import { useAcknowledgeThreadMutation, usePinMutation } from "../hooks/useApi";
 
+export function providerLabel(p: string): string {
+  const labels: Record<string, string> = { gmail: "Gmail", outlook: "Outlook", icloud: "iCloud", imap: "IMAP" }
+  return labels[p] ?? (p ? p.charAt(0).toUpperCase() + p.slice(1) : "Unknown")
+}
+
+function providerColor(p: string): string {
+  const colors: Record<string, string> = { gmail: "#EA4335", outlook: "#0078D4", icloud: "#555555", imap: "#555555" }
+  return colors[p] ?? "#888888"
+}
+
 const isDone = (thread: EmailThread) => Boolean(thread.seen_state?.seen);
 
 function statusLabel(thread: EmailThread): string {
@@ -52,6 +62,11 @@ export function ThreadCard({ thread, compact = false }: { thread: EmailThread; c
       >
         <div className="thread-row__top">
           {!compact && <span className={`pill tone-${tone}`}>{label}</span>}
+          {thread.provider ? (
+            <span className="provider-badge" style={{ backgroundColor: providerColor(thread.provider), color: '#fff', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', flexShrink: 0 }}>
+              {providerLabel(thread.provider)}
+            </span>
+          ) : null}
           <span className="thread-row__subject">{thread.subject || "Untitled thread"}</span>
           {/* Only show urgency high in compact/notification mode */}
           {urgency && urgency !== "unknown" && (!compact || urgency === "high") ? (
